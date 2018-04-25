@@ -8,10 +8,15 @@
 #
 
 hostname=$(hostname -f)
+logfile=$NANCY_LOGFILE
+
+[ "$logfile" = '' ] && logfile=$1
 
 if [ ! -s ~/.s3cfg ]
 then
-  s3cfg=$(psql -A -t postgres_ai -c 'select s3_access_key,s3_secret_key,s3_region from project;' | grep -v ^Tim)
+  project=$NANCY_PROJECT
+  [ "$(psql -X -A -t postgres_ai -c "select s3_access_key,s3_secret_key,s3_region from project where name='$project';" 2>/dev/null | wc -l)" -ne 1 ] && echo "FAIL: project=$project is invalid, exit" && exit 1
+  s3cfg=$(psql -X -A -t postgres_ai -c "select s3_access_key,s3_secret_key,s3_region from project where name='$project';")
   (echo '[default]'
    echo "access_key = $(echo "$s3cfg" | awk -F '|' '{print $1}')"
    echo "secret_key = $(echo "$s3cfg" | awk -F '|' '{print $2}')"
@@ -19,9 +24,10 @@ then
   ) > ~/.s3cfg
 fi
 
-if [ "$1" != '' ]
+if [ "$logfile" != '' ]
 then
-  pgbadger -j 4 --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' "$1" -f stderr -o "$1.json" && gzip -vf "$1.json" && s3cmd put "$1.json.gz" s3://p-dumps/${hostname}-manual/
+  [ ! -s $logfile ] && echo "FAIL: file=$file is empty or absent, exit" && exit 1
+  pgbadger -j 4 --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' "$logfile" -f stderr -o "$logfile.json" && gzip -vf "$logfile.json" && s3cmd put "$logfile.json.gz" s3://p-dumps/${hostname}-manual/
   echo "Listing (on S3 storage):"
   s3cmd ls s3://p-dumps/${hostname}-manual/
 else
