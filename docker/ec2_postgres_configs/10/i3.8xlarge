@@ -14,18 +14,3 @@ min_wal_size = 2GB
 checkpoint_completion_target = 0.9
 stats_temp_directory='/run/postgresql'
 
-shared_preload_libraries = 'pg_stat_statements,auto_explain'
-
-pg_stat_statements.max = 5000
-pg_stat_statements.track = all
-pg_stat_statements.track_utility = on
-pg_stat_statements.save = on
-
-auto_explain.log_min_duration = '200ms'
-auto_explain.log_analyze = on
-auto_explain.log_verbose = on
-auto_explain.log_buffers = on
-auto_explain.log_format = 'text'
-auto_explain.log_timing = off
-auto_explain.log_triggers = on
-auto_explain.log_nested_statements = on
