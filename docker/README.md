@@ -13,6 +13,7 @@ docker build --build-arg PG_VERSION=9.6 --build-arg AWS_EC2_TYPE=r4.large -t pg9
 
 Then tag it and push to ECS (https://aws.amazon.com/ecs/):
 ```bash
+`aws ecr get-login --no-include-email` # refresh auth for AWS ECR
 docker tag pg96exp_r4large:latest 950603059350.dkr.ecr.us-east-1.amazonaws.com/nancy:pg96_r4.large
 docker push 950603059350.dkr.ecr.us-east-1.amazonaws.com/nancy:pg96_r4.large
 ```
