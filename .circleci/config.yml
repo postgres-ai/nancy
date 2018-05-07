@@ -1,0 +1,15 @@
+version: 2
+jobs:
+  build:
+    working_directory: ~/postgres.ai
+    docker:
+      - image: node:8.2
+    environment:
+      PGDATABASE: test_postgres_ai
+      PGHOST: localhost
+      PGUSER: autotest
+      PGPASSWORD: tsetotua
+      PGVERS: 10
+    steps:
+      - checkout
+      - run: apt-get update && apt-get install -y sudo
