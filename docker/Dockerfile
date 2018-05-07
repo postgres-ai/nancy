@@ -19,7 +19,7 @@ RUN apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys B97
       && apt-get update && apt-get install -y postgresql-$PG_VERSION postgresql-contrib-$PG_VERSION postgresql-plpython-$PG_VERSION \
       && apt-get install -y postgresql-$PG_VERSION-plsh postgresql-server-dev-$PG_VERSION postgresql-$PG_VERSION-rum \
       && apt-get install -y git postgresql-client-10 pspg pgreplay pgbadger libjson-xs-perl \
-      && apt-get install -y s3cmd sudo bzip2 python-software-properties software-properties-common php7.0-curl \
+      && apt-get install -y s3cmd sudo bzip2 python-software-properties software-properties-common php php-curl \
       && git clone https://github.com/NikolayS/postgres_dba.git /root/postgres_dba
 
 # configure psql, configure postgres & check postgres start & stop & prepare start script
