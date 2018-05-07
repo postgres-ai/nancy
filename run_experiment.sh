@@ -42,7 +42,7 @@ sshdo bash -c "bzcat ./postila_ru.sql-20180503.bz2 | psql --set ON_ERROR_STOP=on
 
 sshdo psql -U postgres test -c 'refresh materialized view a__news_daily_90days_denominated;' # remove me later
 
-shdo vacuumdb -U postgres test -j 10 --analyze
+sshdo vacuumdb -U postgres test -j 10 --analyze
 
 sshdo bash -c "pgbadger -j 4 --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /${PROJECT}_experiment_${CURRENT_TS}.json"
 
