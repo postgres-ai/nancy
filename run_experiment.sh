@@ -10,7 +10,7 @@ EC2_KEY_PAIR=${EC2_KEY_PAIR:-awskey}
 EC2_KEY_PATH=${EC2_KEY_PATH:-/Users/nikolay/.ssh/awskey.pem}
 S3_BUCKET="${S3_BUCKET:-p-dumps}"
 
-TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MiwibmFtZSI6ImRldl9wb3N0aWxhX3J1IiwiY3JlYXRlZCI6IjIwMTgtMDQtMjhUMTE6MTk6NTcuODU3ODU0KzAwOjAwIiwicm9sZSI6ImFwaXVzZXIifQ.z504wiWz8qVY1WaWdyW8WbuDnCxAFbjToqqOYFMnz5w  # TODO: parametrize!
+TOKEN=%JWT_TOKEN%  # TODO: parametrize!
 EXPERIMENT_ID=1 # TODO: parametrize!
 EXPERIMENT_STEP=0 # TODO: parametrize!
 
