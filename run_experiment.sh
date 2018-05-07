@@ -38,9 +38,9 @@ sshdo cp /machine_home/.s3cfg /root/.s3cfg
 sshdo s3cmd sync s3://p-dumps/dev.imgdata.ru/postila_ru.sql-20180503.bz2 ./ # TODO: parametrize!
 sshdo s3cmd sync s3://p-dumps/dev.imgdata.ru/queries.sql ./ # TODO: parametrize!
 
-sshdo bzcat ./postila_ru.sql-20180503.bz2 | psql --set ON_ERROR_STOP=on -U postgres test # TODO: parametrize!
+sshdo bash -c "bzcat ./postila_ru.sql-20180503.bz2 | psql --set ON_ERROR_STOP=on -U postgres test" # TODO: parametrize!
 
-sshdo psql -U postgres test 'refresh materialized view a__news_daily_90days_denominated;' # remove me later
+sshdo psql -U postgres test -c 'refresh materialized view a__news_daily_90days_denominated;' # remove me later
 
 shdo vacuumdb -U postgres test -j 10 --analyze
 
