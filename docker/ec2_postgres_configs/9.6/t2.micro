@@ -23,7 +23,6 @@ autovacuum_vacuum_scale_factor = 0.01
 autovacuum_analyze_scale_factor = 0.05
 autovacuum_naptime = 30s
 
-log_line_prefix = '%t [%p]: [%l-1] db=%d,user=%u (%a,%h) '
 shared_preload_libraries = 'pg_stat_statements,auto_explain'
 
 pg_stat_statements.max = 5000
