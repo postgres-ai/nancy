@@ -5,10 +5,6 @@ jobs:
     docker:
       - image: node:8.2
     environment:
-      PGDATABASE: test_postgres_ai
-      PGHOST: localhost
-      PGUSER: autotest
-      PGPASSWORD: tsetotua
       PGVERS: 10
     steps:
       - checkout
