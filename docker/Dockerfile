@@ -27,7 +27,7 @@ RUN echo "\\set dba '\\\\\\\\i /root/postgres_dba/start.psql'" >> ~/.psqlrc \
       && echo "host all  all    0.0.0.0/0  md5" >> /etc/postgresql/$PG_VERSION/main/pg_hba.conf \
       && echo "listen_addresses='*'" >> /etc/postgresql/$PG_VERSION/main/postgresql.conf \
       && cat /pg_configs/$AWS_EC2_TYPE >> /etc/postgresql/$PG_VERSION/main/postgresql.conf \
-      && /etc/init.d/postgresql start && /etc/init.d/postgresql stop \
+      && /etc/init.d/postgresql start && psql -U postgres -c 'create database test;' && /etc/init.d/postgresql stop \
       && echo "#!/bin/bash" > /pg_start.sh && chmod a+x /pg_start.sh \
       && echo "sudo -u postgres /usr/lib/postgresql/$PG_VERSION/bin/postgres -D /var/lib/postgresql/$PG_VERSION/main -c config_file=/etc/postgresql/$PG_VERSION/main/postgresql.conf" >> /pg_start.sh
 
