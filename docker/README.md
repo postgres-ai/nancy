@@ -34,5 +34,16 @@ And then deploy the prepared container:
 ```bash
 eval $(docker-machine env $DOCKER_MACHINE)
 docker `docker-machine config $DOCKER_MACHINE` run --name="pg_$DOCKER_MACHINE" \
-  -it 950603059350.dkr.ecr.us-east-1.amazonaws.com/nancy:pg96_r4large
+  -dit 950603059350.dkr.ecr.us-east-1.amazonaws.com/nancy:pg96_r4large
 ```
+
+Check container state:
+```bash
+docker `docker-machine config $DOCKER_MACHINE` ps
+```
+
+If everything is ok, you can run psql (this line will run psql inside container locally):
+```bash
+docker `docker-machine config $DOCKER_MACHINE` ps
+```
+
