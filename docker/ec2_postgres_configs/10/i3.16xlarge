@@ -1,0 +1,46 @@
+shared_buffers = 64GB
+effective_cache_size = 424GB
+maintenance_work_mem = 2GB
+work_mem = 128MB
+synchronous_commit = on
+max_connections = 1000
+bgwriter_delay = 10ms
+bgwriter_lru_maxpages = 1000
+bgwriter_lru_multiplier = 10.0
+checkpoint_timeout = 1h
+max_wal_size = 64GB
+min_wal_size = 8GB
+checkpoint_completion_target = 0.9
+stats_temp_directory='/run/postgresql'
+random_page_cost = 1.1
+default_statistics_target = 1000
+effective_io_concurrency = 200
+max_worker_processes = 64
+max_parallel_workers_per_gather = 32
+max_parallel_workers = 64
+commit_delay = 2
+wal_writer_flush_after = 64MB
+
+autovacuum_max_workers = 20
+autovacuum_vacuum_scale_factor = 0.005
+autovacuum_analyze_scale_factor = 0.05
+autovacuum_naptime = 30s
+
+
+log_line_prefix = '%t [%p]: [%l-1] db=%d,user=%u (%a,%h) '
+
+shared_preload_libraries = 'pg_stat_statements,auto_explain'
+
+pg_stat_statements.max = 5000
+pg_stat_statements.track = all
+pg_stat_statements.track_utility = on
+pg_stat_statements.save = on
+
+auto_explain.log_min_duration = '200ms'
+auto_explain.log_analyze = on
+auto_explain.log_verbose = on
+auto_explain.log_buffers = on
+auto_explain.log_format = 'text'
+auto_explain.log_timing = off
+auto_explain.log_triggers = on
+auto_explain.log_nested_statements = on

@@ -1,0 +1,32 @@
+# 32 vCPU, 244GB memory, 10gbit net, 4 x 1,9 SSD NVMe
+shared_buffers = 48GB
+effective_cache_size = 200GB
+maintenance_work_mem = 1GB
+work_mem = 64MB
+synchronous_commit = off
+max_connections = 500
+bgwriter_delay = 10ms
+bgwriter_lru_maxpages = 1000
+bgwriter_lru_multiplier = 10.0
+checkpoint_timeout = 1h
+max_wal_size = 8GB
+min_wal_size = 2GB
+checkpoint_completion_target = 0.9
+stats_temp_directory='/run/postgresql'
+
+log_line_prefix = '%t [%p]: [%l-1] db=%d,user=%u (%a,%h) '
+shared_preload_libraries = 'pg_stat_statements,auto_explain'
+
+pg_stat_statements.max = 5000
+pg_stat_statements.track = all
+pg_stat_statements.track_utility = on
+pg_stat_statements.save = on
+
+auto_explain.log_min_duration = '200ms'
+auto_explain.log_analyze = on
+auto_explain.log_verbose = on
+auto_explain.log_buffers = on
+auto_explain.log_format = 'text'
+auto_explain.log_timing = off
+auto_explain.log_triggers = on
+auto_explain.log_nested_statements = on

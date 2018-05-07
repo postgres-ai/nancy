@@ -1,0 +1,11 @@
+version: 2
+jobs:
+  build:
+    working_directory: ~/nancy
+    docker:
+      - image: node:8.2
+    environment:
+      PGVERS: 10
+    steps:
+      - checkout
+      - run: apt-get update && apt-get install -y sudo
