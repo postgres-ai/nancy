@@ -1,7 +1,7 @@
 version: 2
 jobs:
   build:
-    working_directory: ~/postgres.ai
+    working_directory: ~/nancy
     docker:
       - image: node:8.2
     environment:
