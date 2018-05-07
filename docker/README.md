@@ -44,6 +44,6 @@ docker `docker-machine config $DOCKER_MACHINE` ps
 
 If everything is ok, you can run psql (this line will run psql inside container locally):
 ```bash
-docker `docker-machine config $DOCKER_MACHINE` ps
+docker `docker-machine config $DOCKER_MACHINE` exec -it pg_$DOCKER_MACHINE psql -U postgres
 ```
 
