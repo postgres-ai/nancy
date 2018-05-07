@@ -17,7 +17,13 @@ docker tag pg96exp_r4large:latest 950603059350.dkr.ecr.us-east-1.amazonaws.com/n
 docker push 950603059350.dkr.ecr.us-east-1.amazonaws.com/nancy:pg96_r4.large
 ```
 
-How to Run a Spot EC2 Instance with Docker Container
+How to Run This Container Locally
+---
+```bash
+docker run -it pg96exp_r4large:latest
+```
+
+How to Run This Container on a Spot EC2 Instance
 ---
 To run an EC2 image, use `docker-machine` (see https://docs.docker.com/machine/) first (takes a few minutes):
 ```bash

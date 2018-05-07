@@ -19,7 +19,8 @@ docker-machine create --driver=amazonec2 --amazonec2-request-spot-instance \
 
 eval $(docker-machine env $DOCKER_MACHINE)
 
-containerHash=$(docker `docker-machine config $DOCKER_MACHINE` run --name="pg_nancy" -dit "950603059350.dkr.ecr.us-east-1.amazonaws.com/nancy:pg96_$EC2_TYPE")
+containerHash=$(docker `docker-machine config $DOCKER_MACHINE` run --name="pg_nancy" \
+  -v /home/ubuntu:/machine_home -dit "950603059350.dkr.ecr.us-east-1.amazonaws.com/nancy:pg96_$EC2_TYPE")
 dockerConfig=$(docker-machine config $DOCKER_MACHINE)
 
 function cleanup {
@@ -29,9 +30,21 @@ function cleanup {
 trap cleanup EXIT
 
 shopt -s expand_aliases
-alias s='docker $dockerConfig exec -it pg_nancy '
+alias sshdo='docker $dockerConfig exec -it pg_nancy '
 
-s "ps ax"
+docker-machine scp ~/.s3cfg $DOCKER_MACHINE:/home/ubuntu
+sshdo cp /machine_home/.s3cfg /root/.s3cfg
+
+sshdo s3cmd sync s3://p-dumps/dev.imgdata.ru/postila_ru.sql-20180503.bz2 ./ # TODO: parametrize!
+sshdo s3cmd sync s3://p-dumps/dev.imgdata.ru/queries.sql ./ # TODO: parametrize!
+
+sshdo bzcat ./postila_ru.sql-20180503.bz2 | psql --set ON_ERROR_STOP=on -U postgres test # TODO: parametrize!
+
+sshdo psql -U postgres test 'refresh materialized view a__news_daily_90days_denominated;' # remove me later
+
+shdo vacuumdb -U postgres test -j 10 --analyze
+
+sshdo bash -c "pgbadger -j 4 --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /${PROJECT}_experiment_${CURRENT_TS}.json"
 
 sleep 600
 
