@@ -11,6 +11,7 @@ ENV PG_VERSION=$PG_VERSION \
 
 ADD ./ec2_postgres_configs/$PG_VERSION /pg_configs
 ADD ./tmp/tsearch_data /usr/share/postgresql/$PG_VERSION/tsearch_data
+ADD ./postgresql.log.conf /postgresql.log.conf
 
 # install software
 RUN apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8 \
@@ -27,7 +28,9 @@ RUN echo "\\set dba '\\\\\\\\i /root/postgres_dba/start.psql'" >> ~/.psqlrc \
       && echo "local   all all trust" > /etc/postgresql/$PG_VERSION/main/pg_hba.conf \
       && echo "host all  all    0.0.0.0/0  md5" >> /etc/postgresql/$PG_VERSION/main/pg_hba.conf \
       && echo "listen_addresses='*'" >> /etc/postgresql/$PG_VERSION/main/postgresql.conf \
+      && echo "log_filename='postgresql-$PG_VERSION-main.log'" >> /etc/postgresql/$PG_VERSION/main/postgresql.conf \
       && cat /pg_configs/$AWS_EC2_TYPE >> /etc/postgresql/$PG_VERSION/main/postgresql.conf \
+      && cat /postgresql.log.conf >> /etc/postgresql/$PG_VERSION/main/postgresql.conf \
       && /etc/init.d/postgresql start && psql -U postgres -c 'create database test;' && /etc/init.d/postgresql stop \
       && echo "#!/bin/bash" > /pg_start.sh && chmod a+x /pg_start.sh \
       && echo "sudo -u postgres /usr/lib/postgresql/$PG_VERSION/bin/postgres -D /var/lib/postgresql/$PG_VERSION/main -c config_file=/etc/postgresql/$PG_VERSION/main/postgresql.conf" >> /pg_start.sh
