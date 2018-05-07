@@ -10,9 +10,9 @@ EC2_KEY_PAIR=${EC2_KEY_PAIR:-awskey}
 EC2_KEY_PATH=${EC2_KEY_PATH:-/Users/nikolay/.ssh/awskey.pem}
 S3_BUCKET="${S3_BUCKET:-p-dumps}"
 
-TOKEN=%JWT_TOKEN%  # TODO: parametrize!
-EXPERIMENT_ID=1 # TODO: parametrize!
-EXPERIMENT_STEP=0 # TODO: parametrize!
+TOKEN=$JWT_TOKEN
+EXPERIMENT_ID=$EXP_ID
+EXPERIMENT_STEP=$EXP_STEP
 
 set -ueo pipefail
 set -ueox pipefail # to debug
@@ -54,11 +54,6 @@ sshdo bash -c "pgbadger -j 4 --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /v
 
 sshdo s3cmd put /${PROJECT}_experiment_${CURRENT_TS}.json s3://p-dumps/dev.imgdata.ru/
 
-sshdo sudo apt -y update
-sshdo sudo apt -y install php7.0
-sshdo sudo apt -y install php7.0-cli php7.0-curl
-sshdo php --version
-sshdo sudo apt-get -y install jq
 sshdo s3cmd sync s3://p-dumps/tools/logloader.php ./
 sshdo s3cmd sync s3://p-dumps/tools/config.local.php ./
 sshdo php ./logloader.php --log=/${PROJECT}_experiment_${CURRENT_TS}.json --experiment=$EXPERIMENT_ID --expstep=$EXPERIMENT_STEP --token=$TOKEN
