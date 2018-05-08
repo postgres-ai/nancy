@@ -1,0 +1,22 @@
+{
+  "name": "nancy-consumer",
+  "version": "0.0.1",
+  "scripts": {
+    "start": "ncons.js"
+  },
+  "dependencies": {
+    "request": "2.74.0",
+    "md5": "^2.1.0",
+    "underscore": "^1.8.3",
+    "express": "^4.14.0",
+    "pg": "^6.0.3",
+    "pg-pubsub": "^0.3.0",
+    "dateformat": "^1.0.12",
+    "convict": "^1.4.0",
+    "jsonwebtoken": "^7.1.7",
+    "tracer": "^0.8.3",
+    "mocha": "^2.5.3",
+    "amqplib": "^0.5.1"
+  },
+  "devDependencies": {}
+}
