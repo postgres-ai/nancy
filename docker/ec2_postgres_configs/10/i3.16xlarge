@@ -26,21 +26,3 @@ autovacuum_vacuum_scale_factor = 0.005
 autovacuum_analyze_scale_factor = 0.05
 autovacuum_naptime = 30s
 
-
-log_line_prefix = '%t [%p]: [%l-1] db=%d,user=%u (%a,%h) '
-
-shared_preload_libraries = 'pg_stat_statements,auto_explain'
-
-pg_stat_statements.max = 5000
-pg_stat_statements.track = all
-pg_stat_statements.track_utility = on
-pg_stat_statements.save = on
-
-auto_explain.log_min_duration = '200ms'
-auto_explain.log_analyze = on
-auto_explain.log_verbose = on
-auto_explain.log_buffers = on
-auto_explain.log_format = 'text'
-auto_explain.log_timing = off
-auto_explain.log_triggers = on
-auto_explain.log_nested_statements = on
