@@ -1,0 +1,12 @@
+{
+    "env": "development",
+    "db_name": "postgres_ai",
+    "db_user": "ai",
+    "db_password": "5vxytyssst02",
+    "db_port": 5432,
+    "db_host": "127.0.0.1",
+    "db_max": 10,
+    "db_idle_timeout": 30000,
+    "jwt_secret": "zz0z0z",
+    "debug_mode": 1,
+}
