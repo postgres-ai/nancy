@@ -31,7 +31,8 @@ queriesUrl=$(echo $expData | jq -r '.[0].queries_pgreplay')
 queriesFileName=$(basename $queriesUrl)
 pgVersion=$(echo $expData | jq -r '.[0].engine_version')
 projectName=$(echo $expData | jq -r '.[0].project_name')
-changes=$(echo $expData | jq -r '.[0].change."postgresql.conf"')
+confChanges=$(echo $expData | jq -r '.[0].change."postgresql.conf"')
+ddlChanges=$(echo $expData | jq -r '.[0].change."ddl"')
 dumpUrl=$(echo $expData | jq -r '.[0].dump_url')
 dumpFileName=$(basename $dumpUrl)
 storageDir=$(dirname $dumpUrl)
@@ -42,7 +43,8 @@ echo "Queries 2: $queriesUrl"
 echo "Queries 3: $queriesFileName"
 echo "PG Ver:  $pgVersion"
 echo "ProjectName:  $projectName"
-echo "changes: $changes"
+echo "Conf changes: $confChanges"
+echo "DDL changes: $ddlChanges"
 echo "dumpUrl: $dumpUrl"
 echo "dumpFilename: $dumpFileName"
 echo "dumpFlleDir: $storageDir"
@@ -94,6 +96,18 @@ sshdo s3cmd sync $dumpUrl ./
 sshdo s3cmd sync $queriesUrl ./
 
 updateExperimentRunStatus "aws_init_env";
+
+# Apply conf here
+sshdo "echo \"$confChanges\" > /tmp/conf.tmp"
+echo '============================'
+sshdo "cat /tmp/conf.tmp"
+echo '============================'
+sshdo "sudo sh -c 'cat /tmp/conf.tmp >> /etc/postgresql/$PG_VERSION/main/postgresql.conf'"
+sshdo "echo \"$ddlChanges\" > /tmp/ddl.sql"
+sshdo "cat /tmp/ddl.sql"
+echo '============================'
+sshdo bash -c "psql -U postgres test -E -f /tmp/ddl.sql"
+echo '============================'
 
 sshdo bash -c "bzcat ./$dumpFileName | psql --set ON_ERROR_STOP=on -U postgres test"
 
