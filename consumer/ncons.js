@@ -40,13 +40,10 @@ function dbinit(conf, callback) {
 };
 
 function setExperimentRunStatus(id, status, client){
-    $query = "update experiment_run set status=$1::text, status_changed = now() where $2::int8";
+    var query = "update experiment_run set status=$1::text, status_changed = now() where id=$2::int8";
     client.query(query, [status, id], function(err, result) {
         if (err) {
             logger.error('ERROR > Experimetn run update status error. ', err);
-            if (data.callback) {
-                data.callback(err, {client: client});
-            }
         }
     });    
 }
@@ -57,7 +54,11 @@ dbinit(config, function(err, client){
         return false;
     }
     
-    var query = "select er.*,e.database_version_id,dv.version from experiment_run er join experiment e on e.id = er.experiment_id join database_version dv on dv.id = e.database_version_id where er.status is null limit 1;";
+    var query = `select 
+    er.id as experiment_run_id,
+    er.experiment_id
+from experiment_run er 
+where er.status is null;`; // limit 1
     client.query(query, function(err, result) {
         if (err) {
             logger.error('ERROR > error running select user query', err);
@@ -68,18 +69,23 @@ dbinit(config, function(err, client){
         }
         if (result && result.rowCount>0) {
             for (var i in result.rows) {
-                var experiment = result.rows[i];
+                var experimentRun = result.rows[i];
+
                 var jwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MiwibmFtZSI6ImRldl9wb3N0aWxhX3J1IiwiY3JlYXRlZCI6IjIwMTgtMDQtMjhUMTE6MTk6NTcuODU3ODU0KzAwOjAwIiwicm9sZSI6ImFwaXVzZXIifQ.z504wiWz8qVY1WaWdyW8WbuDnCxAFbjToqqOYFMnz5w';
-                console.log('Experiment: ', experiment);
-                var experiment_id = experiment.experiment_id;
-                var experiment_step = experiment.step;
-                var queries = experiment.queries;
-                var change = experiment.change;
-                var dbVersion = experiment.version;
-                //setExperimentRunStatus(experiment.id, 'started', client);
-                var cmd = "`aws ecr get-login --no-include-email` && export EC2_KEY_PAIR=awskey2 && export EC2_KEY_PATH=/home/dmius/.ssh/awskey2.pem && export JWT_TOKEN=" + jwt + " && export EXP_ID=" + experiment_id+ " && export EXP_STEP=" + experiment_step + " && ../run_experiment.sh";
-                console.log("Experiment start command: " + cmd);
+                console.log('Experiment run: ', experimentRun);
+                var experimentId = experimentRun.experiment_id;
+                var experimentRunId = experimentRun.experiment_run_id;
                 
+                setExperimentRunStatus(experimentRunId, 'initialized', client);
+                var cmd = "";
+                cmd += "`aws ecr get-login --no-include-email`";
+                cmd += " && export EC2_KEY_PAIR=awskey2 && export EC2_KEY_PATH=/home/dmius/.ssh/awskey2.pem";
+                cmd += " && export JWT_TOKEN=" + jwt;
+                cmd += " && export EXP_ID=" + experimentId;
+                cmd += " && export EXP_RUN_ID=" + experimentRunId;
+                cmd += " && ../run_experiment.sh"; // >>/home/dmius/nancy/ncons.log 2>&1"
+                //console.log("Experiment start command: " + cmd);
+
                 dir = exec(cmd, function(err, stdout, stderr) {
                     if (err) {
                         // should have err.code here?  
@@ -90,11 +96,13 @@ dbinit(config, function(err, client){
                 });
             }
         }
-        client.end(function (err) { // close connection
-            if (err) {
-                logger.error('ERROR > Close connection error: ', err);
-            }
-        });
+        setTimeout(function() {
+            client.end(function (err) { // close connection
+                if (err) {
+                    logger.error('ERROR > Close connection error: ', err);
+                }
+            });
+        }, 1000);
         return true;
     });
     console.log('All');
