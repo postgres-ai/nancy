@@ -45,67 +45,76 @@ function setExperimentRunStatus(id, status, client){
         if (err) {
             logger.error('ERROR > Experimetn run update status error. ', err);
         }
-    });    
+    });
 }
+
+function setExperimentStatus(id, status, client){
+    var query = "update experiment set status=$1::text where id=$2::int8";
+    client.query(query, [status, id], function(err, result) {
+        if (err) {
+            logger.error('ERROR > Experimetn update status error. ', err);
+        }
+    });
+}
+
 
 dbinit(config, function(err, client){
     if (err) {
         logger.error('Cannot connect to database.');
         return false;
     }
-    
-    var query = `select 
+
+    var doProcess = function () {
+        var query = `
+select
     er.id as experiment_run_id,
     er.experiment_id
-from experiment_run er 
-where er.status is null;`; // limit 1
-    client.query(query, function(err, result) {
-        if (err) {
-            logger.error('ERROR > error running select user query', err);
-            if (data.callback) {
-                data.callback(err, {client: client});
-            }
-            return false;
-        }
-        if (result && result.rowCount>0) {
-            for (var i in result.rows) {
-                var experimentRun = result.rows[i];
-
-                var jwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MiwibmFtZSI6ImRldl9wb3N0aWxhX3J1IiwiY3JlYXRlZCI6IjIwMTgtMDQtMjhUMTE6MTk6NTcuODU3ODU0KzAwOjAwIiwicm9sZSI6ImFwaXVzZXIifQ.z504wiWz8qVY1WaWdyW8WbuDnCxAFbjToqqOYFMnz5w';
-                console.log('Experiment run: ', experimentRun);
-                var experimentId = experimentRun.experiment_id;
-                var experimentRunId = experimentRun.experiment_run_id;
-                
-                setExperimentRunStatus(experimentRunId, 'initialized', client);
-                var cmd = "";
-                cmd += "`aws ecr get-login --no-include-email`";
-                cmd += " && export EC2_KEY_PAIR=awskey2 && export EC2_KEY_PATH=/home/dmius/.ssh/awskey2.pem";
-                cmd += " && export JWT_TOKEN=" + jwt;
-                cmd += " && export EXP_ID=" + experimentId;
-                cmd += " && export EXP_RUN_ID=" + experimentRunId;
-                cmd += " && ../run_experiment.sh"; // >>/home/dmius/nancy/ncons.log 2>&1"
-                //console.log("Experiment start command: " + cmd);
-
-                dir = exec(cmd, function(err, stdout, stderr) {
-                    if (err) {
-                        // should have err.code here?  
-                        console.log('Error:', err);
-                    }
-                    console.log('STDOUT:', stdout);
-                    console.log('STDERR:', stderr);
-                });
-            }
-        }
-        setTimeout(function() {
-            client.end(function (err) { // close connection
-                if (err) {
-                    logger.error('ERROR > Close connection error: ', err);
+from experiment_run er
+where er.status is null limit 2;`; // limit 1
+        client.query(query, function(err, result) {
+            if (err) {
+                logger.error('ERROR > error running select user query', err);
+                if (data.callback) {
+                    data.callback(err, {client: client});
                 }
-            });
-        }, 1000);
-        return true;
-    });
-    console.log('All');
+                return false;
+            }
+            if (result && result.rowCount>0) {
+                for (var i in result.rows) {
+                    var experimentRun = result.rows[i];
+
+                    var jwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MiwibmFtZSI6ImRldl9wb3N0aWxhX3J1IiwiY3JlYXRlZCI6IjIwMTgtMDQtMjhUMTE6MTk6NTcuODU3ODU0KzAwOjAwIiwicm9sZSI6ImFwaXVzZXIifQ.z504wiWz8qVY1WaWdyW8WbuDnCxAFbjToqqOYFMnz5w';
+                    logger.log('Experiment run: ', experimentRun);
+                    var experimentId = experimentRun.experiment_id;
+                    var experimentRunId = experimentRun.experiment_run_id;
+
+                    setExperimentRunStatus(experimentRunId, 'initialized', client);
+                    setExperimentStatus(experimentId, 'started', client);
+                    var cmd = "";
+                    cmd += "`aws ecr get-login --no-include-email` &&";
+                    cmd += " export EC2_KEY_PAIR=awskey2 && export EC2_KEY_PATH=/home/dmius/.ssh/awskey2.pem";
+                    cmd += " && export JWT_TOKEN=" + jwt;
+                    cmd += " && export EXP_ID=" + experimentId;
+                    cmd += " && export EXP_RUN_ID=" + experimentRunId;
+                    cmd += " && ../run_experiment.sh >>/home/dmius/nancy/consumer/log/ncons_" + experimentId + "_" + experimentRunId + ".log 2>&1";
+                    logger.log("Experiment start command: " + cmd);
+
+                    dir = exec(cmd, function(err, stdout, stderr) {
+                        if (err) {
+                            console.log('Error start experiment: '  + experimentId + ' run: ' + experimentRunId, err);
+                        }
+                    });
+                }
+            }
+
+            setTimeout(doProcess, 1000);
+            return true;
+        });
+    }
+
+    doProcess();
+
+    logger.log('Consumer started');
     return true;
 });
 

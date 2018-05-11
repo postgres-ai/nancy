@@ -57,13 +57,26 @@ PG_VERSION="${PG_VERSION:-$pgVersion}"
 #PROJECT="${PROJECT:-postila_ru}"
 PROJECT="${PROJECT:-$projectName}"
 CURRENT_TS=$(date +%Y%m%d_%H%M%S%N_%Z)
-DOCKER_MACHINE="${DOCKER_MACHINE:-nancy-$PROJECT-$CURRENT_TS}"
+DOCKER_MACHINE="${DOCKER_MACHINE:-nancy-$PROJECT-$CURRENT_TS-$EXPERIMENT_ID-$EXPERIMENT_RUN_ID}"
 DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
 EC2_TYPE="${EC2_TYPE:-r4.large}"
 EC2_PRICE="${EC2_PRICE:-0.0315}"
 EC2_KEY_PAIR=${EC2_KEY_PAIR:-awskey}
 EC2_KEY_PATH=${EC2_KEY_PATH:-/Users/nikolay/.ssh/awskey.pem}
 S3_BUCKET="${S3_BUCKET:-p-dumps}"
+
+if [ "$confChanges" != "null" ]
+then
+    echo "$confChanges" > /tmp/conf_$DOCKER_MACHINE.tmp
+fi
+if [ "$ddlChanges" != "null" ]
+then
+    echo "$ddlChanges" > /tmp/ddl_$DOCKER_MACHINE.sql
+fi
+if [ "$queriesCustom" != "null" ]
+then
+    echo "$queriesCustom" > /tmp/queries_custom_$DOCKER_MACHINE.sql
+fi
 
 set -ueo pipefail
 set -ueox pipefail # to debug
@@ -81,6 +94,16 @@ dockerConfig=$(docker-machine config $DOCKER_MACHINE)
 function cleanup {
   cmdout=$(docker-machine rm --force $DOCKER_MACHINE)
   echo "Finished working with machine $DOCKER_MACHINE, termination requested, current status: $cmdout"
+  echo "Remove temp files..."
+  if [ -f "/tmp/conf_$DOCKER_MACHINE.tmp" ]; then
+    rm /tmp/conf_$DOCKER_MACHINE.tmp
+  fi
+  if [ -f "/tmp/ddl_$DOCKER_MACHINE.sql" ]; then
+    rm /tmp/ddl_$DOCKER_MACHINE.sql
+  fi
+  if [ -f "/tmp/queries_custom_$DOCKER_MACHINE.sql" ]; then
+    rm /tmp/queries_custom_$DOCKER_MACHINE.sql
+  fi
 }
 trap cleanup EXIT
 
@@ -90,6 +113,16 @@ alias sshdo='docker $dockerConfig exec -i pg_nancy '
 docker-machine scp ~/.s3cfg $DOCKER_MACHINE:/home/ubuntu
 sshdo cp /machine_home/.s3cfg /root/.s3cfg
 
+if [ -f "/tmp/conf_$DOCKER_MACHINE.tmp" ]; then
+    docker-machine scp /tmp/conf_$DOCKER_MACHINE.tmp $DOCKER_MACHINE:/home/ubuntu
+fi
+if [ -f "/tmp/ddl_$DOCKER_MACHINE.sql" ]; then
+    docker-machine scp /tmp/ddl_$DOCKER_MACHINE.sql $DOCKER_MACHINE:/home/ubuntu
+fi
+if [ -f "/tmp/queries_custom_$DOCKER_MACHINE.sql" ]; then
+    docker-machine scp /tmp/queries_custom_$DOCKER_MACHINE.sql $DOCKER_MACHINE:/home/ubuntu
+fi
+
 updateExperimentRunStatus "aws_ready";
 
 sshdo s3cmd sync $dumpUrl ./
@@ -98,25 +131,27 @@ sshdo s3cmd sync $queriesUrl ./
 updateExperimentRunStatus "aws_init_env";
 
 # Apply conf here
-sshdo "echo \"$confChanges\" > /tmp/conf.tmp"
-echo '============================'
-sshdo "cat /tmp/conf.tmp"
-echo '============================'
-sshdo "sudo sh -c 'cat /tmp/conf.tmp >> /etc/postgresql/$PG_VERSION/main/postgresql.conf'"
-sshdo "echo \"$ddlChanges\" > /tmp/ddl.sql"
-sshdo "cat /tmp/ddl.sql"
-echo '============================'
-sshdo bash -c "psql -U postgres test -E -f /tmp/ddl.sql"
-echo '============================'
-
 sshdo bash -c "bzcat ./$dumpFileName | psql --set ON_ERROR_STOP=on -U postgres test"
 
 sshdo psql -U postgres test -c 'refresh materialized view a__news_daily_90days_denominated;' # remove me later
 
+if [ -f "/tmp/ddl_$DOCKER_MACHINE.sql" ]; then
+    sshdo bash -c "psql -U postgres test -E -f /machine_home/ddl_$DOCKER_MACHINE.sql"
+fi
+
+if [ -f "/tmp/conf_$DOCKER_MACHINE.tmp" ]; then
+    sshdo bash -c "cat /machine_home/conf_$DOCKER_MACHINE.tmp >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    sshdo bash -c "/etc/init.d/postgresql restart"
+fi
+
 sshdo vacuumdb -U postgres test -j 10 --analyze
 
 updateExperimentRunStatus "aws_start_test";
+
 sshdo bash -c "psql -U postgres test -E -f ./$queriesFileName"
+if [ -f "/tmp/queries_custom_$DOCKER_MACHINE.sql" ]; then
+    sshdo bash -c "psql -U postgres test -E -f /machine_home/queries_custom_$DOCKER_MACHINE.sql"
+fi
 
 updateExperimentRunStatus "aws_analyze";
 sshdo bash -c "pgbadger -j 4 --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /${PROJECT}_experiment_${CURRENT_TS}.json"
