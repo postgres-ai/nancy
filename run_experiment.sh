@@ -130,6 +130,8 @@ sshdo s3cmd sync $queriesUrl ./
 
 updateExperimentRunStatus "aws_init_env";
 
+sshdo bash -c "git clone https://github.com/NikolayS/pgbadger.git /machine_home/pgbadger"
+
 # Apply conf here
 sshdo bash -c "bzcat ./$dumpFileName | psql --set ON_ERROR_STOP=on -U postgres test"
 
@@ -148,21 +150,23 @@ sshdo vacuumdb -U postgres test -j 10 --analyze
 
 updateExperimentRunStatus "aws_start_test";
 
+sshdo bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
+
 sshdo bash -c "psql -U postgres test -E -f ./$queriesFileName"
 if [ -f "/tmp/queries_custom_$DOCKER_MACHINE.sql" ]; then
     sshdo bash -c "psql -U postgres test -E -f /machine_home/queries_custom_$DOCKER_MACHINE.sql"
 fi
 
 updateExperimentRunStatus "aws_analyze";
-sshdo bash -c "pgbadger -j 4 --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /${PROJECT}_experiment_${CURRENT_TS}.json"
+sshdo bash -c "/machine_home/pgbadger/pgbadger -j 4 --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /${PROJECT}_experiment_${CURRENT_TS}_${EXPERIMENT_ID}_${EXPERIMENT_RUN_ID}.json"
 
-sshdo s3cmd put /${PROJECT}_experiment_${CURRENT_TS}.json $storageDir
+sshdo s3cmd put /${PROJECT}_experiment_${CURRENT_TS}_${EXPERIMENT_ID}_${EXPERIMENT_RUN_ID}.json $storageDir
 
 sshdo sudo apt-get -y install jq
 
 sshdo s3cmd sync s3://p-dumps/tools/logloader.php ./
 sshdo s3cmd sync s3://p-dumps/tools/config.local.php ./
-sshdo php ./logloader.php --log=/${PROJECT}_experiment_${CURRENT_TS}.json --experiment=$EXPERIMENT_ID --expstep=$EXPERIMENT_RUN_ID --token=$TOKEN
+sshdo php ./logloader.php --log=/${PROJECT}_experiment_${CURRENT_TS}_${EXPERIMENT_ID}_${EXPERIMENT_RUN_ID}.json --experiment=$EXPERIMENT_ID --exprun=$EXPERIMENT_RUN_ID --token=$TOKEN
 
 updateExperimentRunStatus "done";
 
