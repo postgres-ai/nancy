@@ -74,9 +74,6 @@ where er.status is null limit 2;`; // limit 1
         client.query(query, function(err, result) {
             if (err) {
                 logger.error('ERROR > error running select user query', err);
-                if (data.callback) {
-                    data.callback(err, {client: client});
-                }
                 return false;
             }
             if (result && result.rowCount>0) {
