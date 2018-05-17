@@ -29,26 +29,32 @@ expData=$(wget --quiet \
 queriesCustom=$(echo $expData | jq -r '.[0].queries_custom')
 queriesUrl=$(echo $expData | jq -r '.[0].queries_pgreplay')
 queriesFileName=$(basename $queriesUrl)
-pgVersion=$(echo $expData | jq -r '.[0].engine_version')
+pgVersion=$(echo $expData | jq -r '.[0].postgres_version')
 projectName=$(echo $expData | jq -r '.[0].project_name')
 confChanges=$(echo $expData | jq -r '.[0].change."postgresql.conf"')
 ddlChanges=$(echo $expData | jq -r '.[0].change."ddl"')
 dumpUrl=$(echo $expData | jq -r '.[0].dump_url')
 dumpFileName=$(basename $dumpUrl)
 storageDir=$(dirname $dumpUrl)
-databaseVersion=$(echo $expData | jq -r '.[0].database_version')
+instanceType=$(echo $expData | jq -r '.[0].instance_type')
+
+if [ "$confChanges" == "9.5" ] 
+then
+    pgVersion='9.6'
+fi
+pgVersion='9.6'
 
 echo "Queries 1: $queriesCustom"
 echo "Queries 2: $queriesUrl"
 echo "Queries 3: $queriesFileName"
-echo "PG Ver:  $pgVersion"
+echo "PG Ver:  $pgVersion Fixed"
 echo "ProjectName:  $projectName"
 echo "Conf changes: $confChanges"
 echo "DDL changes: $ddlChanges"
 echo "dumpUrl: $dumpUrl"
 echo "dumpFilename: $dumpFileName"
 echo "dumpFlleDir: $storageDir"
-echo "databaseVersion: $databaseVersion"
+echo "instanceType: $instanceType"
 
 updateExperimentRunStatus "aws_init";
 
@@ -64,6 +70,8 @@ EC2_PRICE="${EC2_PRICE:-0.0315}"
 EC2_KEY_PAIR=${EC2_KEY_PAIR:-awskey}
 EC2_KEY_PATH=${EC2_KEY_PATH:-/Users/nikolay/.ssh/awskey.pem}
 S3_BUCKET="${S3_BUCKET:-p-dumps}"
+
+CONTAINER_PG_VER=`php -r "print str_replace('.', '', '$PG_VERSION');"`
 
 if [ "$confChanges" != "null" ]
 then
@@ -88,7 +96,7 @@ docker-machine create --driver=amazonec2 --amazonec2-request-spot-instance \
 eval $(docker-machine env $DOCKER_MACHINE)
 
 containerHash=$(docker `docker-machine config $DOCKER_MACHINE` run --name="pg_nancy" \
-  -v /home/ubuntu:/machine_home -dit "950603059350.dkr.ecr.us-east-1.amazonaws.com/nancy:pg96_$EC2_TYPE")
+  -v /home/ubuntu:/machine_home -dit "950603059350.dkr.ecr.us-east-1.amazonaws.com/nancy:pg${CONTAINER_PG_VER}_$EC2_TYPE")
 dockerConfig=$(docker-machine config $DOCKER_MACHINE)
 
 function cleanup {
@@ -126,7 +134,10 @@ fi
 updateExperimentRunStatus "aws_ready";
 
 sshdo s3cmd sync $dumpUrl ./
-sshdo s3cmd sync $queriesUrl ./
+if [ "$queriesUrl" != "null" ]
+then
+    sshdo s3cmd sync $queriesUrl ./
+fi
 
 updateExperimentRunStatus "aws_init_env";
 
@@ -143,7 +154,7 @@ fi
 
 if [ -f "/tmp/conf_$DOCKER_MACHINE.tmp" ]; then
     sshdo bash -c "cat /machine_home/conf_$DOCKER_MACHINE.tmp >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
-    sshdo bash -c "/etc/init.d/postgresql restart"
+    sshdo bash -c "sudo /etc/init.d/postgresql restart"
 fi
 
 sshdo vacuumdb -U postgres test -j 10 --analyze
@@ -152,7 +163,10 @@ updateExperimentRunStatus "aws_start_test";
 
 sshdo bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
 
-sshdo bash -c "psql -U postgres test -E -f ./$queriesFileName"
+if [ "$queriesFileName" != "null" ]; then
+    sshdo bash -c "psql -U postgres test -E -f ./$queriesFileName"
+fi
+
 if [ -f "/tmp/queries_custom_$DOCKER_MACHINE.sql" ]; then
     sshdo bash -c "psql -U postgres test -E -f /machine_home/queries_custom_$DOCKER_MACHINE.sql"
 fi
@@ -160,7 +174,7 @@ fi
 updateExperimentRunStatus "aws_analyze";
 sshdo bash -c "/machine_home/pgbadger/pgbadger -j 4 --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /${PROJECT}_experiment_${CURRENT_TS}_${EXPERIMENT_ID}_${EXPERIMENT_RUN_ID}.json"
 
-sshdo s3cmd put /${PROJECT}_experiment_${CURRENT_TS}_${EXPERIMENT_ID}_${EXPERIMENT_RUN_ID}.json $storageDir
+sshdo s3cmd put /${PROJECT}_experiment_${CURRENT_TS}_${EXPERIMENT_ID}_${EXPERIMENT_RUN_ID}.json $storageDir/
 
 sshdo sudo apt-get -y install jq
 
