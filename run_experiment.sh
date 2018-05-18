@@ -38,7 +38,7 @@ dumpFileName=$(basename $dumpUrl)
 storageDir=$(dirname $dumpUrl)
 instanceType=$(echo $expData | jq -r '.[0].instance_type')
 
-if [ "$confChanges" == "9.5" ] 
+if [ "$pgVersion" == "9.5" ]
 then
     pgVersion='9.6'
 fi
@@ -73,17 +73,29 @@ S3_BUCKET="${S3_BUCKET:-p-dumps}"
 
 CONTAINER_PG_VER=`php -r "print str_replace('.', '', '$PG_VERSION');"`
 
-if [ "$confChanges" != "null" && "$confChanges" != "" ]
+
+if ([ "$confChanges" != "" ]  &&  [ "$confChanges" != "null" ])
 then
+    echo "confCnahges is not empty: $confChanges"
     echo "$confChanges" > /tmp/conf_$DOCKER_MACHINE.tmp
+else
+    echo "confCnahges is empty $confChanges"
 fi
-if [ "$ddlChanges" != "null" &&  "$ddlChanges" != "" ]
+
+if ([ "$ddlChanges" != "" ]  &&  [ "$ddlChanges" != "null" ])
 then
+    echo "ddlChanges is not empty: $ddlChanges"
     echo "$ddlChanges" > /tmp/ddl_$DOCKER_MACHINE.sql
+else
+    echo "ddlChanges is empty $ddlChanges"
 fi
-if [ "$queriesCustom" != "null" && "$queriesCustom" != "" ]
+
+if ([ "$queriesCustom" != "" ]  &&  [ "$queriesCustom" != "null" ])
 then
+    echo "queriesCustom is not empty: $queriesCustom"
     echo "$queriesCustom" > /tmp/queries_custom_$DOCKER_MACHINE.sql
+else
+    echo "queriesCustom is empty $queriesCustom"
 fi
 
 set -ueo pipefail
@@ -91,6 +103,7 @@ set -ueox pipefail # to debug
 
 docker-machine create --driver=amazonec2 --amazonec2-request-spot-instance \
   --amazonec2-keypair-name="$EC2_KEY_PAIR" --amazonec2-ssh-keypath="$EC2_KEY_PATH" \
+  --amazonec2-block-duration-minutes=60 \
   --amazonec2-instance-type=$EC2_TYPE --amazonec2-spot-price=$EC2_PRICE $DOCKER_MACHINE
 
 eval $(docker-machine env $DOCKER_MACHINE)
@@ -134,7 +147,7 @@ fi
 updateExperimentRunStatus "aws_ready";
 
 sshdo s3cmd sync $dumpUrl ./
-if [ "$queriesUrl" != "null" ]
+if ([ "$queriesUrl" != "" ]  &&  [ "$queriesUrl" != "null" ])
 then
     sshdo s3cmd sync $queriesUrl ./
 fi
@@ -164,9 +177,8 @@ updateExperimentRunStatus "aws_start_test";
 sshdo bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
 
 if [ -f "/tmp/queries_custom_$DOCKER_MACHINE.sql" ]; then
-    echo "USE CUSTOM QUERIES"
     sshdo bash -c "psql -U postgres test -E -f /machine_home/queries_custom_$DOCKER_MACHINE.sql"
-else 
+else
     echo "USE REPLAY QUERIES"
     sshdo bash -c "psql -U postgres test -E -f ./$queriesFileName"
 fi
@@ -184,6 +196,6 @@ sshdo php ./logloader.php --log=/${PROJECT}_experiment_${CURRENT_TS}_${EXPERIMEN
 
 updateExperimentRunStatus "done";
 
-sleep 600
+#sleep 600
 
 echo Bye!

@@ -52,7 +52,16 @@ function setExperimentStatus(id, status, client){
     var query = "update experiment set status=$1::text where id=$2::int8";
     client.query(query, [status, id], function(err, result) {
         if (err) {
-            logger.error('ERROR > Experimetn update status error. ', err);
+            logger.error('ERROR > Experiment update status error. ', err);
+        }
+    });
+}
+
+function checkExperimentsStatus(client) {
+    var query = "update experiment set status='failed',status_changed=now() where (status='in_progress' or status='started') and status_changed < NOW() - INTERVAL '50 min';";
+    client.query(query, function(err, result) {
+        if (err) {
+            logger.error('ERROR > Failed experiments update status error. ', err);
         }
     });
 }
@@ -65,6 +74,7 @@ dbinit(config, function(err, client){
     }
 
     var doProcess = function () {
+        checkExperimentsStatus(client);
         var query = `
 select
     er.id as experiment_run_id,
