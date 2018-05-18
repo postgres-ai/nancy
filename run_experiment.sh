@@ -44,7 +44,7 @@ then
 fi
 pgVersion='9.6'
 
-echo "Queries 1: $queriesCustom"
+echo "Queries 1: '$queriesCustom'"
 echo "Queries 2: $queriesUrl"
 echo "Queries 3: $queriesFileName"
 echo "PG Ver:  $pgVersion Fixed"
@@ -56,7 +56,7 @@ echo "dumpFilename: $dumpFileName"
 echo "dumpFlleDir: $storageDir"
 echo "instanceType: $instanceType"
 
-updateExperimentRunStatus "aws_init";
+updateExperimentRunStatus "in_progress";
 
 #PG_VERSION="${PG_VERSION:-10}"
 PG_VERSION="${PG_VERSION:-$pgVersion}"
@@ -73,15 +73,15 @@ S3_BUCKET="${S3_BUCKET:-p-dumps}"
 
 CONTAINER_PG_VER=`php -r "print str_replace('.', '', '$PG_VERSION');"`
 
-if [ "$confChanges" != "null" ]
+if [ "$confChanges" != "null" && "$confChanges" != "" ]
 then
     echo "$confChanges" > /tmp/conf_$DOCKER_MACHINE.tmp
 fi
-if [ "$ddlChanges" != "null" ]
+if [ "$ddlChanges" != "null" &&  "$ddlChanges" != "" ]
 then
     echo "$ddlChanges" > /tmp/ddl_$DOCKER_MACHINE.sql
 fi
-if [ "$queriesCustom" != "null" ]
+if [ "$queriesCustom" != "null" && "$queriesCustom" != "" ]
 then
     echo "$queriesCustom" > /tmp/queries_custom_$DOCKER_MACHINE.sql
 fi
@@ -163,12 +163,12 @@ updateExperimentRunStatus "aws_start_test";
 
 sshdo bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
 
-if [ "$queriesFileName" != "null" ]; then
-    sshdo bash -c "psql -U postgres test -E -f ./$queriesFileName"
-fi
-
 if [ -f "/tmp/queries_custom_$DOCKER_MACHINE.sql" ]; then
+    echo "USE CUSTOM QUERIES"
     sshdo bash -c "psql -U postgres test -E -f /machine_home/queries_custom_$DOCKER_MACHINE.sql"
+else 
+    echo "USE REPLAY QUERIES"
+    sshdo bash -c "psql -U postgres test -E -f ./$queriesFileName"
 fi
 
 updateExperimentRunStatus "aws_analyze";
