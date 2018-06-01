@@ -199,10 +199,6 @@ else
     sshdo bash -c "psql -U postgres test -E -f ./$queriesFileName"
 fi
 
-echo "================================================="
-sshdo bash -c "cat /var/log/postgresql/postgresql-$PG_VERSION-main.log"
-echo "================================================="
-
 updateExperimentRunStatus "aws_analyze" "$DOCKER_MACHINE";
 sshdo bash -c "/machine_home/pgbadger/pgbadger -j 4 --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /${PROJECT}_experiment_${CURRENT_TS}_${EXPERIMENT_ID}_${EXPERIMENT_RUN_ID}.json"
 
