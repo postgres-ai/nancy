@@ -7,13 +7,14 @@ REST_URL="http://dev.imgdata.ru:9508"
 
 function updateExperimentRunStatus() {
     status=$1
+    machineName=$2
     res=$(wget --quiet \
       --method PATCH \
       --header "authorization: Bearer $TOKEN" \
       --header 'content-type: application/x-www-form-urlencoded' \
       --header 'cache-control: no-cache' \
       --header 'postman-token: 39be31c6-55ba-6ca1-fd33-8f02f65b278f' \
-      --body-data "status=$status&status_changed=now()" \
+      --body-data "status=$status&status_changed=now()&machine_name=$machineName" \
       --output-document \
       - "$REST_URL/experiment_run?id=eq.$EXPERIMENT_RUN_ID")
 }
@@ -37,6 +38,7 @@ dumpUrl=$(echo $expData | jq -r '.[0].dump_url')
 dumpFileName=$(basename $dumpUrl)
 storageDir=$(dirname $dumpUrl)
 instanceType=$(echo $expData | jq -r '.[0].instance_type')
+debugPeriod=$(echo $expData | jq -r '.[0].debug_period')
 
 if [ "$pgVersion" == "9.5" ]
 then
@@ -55,8 +57,7 @@ echo "dumpUrl: $dumpUrl"
 echo "dumpFilename: $dumpFileName"
 echo "dumpFlleDir: $storageDir"
 echo "instanceType: $instanceType"
-
-updateExperimentRunStatus "in_progress";
+echo "debugPeriod: $debugPeriod"
 
 #PG_VERSION="${PG_VERSION:-10}"
 PG_VERSION="${PG_VERSION:-$pgVersion}"
@@ -66,12 +67,14 @@ CURRENT_TS=$(date +%Y%m%d_%H%M%S%N_%Z)
 DOCKER_MACHINE="${DOCKER_MACHINE:-nancy-$PROJECT-$CURRENT_TS-$EXPERIMENT_ID-$EXPERIMENT_RUN_ID}"
 DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
 EC2_TYPE="${EC2_TYPE:-r4.large}"
-EC2_PRICE="${EC2_PRICE:-0.0315}"
+EC2_PRICE="${EC2_PRICE:-0.067}"
 EC2_KEY_PAIR=${EC2_KEY_PAIR:-awskey}
 EC2_KEY_PATH=${EC2_KEY_PATH:-/Users/nikolay/.ssh/awskey.pem}
 S3_BUCKET="${S3_BUCKET:-p-dumps}"
 
 CONTAINER_PG_VER=`php -r "print str_replace('.', '', '$PG_VERSION');"`
+
+updateExperimentRunStatus "in_progress" "$DOCKER_MACHINE";
 
 
 if ([ "$confChanges" != "" ]  &&  [ "$confChanges" != "null" ])
@@ -81,6 +84,8 @@ then
 else
     echo "confCnahges is empty $confChanges"
 fi
+echo "auto_explain.log_min_duration = 0" >> /tmp/conf_$DOCKER_MACHINE.tmp
+echo "auto_explain.log_format = 'json'" >> /tmp/conf_$DOCKER_MACHINE.tmp
 
 if ([ "$ddlChanges" != "" ]  &&  [ "$ddlChanges" != "null" ])
 then
@@ -100,6 +105,16 @@ fi
 
 set -ueo pipefail
 set -ueox pipefail # to debug
+
+#get price
+prices=$(aws --region=us-east-1 ec2 describe-spot-price-history --instance-types $EC2_TYPE --no-paginate --start-time=$(date +%s) --product-descriptions="Linux/UNIX (Amazon VPC)" --query 'SpotPriceHistory[*].{az:AvailabilityZone, price:SpotPrice}')
+maxprice=$(echo $prices | jq 'max_by(.price) | .price') 
+delta="1.1" # 10%
+price=$(php -r "print $maxprice * $delta;")
+echo "Max price: $maxprice Use price: $price"
+#EC2_PRICE=$price 
+
+#exit 1;
 
 docker-machine create --driver=amazonec2 --amazonec2-request-spot-instance \
   --amazonec2-keypair-name="$EC2_KEY_PAIR" --amazonec2-ssh-keypath="$EC2_KEY_PATH" \
@@ -144,7 +159,7 @@ if [ -f "/tmp/queries_custom_$DOCKER_MACHINE.sql" ]; then
     docker-machine scp /tmp/queries_custom_$DOCKER_MACHINE.sql $DOCKER_MACHINE:/home/ubuntu
 fi
 
-updateExperimentRunStatus "aws_ready";
+updateExperimentRunStatus "aws_ready" "$DOCKER_MACHINE";
 
 sshdo s3cmd sync $dumpUrl ./
 if ([ "$queriesUrl" != "" ]  &&  [ "$queriesUrl" != "null" ])
@@ -152,9 +167,10 @@ then
     sshdo s3cmd sync $queriesUrl ./
 fi
 
-updateExperimentRunStatus "aws_init_env";
+updateExperimentRunStatus "aws_init_env" "$DOCKER_MACHINE";
 
-sshdo bash -c "git clone https://github.com/NikolayS/pgbadger.git /machine_home/pgbadger"
+#sshdo bash -c "git clone https://github.com/NikolayS/pgbadger.git /machine_home/pgbadger"
+sshdo bash -c "git clone https://github.com/dmius/pgbadger.git /machine_home/pgbadger"
 
 # Apply conf here
 sshdo bash -c "bzcat ./$dumpFileName | psql --set ON_ERROR_STOP=on -U postgres test"
@@ -172,7 +188,7 @@ fi
 
 sshdo vacuumdb -U postgres test -j 10 --analyze
 
-updateExperimentRunStatus "aws_start_test";
+updateExperimentRunStatus "aws_start_test" "$DOCKER_MACHINE";
 
 sshdo bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
 
@@ -183,7 +199,11 @@ else
     sshdo bash -c "psql -U postgres test -E -f ./$queriesFileName"
 fi
 
-updateExperimentRunStatus "aws_analyze";
+echo "================================================="
+sshdo bash -c "cat /var/log/postgresql/postgresql-$PG_VERSION-main.log"
+echo "================================================="
+
+updateExperimentRunStatus "aws_analyze" "$DOCKER_MACHINE";
 sshdo bash -c "/machine_home/pgbadger/pgbadger -j 4 --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /${PROJECT}_experiment_${CURRENT_TS}_${EXPERIMENT_ID}_${EXPERIMENT_RUN_ID}.json"
 
 sshdo s3cmd put /${PROJECT}_experiment_${CURRENT_TS}_${EXPERIMENT_ID}_${EXPERIMENT_RUN_ID}.json $storageDir/
@@ -194,8 +214,8 @@ sshdo s3cmd sync s3://p-dumps/tools/logloader.php ./
 sshdo s3cmd sync s3://p-dumps/tools/config.local.php ./
 sshdo php ./logloader.php --log=/${PROJECT}_experiment_${CURRENT_TS}_${EXPERIMENT_ID}_${EXPERIMENT_RUN_ID}.json --experiment=$EXPERIMENT_ID --exprun=$EXPERIMENT_RUN_ID --token=$TOKEN
 
-updateExperimentRunStatus "done";
+updateExperimentRunStatus "done" "$DOCKER_MACHINE";
 
-#sleep 600
+sleep $debugPeriod
 
 echo Bye!
