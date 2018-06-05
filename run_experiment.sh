@@ -95,33 +95,6 @@ CONTAINER_PG_VER=`php -r "print str_replace('.', '', '$PG_VERSION');"`
 
 updateExperimentRunStatus "in_progress" "$DOCKER_MACHINE";
 
-
-if ([ "$confChanges" != "" ]  &&  [ "$confChanges" != "null" ])
-then
-    echo "confCnahges is not empty: $confChanges"
-    echo "$confChanges" > /tmp/conf_$DOCKER_MACHINE.tmp
-else
-    echo "confCnahges is empty $confChanges"
-fi
-echo "auto_explain.log_min_duration = 0" >> /tmp/conf_$DOCKER_MACHINE.tmp
-echo "auto_explain.log_format = 'json'" >> /tmp/conf_$DOCKER_MACHINE.tmp
-
-if ([ "$ddlChanges" != "" ]  &&  [ "$ddlChanges" != "null" ])
-then
-    echo "ddlChanges is not empty: $ddlChanges"
-    echo "$ddlChanges" > /tmp/ddl_$DOCKER_MACHINE.sql
-else
-    echo "ddlChanges is empty $ddlChanges"
-fi
-
-if ([ "$queriesCustom" != "" ]  &&  [ "$queriesCustom" != "null" ])
-then
-    echo "queriesCustom is not empty: $queriesCustom"
-    echo "$queriesCustom" > /tmp/queries_custom_$DOCKER_MACHINE.sql
-else
-    echo "queriesCustom is empty $queriesCustom"
-fi
-
 set -ueo pipefail
 set -ueox pipefail # to debug
 
@@ -158,7 +131,6 @@ fi
 echo "Prepare experiment"
 eval docker-machine env $DOCKER_MACHINE
 
-#exit 1;
 
 containerHash=$(docker `docker-machine config $DOCKER_MACHINE` run --name="pg_nancy" \
   -v /home/ubuntu:/machine_home -dit "950603059350.dkr.ecr.us-east-1.amazonaws.com/nancy:pg${CONTAINER_PG_VER}_$EC2_TYPE")
@@ -179,6 +151,33 @@ function cleanup {
   fi
 }
 trap cleanup EXIT
+
+#prepare conf, queries and dump files
+if ([ "$confChanges" != "" ]  &&  [ "$confChanges" != "null" ])
+then
+    echo "confCnahges is not empty: $confChanges"
+    echo "$confChanges" > /tmp/conf_$DOCKER_MACHINE.tmp
+else
+    echo "confCnahges is empty $confChanges"
+fi
+echo "auto_explain.log_min_duration = 0" >> /tmp/conf_$DOCKER_MACHINE.tmp
+echo "auto_explain.log_format = 'json'" >> /tmp/conf_$DOCKER_MACHINE.tmp
+
+if ([ "$ddlChanges" != "" ]  &&  [ "$ddlChanges" != "null" ])
+then
+    echo "ddlChanges is not empty: $ddlChanges"
+    echo "$ddlChanges" > /tmp/ddl_$DOCKER_MACHINE.sql
+else
+    echo "ddlChanges is empty $ddlChanges"
+fi
+
+if ([ "$queriesCustom" != "" ]  &&  [ "$queriesCustom" != "null" ])
+then
+    echo "queriesCustom is not empty: $queriesCustom"
+    echo "$queriesCustom" > /tmp/queries_custom_$DOCKER_MACHINE.sql
+else
+    echo "queriesCustom is empty $queriesCustom"
+fi
 
 shopt -s expand_aliases
 alias sshdo='docker $dockerConfig exec -i pg_nancy '
