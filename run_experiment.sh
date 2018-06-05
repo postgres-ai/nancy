@@ -24,14 +24,14 @@ function waitDockerReady() {
     cmd=$1
     machine=$2
     while true; do
-        sleep 20; STOP=1
+        sleep 5; STOP=1
         ps ax | grep "$cmd" | grep "$machine" >/dev/null && STOP=0
         ((STOP==1)) && return 0
     done
 }
 
 function createDockerMachine() {
-echo "Try created docker machine"
+echo "Attempt to create a docker machine..."
 docker-machine create --driver=amazonec2 --amazonec2-request-spot-instance \
   --amazonec2-keypair-name="$EC2_KEY_PAIR" --amazonec2-ssh-keypath="$EC2_KEY_PATH" \
   --amazonec2-block-duration-minutes=60 \
@@ -86,6 +86,7 @@ CURRENT_TS=$(date +%Y%m%d_%H%M%S%N_%Z)
 DOCKER_MACHINE="${DOCKER_MACHINE:-nancy-$PROJECT-$CURRENT_TS-$EXPERIMENT_ID-$EXPERIMENT_RUN_ID}"
 DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
 EC2_TYPE="${EC2_TYPE:-r4.large}"
+#EC2_TYPE="${EC2_TYPE:-$instanceType }"
 EC2_PRICE="${EC2_PRICE:-0.067}"
 EC2_KEY_PAIR=${EC2_KEY_PAIR:-awskey}
 EC2_KEY_PATH=${EC2_KEY_PATH:-/Users/nikolay/.ssh/awskey.pem}
@@ -96,7 +97,7 @@ CONTAINER_PG_VER=`php -r "print str_replace('.', '', '$PG_VERSION');"`
 updateExperimentRunStatus "in_progress" "$DOCKER_MACHINE";
 
 set -ueo pipefail
-set -ueox pipefail # to debug
+#set -ueox pipefail # to debug
 
 #get price
 prices=$(aws --region=us-east-1 ec2 describe-spot-price-history --instance-types $EC2_TYPE --no-paginate --start-time=$(date +%s) --product-descriptions="Linux/UNIX (Amazon VPC)" --query 'SpotPriceHistory[*].{az:AvailabilityZone, price:SpotPrice}')
@@ -105,10 +106,10 @@ delta="1.1" # 10%
 price=$(php -r "print $maxprice * $delta;")
 echo "Max price: $maxprice Use price: $price"
 EC2_PRICE=$price
-#exit 1;
 
 createDockerMachine;
 waitDockerReady "docker-machine create" "$DOCKER_MACHINE";
+echo "Check a docker machine status"
 res=$(docker-machine status $DOCKER_MACHINE 2>&1 &)
 echo "Status $res"
 if [ "$res" != "Running" ]
@@ -123,14 +124,15 @@ then
         DOCKER_MACHINE="nancy-$PROJECT-$CURRENT_TS-$EXPERIMENT_ID-$EXPERIMENT_RUN_ID"
         DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
         echo "New machine name: $DOCKER_MACHINE"
+        #try start docker machine name with new price
+        echo "Attempt to create a docker machine with new price..."
         createDockerMachine;
         waitDockerReady "docker-machine create" "$DOCKER_MACHINE";
     fi
 fi
 
-echo "Prepare experiment"
+echo "Prepare environment..."
 eval docker-machine env $DOCKER_MACHINE
-
 
 containerHash=$(docker `docker-machine config $DOCKER_MACHINE` run --name="pg_nancy" \
   -v /home/ubuntu:/machine_home -dit "950603059350.dkr.ecr.us-east-1.amazonaws.com/nancy:pg${CONTAINER_PG_VER}_$EC2_TYPE")
@@ -209,25 +211,31 @@ updateExperimentRunStatus "aws_init_env" "$DOCKER_MACHINE";
 sshdo bash -c "git clone https://github.com/dmius/pgbadger.git /machine_home/pgbadger"
 
 # Apply conf here
+echo "Apply dump file $dumpFileName..."
 sshdo bash -c "bzcat ./$dumpFileName | psql --set ON_ERROR_STOP=on -U postgres test"
 
+echo "Refresh materialized views..."
 sshdo psql -U postgres test -c 'refresh materialized view a__news_daily_90days_denominated;' # remove me later
 
+echo "Apply DDL SQL code from /machine_home/ddl_$DOCKER_MACHINE.sql"
 if [ -f "/tmp/ddl_$DOCKER_MACHINE.sql" ]; then
     sshdo bash -c "psql -U postgres test -E -f /machine_home/ddl_$DOCKER_MACHINE.sql"
 fi
 
+echo "Apply postgres conf from /machine_home/conf_$DOCKER_MACHINE.tmp"
 if [ -f "/tmp/conf_$DOCKER_MACHINE.tmp" ]; then
     sshdo bash -c "cat /machine_home/conf_$DOCKER_MACHINE.tmp >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
     sshdo bash -c "sudo /etc/init.d/postgresql restart"
 fi
 
+echo "Execute vacuumdb..."
 sshdo vacuumdb -U postgres test -j 10 --analyze
 
 updateExperimentRunStatus "aws_start_test" "$DOCKER_MACHINE";
 
 sshdo bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
 
+echo "Execute queries..."
 if [ -f "/tmp/queries_custom_$DOCKER_MACHINE.sql" ]; then
     sshdo bash -c "psql -U postgres test -E -f /machine_home/queries_custom_$DOCKER_MACHINE.sql"
 else
@@ -236,12 +244,13 @@ else
 fi
 
 updateExperimentRunStatus "aws_analyze" "$DOCKER_MACHINE";
+echo "Prepare JSON log..."
 sshdo bash -c "/machine_home/pgbadger/pgbadger -j 4 --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /${PROJECT}_experiment_${CURRENT_TS}_${EXPERIMENT_ID}_${EXPERIMENT_RUN_ID}.json"
-
+echo "Upload JSON log..."
 sshdo s3cmd put /${PROJECT}_experiment_${CURRENT_TS}_${EXPERIMENT_ID}_${EXPERIMENT_RUN_ID}.json $storageDir/
 
 sshdo sudo apt-get -y install jq
-
+echo "Analyze JSON log..."
 sshdo s3cmd sync s3://p-dumps/tools/logloader.php ./
 sshdo s3cmd sync s3://p-dumps/tools/config.local.php ./
 sshdo php ./logloader.php --log=/${PROJECT}_experiment_${CURRENT_TS}_${EXPERIMENT_ID}_${EXPERIMENT_RUN_ID}.json --experiment=$EXPERIMENT_ID --exprun=$EXPERIMENT_RUN_ID --token=$TOKEN
