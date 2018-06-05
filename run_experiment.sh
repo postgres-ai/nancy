@@ -19,6 +19,25 @@ function updateExperimentRunStatus() {
       - "$REST_URL/experiment_run?id=eq.$EXPERIMENT_RUN_ID")
 }
 
+
+function waitDockerReady() {
+    cmd=$1
+    machine=$2
+    while true; do
+        sleep 20; STOP=1
+        ps ax | grep "$cmd" | grep "$machine" >/dev/null && STOP=0
+        ((STOP==1)) && return 0
+    done
+}
+
+function createDockerMachine() {
+echo "Try created docker machine"
+docker-machine create --driver=amazonec2 --amazonec2-request-spot-instance \
+  --amazonec2-keypair-name="$EC2_KEY_PAIR" --amazonec2-ssh-keypath="$EC2_KEY_PATH" \
+  --amazonec2-block-duration-minutes=60 \
+  --amazonec2-instance-type=$EC2_TYPE --amazonec2-spot-price=$EC2_PRICE $DOCKER_MACHINE &
+}
+
 expData=$(wget --quiet \
   --method GET \
   --header "authorization: Bearer $TOKEN" \
@@ -112,16 +131,34 @@ maxprice=$(echo $prices | jq 'max_by(.price) | .price')
 delta="1.1" # 10%
 price=$(php -r "print $maxprice * $delta;")
 echo "Max price: $maxprice Use price: $price"
-#EC2_PRICE=$price 
-
+EC2_PRICE=$price
 #exit 1;
 
-docker-machine create --driver=amazonec2 --amazonec2-request-spot-instance \
-  --amazonec2-keypair-name="$EC2_KEY_PAIR" --amazonec2-ssh-keypath="$EC2_KEY_PATH" \
-  --amazonec2-block-duration-minutes=60 \
-  --amazonec2-instance-type=$EC2_TYPE --amazonec2-spot-price=$EC2_PRICE $DOCKER_MACHINE
+createDockerMachine;
+waitDockerReady "docker-machine create" "$DOCKER_MACHINE";
+res=$(docker-machine status $DOCKER_MACHINE 2>&1 &)
+echo "Status $res"
+if [ "$res" != "Running" ]
+then
+    corrrectPriceForLastFailedRequest=$(aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$EC2_TYPE" | jq  '.SpotInstanceRequests[] | select(.Status.Code == "price-too-low") | .Status.Message' | grep -Eo '[0-9]+[.][0-9]+' | tail -n 1 &)
+    if ([ "$corrrectPriceForLastFailedRequest" != "" ]  &&  [ "$corrrectPriceForLastFailedRequest" != "null" ])
+    then
+        echo "Apply new price: $corrrectPriceForLastFailedRequest"
+        EC2_PRICE=$corrrectPriceForLastFailedRequest
+        #update docker machine name
+        CURRENT_TS=$(date +%Y%m%d_%H%M%S%N_%Z)
+        DOCKER_MACHINE="nancy-$PROJECT-$CURRENT_TS-$EXPERIMENT_ID-$EXPERIMENT_RUN_ID"
+        DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
+        echo "New machine name: $DOCKER_MACHINE"
+        createDockerMachine;
+        waitDockerReady "docker-machine create" "$DOCKER_MACHINE";
+    fi
+fi
 
-eval $(docker-machine env $DOCKER_MACHINE)
+echo "Prepare experiment"
+eval docker-machine env $DOCKER_MACHINE
+
+#exit 1;
 
 containerHash=$(docker `docker-machine config $DOCKER_MACHINE` run --name="pg_nancy" \
   -v /home/ubuntu:/machine_home -dit "950603059350.dkr.ecr.us-east-1.amazonaws.com/nancy:pg${CONTAINER_PG_VER}_$EC2_TYPE")
