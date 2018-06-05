@@ -4,7 +4,6 @@ EXPERIMENT_ID=$EXP_ID
 EXPERIMENT_RUN_ID=$EXP_RUN_ID
 REST_URL="http://dev.imgdata.ru:9508"
 
-
 function updateExperimentRunStatus() {
     status=$1
     machineName=$2
@@ -19,8 +18,8 @@ function updateExperimentRunStatus() {
       - "$REST_URL/experiment_run?id=eq.$EXPERIMENT_RUN_ID")
 }
 
-
 function waitDockerReady() {
+    echo "Waiting a docker machine ready..."
     cmd=$1
     machine=$2
     while true; do
@@ -134,8 +133,9 @@ fi
 echo "Prepare environment..."
 eval docker-machine env $DOCKER_MACHINE
 
+
 containerHash=$(docker `docker-machine config $DOCKER_MACHINE` run --name="pg_nancy" \
-  -v /home/ubuntu:/machine_home -dit "950603059350.dkr.ecr.us-east-1.amazonaws.com/nancy:pg${CONTAINER_PG_VER}_$EC2_TYPE")
+  -v /home/ubuntu:/machine_home -dit "950603059350.dkr.ecr.us-east-1.amazonaws.com/nancy:postgres${PG_VERSION}")
 dockerConfig=$(docker-machine config $DOCKER_MACHINE)
 
 function cleanup {
