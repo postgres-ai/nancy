@@ -57,6 +57,8 @@ dumpFileName=$(basename $dumpUrl)
 storageDir=$(dirname $dumpUrl)
 instanceType=$(echo $expData | jq -r '.[0].instance_type')
 debugPeriod=$(echo $expData | jq -r '.[0].debug_period')
+pgreplayUrl="${queriesUrl%.sql}.pgreplay"
+pgreplayFileName="${queriesFileName%.sql}.pgreplay"
 
 if [ "$pgVersion" == "9.5" ]
 then
@@ -67,6 +69,7 @@ pgVersion='9.6'
 echo "Queries 1: '$queriesCustom'"
 echo "Queries 2: $queriesUrl"
 echo "Queries 3: $queriesFileName"
+echo "Queries 4: $pgreplayUrl"
 echo "PG Ver:  $pgVersion Fixed"
 echo "ProjectName:  $projectName"
 echo "Conf changes: $confChanges"
@@ -76,6 +79,15 @@ echo "dumpFilename: $dumpFileName"
 echo "dumpFlleDir: $storageDir"
 echo "instanceType: $instanceType"
 echo "debugPeriod: $debugPeriod"
+
+pgreplay=$(s3cmd ls $pgreplayUrl)
+if ([ "$pgreplay" != "" ]  &&  [ "$pgreplay" != "null" ])
+then
+    echo "Use pgprelay queries"
+else
+    pgreplayUrl=null
+    pgreplayFileName=null
+fi
 
 #PG_VERSION="${PG_VERSION:-10}"
 PG_VERSION="${PG_VERSION:-$pgVersion}"
@@ -93,6 +105,8 @@ S3_BUCKET="${S3_BUCKET:-p-dumps}"
 
 CONTAINER_PG_VER=`php -r "print str_replace('.', '', '$PG_VERSION');"`
 
+#exit 1;
+
 updateExperimentRunStatus "in_progress" "$DOCKER_MACHINE";
 
 set -ueo pipefail
@@ -104,7 +118,7 @@ maxprice=$(echo $prices | jq 'max_by(.price) | .price')
 delta="1.1" # 10%
 price=$(php -r "print $maxprice * $delta;")
 echo "Max price: $maxprice Use price: $price"
-EC2_PRICE=$price
+#EC2_PRICE=$price
 
 createDockerMachine;
 waitDockerReady "docker-machine create" "$DOCKER_MACHINE";
@@ -163,6 +177,7 @@ else
     echo "confCnahges is empty $confChanges"
 fi
 echo "auto_explain.log_min_duration = 0" >> /tmp/conf_$DOCKER_MACHINE.tmp
+echo "log_min_duration_statement = -1" >> /tmp/conf_$DOCKER_MACHINE.tmp
 echo "auto_explain.log_format = 'json'" >> /tmp/conf_$DOCKER_MACHINE.tmp
 
 if ([ "$ddlChanges" != "" ]  &&  [ "$ddlChanges" != "null" ])
@@ -205,6 +220,11 @@ then
     sshdo s3cmd sync $queriesUrl ./
 fi
 
+if ([ "$pgreplayUrl" != "" ]  &&  [ "$pgreplayUrl" != "null" ])
+then
+    sshdo s3cmd sync $pgreplayUrl ./
+fi
+
 updateExperimentRunStatus "aws_init_env" "$DOCKER_MACHINE";
 
 #sshdo bash -c "git clone https://github.com/NikolayS/pgbadger.git /machine_home/pgbadger"
@@ -236,11 +256,19 @@ updateExperimentRunStatus "aws_start_test" "$DOCKER_MACHINE";
 sshdo bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
 
 echo "Execute queries..."
-if [ -f "/tmp/queries_custom_$DOCKER_MACHINE.sql" ]; then
-    sshdo bash -c "psql -U postgres test -E -f /machine_home/queries_custom_$DOCKER_MACHINE.sql"
+if ([ "$pgreplayUrl" != "" ]  &&  [ "$pgreplayUrl" != "null" ])
+then
+    echo "Execute pgreplay queries..."
+    sshdo psql -U postgres test -c 'create role testuser superuser login;'
+    sshdo bash -c "pgreplay -r -j ./$pgreplayFileName"
 else
-    echo "USE REPLAY QUERIES"
-    sshdo bash -c "psql -U postgres test -E -f ./$queriesFileName"
+    if [ -f "/tmp/queries_custom_$DOCKER_MACHINE.sql" ]; then
+        echo "Execute custom sql queries..."
+        sshdo bash -c "psql -U postgres test -E -f /machine_home/queries_custom_$DOCKER_MACHINE.sql"
+    else
+        echo "Execute sql queries from file..."
+        sshdo bash -c "psql -U postgres test -E -f ./$queriesFileName"
+    fi
 fi
 
 updateExperimentRunStatus "aws_analyze" "$DOCKER_MACHINE";
