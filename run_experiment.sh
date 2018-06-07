@@ -51,7 +51,8 @@ queriesFileName=$(basename $queriesUrl)
 pgVersion=$(echo $expData | jq -r '.[0].postgres_version')
 projectName=$(echo $expData | jq -r '.[0].project_name')
 confChanges=$(echo $expData | jq -r '.[0].change."postgresql.conf"')
-ddlChanges=$(echo $expData | jq -r '.[0].change."ddl"')
+ddlDoChanges=$(echo $expData | jq -r '.[0].change."ddl_do"')
+ddlUndoChanges=$(echo $expData | jq -r '.[0].change."ddl_undo"')
 dumpUrl=$(echo $expData | jq -r '.[0].dump_url')
 dumpFileName=$(basename $dumpUrl)
 storageDir=$(dirname $dumpUrl)
@@ -73,7 +74,8 @@ echo "Queries 4: $pgreplayUrl"
 echo "PG Ver:  $pgVersion Fixed"
 echo "ProjectName:  $projectName"
 echo "Conf changes: $confChanges"
-echo "DDL changes: $ddlChanges"
+echo "DDL changes: $ddlDoChanges"
+echo "DDL changes: $ddlUndoChanges"
 echo "dumpUrl: $dumpUrl"
 echo "dumpFilename: $dumpFileName"
 echo "dumpFlleDir: $storageDir"
@@ -159,12 +161,16 @@ function cleanup {
   if [ -f "/tmp/conf_$DOCKER_MACHINE.tmp" ]; then
     rm /tmp/conf_$DOCKER_MACHINE.tmp
   fi
-  if [ -f "/tmp/ddl_$DOCKER_MACHINE.sql" ]; then
-    rm /tmp/ddl_$DOCKER_MACHINE.sql
+  if [ -f "/tmp/ddl_do_$DOCKER_MACHINE.sql" ]; then
+    rm /tmp/ddl_do_$DOCKER_MACHINE.sql
+  fi
+  if [ -f "/tmp/ddl_undo_$DOCKER_MACHINE.sql" ]; then
+    rm /tmp/ddl_undo_$DOCKER_MACHINE.sql
   fi
   if [ -f "/tmp/queries_custom_$DOCKER_MACHINE.sql" ]; then
     rm /tmp/queries_custom_$DOCKER_MACHINE.sql
   fi
+  echo "Done."
 }
 trap cleanup EXIT
 
@@ -180,12 +186,20 @@ echo "auto_explain.log_min_duration = 0" >> /tmp/conf_$DOCKER_MACHINE.tmp
 echo "log_min_duration_statement = -1" >> /tmp/conf_$DOCKER_MACHINE.tmp
 echo "auto_explain.log_format = 'json'" >> /tmp/conf_$DOCKER_MACHINE.tmp
 
-if ([ "$ddlChanges" != "" ]  &&  [ "$ddlChanges" != "null" ])
+if ([ "$ddlDoChanges" != "" ]  &&  [ "$ddlDoChanges" != "null" ])
 then
-    echo "ddlChanges is not empty: $ddlChanges"
-    echo "$ddlChanges" > /tmp/ddl_$DOCKER_MACHINE.sql
+    echo "ddlDoChanges is not empty: $ddlDoChanges"
+    echo "$ddlDoChanges" > /tmp/ddl_do_$DOCKER_MACHINE.sql
 else
-    echo "ddlChanges is empty $ddlChanges"
+    echo "ddlDoChanges is empty $ddlDoChanges"
+fi
+
+if ([ "$ddlUndoChanges" != "" ]  &&  [ "$ddlUndoChanges" != "null" ])
+then
+    echo "ddlUndoChanges is not empty: $ddlUndoChanges"
+    echo "$ddlUndoChanges" > /tmp/ddl_undo_$DOCKER_MACHINE.sql
+else
+    echo "ddlUndoChanges is empty $ddlUndoChanges"
 fi
 
 if ([ "$queriesCustom" != "" ]  &&  [ "$queriesCustom" != "null" ])
@@ -205,8 +219,11 @@ sshdo cp /machine_home/.s3cfg /root/.s3cfg
 if [ -f "/tmp/conf_$DOCKER_MACHINE.tmp" ]; then
     docker-machine scp /tmp/conf_$DOCKER_MACHINE.tmp $DOCKER_MACHINE:/home/ubuntu
 fi
-if [ -f "/tmp/ddl_$DOCKER_MACHINE.sql" ]; then
-    docker-machine scp /tmp/ddl_$DOCKER_MACHINE.sql $DOCKER_MACHINE:/home/ubuntu
+if [ -f "/tmp/ddl_do_$DOCKER_MACHINE.sql" ]; then
+    docker-machine scp /tmp/ddl_do_$DOCKER_MACHINE.sql $DOCKER_MACHINE:/home/ubuntu
+fi
+if [ -f "/tmp/ddl_undo_$DOCKER_MACHINE.sql" ]; then
+    docker-machine scp /tmp/ddl_undo_$DOCKER_MACHINE.sql $DOCKER_MACHINE:/home/ubuntu
 fi
 if [ -f "/tmp/queries_custom_$DOCKER_MACHINE.sql" ]; then
     docker-machine scp /tmp/queries_custom_$DOCKER_MACHINE.sql $DOCKER_MACHINE:/home/ubuntu
@@ -237,9 +254,9 @@ sshdo bash -c "bzcat ./$dumpFileName | psql --set ON_ERROR_STOP=on -U postgres t
 echo "Refresh materialized views..."
 sshdo psql -U postgres test -c 'refresh materialized view a__news_daily_90days_denominated;' # remove me later
 
-echo "Apply DDL SQL code from /machine_home/ddl_$DOCKER_MACHINE.sql"
-if [ -f "/tmp/ddl_$DOCKER_MACHINE.sql" ]; then
-    sshdo bash -c "psql -U postgres test -E -f /machine_home/ddl_$DOCKER_MACHINE.sql"
+echo "Apply DDL SQL code from /machine_home/ddl_do_$DOCKER_MACHINE.sql"
+if [ -f "/tmp/ddl_do_$DOCKER_MACHINE.sql" ]; then
+    sshdo bash -c "psql -U postgres test -E -f /machine_home/ddl_do_$DOCKER_MACHINE.sql"
 fi
 
 echo "Apply postgres conf from /machine_home/conf_$DOCKER_MACHINE.tmp"
@@ -276,6 +293,11 @@ echo "Prepare JSON log..."
 sshdo bash -c "/machine_home/pgbadger/pgbadger -j 4 --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /${PROJECT}_experiment_${CURRENT_TS}_${EXPERIMENT_ID}_${EXPERIMENT_RUN_ID}.json"
 echo "Upload JSON log..."
 sshdo s3cmd put /${PROJECT}_experiment_${CURRENT_TS}_${EXPERIMENT_ID}_${EXPERIMENT_RUN_ID}.json $storageDir/
+
+echo "Apply DDL UNDO SQL code from /machine_home/ddl_undo_$DOCKER_MACHINE.sql"
+if [ -f "/tmp/ddl_undo_$DOCKER_MACHINE.sql" ]; then
+    sshdo bash -c "psql -U postgres test -E -f /machine_home/ddl_undo_$DOCKER_MACHINE.sql"
+fi
 
 sshdo sudo apt-get -y install jq
 echo "Analyze JSON log..."
