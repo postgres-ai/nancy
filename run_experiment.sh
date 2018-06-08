@@ -19,13 +19,22 @@ function updateExperimentRunStatus() {
 }
 
 function waitDockerReady() {
-    echo "Waiting a docker machine ready..."
     cmd=$1
     machine=$2
+    checkPrice=$3
     while true; do
         sleep 5; STOP=1
         ps ax | grep "$cmd" | grep "$machine" >/dev/null && STOP=0
         ((STOP==1)) && return 0
+        if [ $checkPrice -eq 1 ]
+        then
+            status=$(aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$EC2_TYPE" | jq  '.SpotInstanceRequests[] | .Status.Code' | tail -n 1 )
+            if [ "$status" == "\"price-too-low\"" ]
+            then
+                echo "price-too-low";
+                return 0
+            fi
+        fi
     done
 }
 
@@ -107,8 +116,6 @@ S3_BUCKET="${S3_BUCKET:-p-dumps}"
 
 CONTAINER_PG_VER=`php -r "print str_replace('.', '', '$PG_VERSION');"`
 
-#exit 1;
-
 updateExperimentRunStatus "in_progress" "$DOCKER_MACHINE";
 
 set -ueo pipefail
@@ -120,14 +127,11 @@ maxprice=$(echo $prices | jq 'max_by(.price) | .price')
 delta="1.1" # 10%
 price=$(php -r "print $maxprice * $delta;")
 echo "Max price: $maxprice Use price: $price"
-#EC2_PRICE=$price
+EC2_PRICE=$price
 
 createDockerMachine;
-waitDockerReady "docker-machine create" "$DOCKER_MACHINE";
-echo "Check a docker machine status"
-res=$(docker-machine status $DOCKER_MACHINE 2>&1 &)
-echo "Status $res"
-if [ "$res" != "Running" ]
+status=$(waitDockerReady "docker-machine create" "$DOCKER_MACHINE" 1)
+if [ "$status" == "price-too-low" ]
 then
     corrrectPriceForLastFailedRequest=$(aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$EC2_TYPE" | jq  '.SpotInstanceRequests[] | select(.Status.Code == "price-too-low") | .Status.Message' | grep -Eo '[0-9]+[.][0-9]+' | tail -n 1 &)
     if ([ "$corrrectPriceForLastFailedRequest" != "" ]  &&  [ "$corrrectPriceForLastFailedRequest" != "null" ])
@@ -142,9 +146,18 @@ then
         #try start docker machine name with new price
         echo "Attempt to create a docker machine with new price..."
         createDockerMachine;
-        waitDockerReady "docker-machine create" "$DOCKER_MACHINE";
+        waitDockerReady "docker-machine create" "$DOCKER_MACHINE" 0;
     fi
 fi
+
+echo "Check a docker machine status"
+res=$(docker-machine status $DOCKER_MACHINE 2>&1 &)
+if [ "$res" != "Running" ]
+then
+    exit 1;
+fi
+
+echo "Docker is running."
 
 echo "Prepare environment..."
 eval docker-machine env $DOCKER_MACHINE
