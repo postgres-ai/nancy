@@ -67,7 +67,13 @@ dumpFileName=$(basename $dumpUrl)
 storageDir=$(dirname $dumpUrl)
 instanceType=$(echo $expData | jq -r '.[0].instance_type')
 debugPeriod=$(echo $expData | jq -r '.[0].debug_period')
-pgreplayUrl="${queriesUrl%.sql}.pgreplay"
+if ([ "$queriesUrl" != "" ]  &&  [ "$queriesUrl" != "null" ])
+then
+    pgreplayUrl="${queriesUrl%.sql}.pgreplay"
+else
+    pgreplayUrl=null
+    pgreplayFileName=null
+fi
 pgreplayFileName="${queriesFileName%.sql}.pgreplay"
 
 if [ "$pgVersion" == "9.5" ]
