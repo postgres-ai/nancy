@@ -55,7 +55,7 @@ expData=$(wget --quiet \
   - "$REST_URL/experiment_runs?experiment_run_id=eq.$EXPERIMENT_RUN_ID")
 
 queriesCustom=$(echo $expData | jq -r '.[0].queries_custom')
-queriesUrl=$(echo $expData | jq -r '.[0].queries_pgreplay')
+#queriesUrl=$(echo $expData | jq -r '.[0].queries_pgreplay')
 queriesFileName=$(basename $queriesUrl)
 pgVersion=$(echo $expData | jq -r '.[0].postgres_version')
 projectName=$(echo $expData | jq -r '.[0].project_name')
@@ -67,14 +67,20 @@ dumpFileName=$(basename $dumpUrl)
 storageDir=$(dirname $dumpUrl)
 instanceType=$(echo $expData | jq -r '.[0].instance_type')
 debugPeriod=$(echo $expData | jq -r '.[0].debug_period')
-if ([ "$queriesUrl" != "" ]  &&  [ "$queriesUrl" != "null" ])
+pgreplayUrl=$(echo $expData | jq -r '.[0].queries_pgreplay')
+
+#if ([ "$queriesUrl" != "" ]  &&  [ "$queriesUrl" != "null" ])
+#then
+#    pgreplayUrl="${queriesUrl%.sql}.pgreplay"
+#else
+#    pgreplayUrl=null
+#    pgreplayFileName=null
+#fi
+
+if ([ "$pgreplayUrl" != "" ]  &&  [ "$pgreplayUrl" != "null" ])
 then
-    pgreplayUrl="${queriesUrl%.sql}.pgreplay"
-else
-    pgreplayUrl=null
-    pgreplayFileName=null
+    pgreplayFileName=$(basename $pgreplayUrl)
 fi
-pgreplayFileName="${queriesFileName%.sql}.pgreplay"
 
 if [ "$pgVersion" == "9.5" ]
 then
@@ -83,9 +89,10 @@ fi
 pgVersion='9.6'
 
 echo "Queries 1: '$queriesCustom'"
-echo "Queries 2: $queriesUrl"
+#echo "Queries 2: $queriesUrl"
 echo "Queries 3: $queriesFileName"
 echo "Queries 4: $pgreplayUrl"
+echo "Queries pgreplay file: $pgreplayFileName"
 echo "PG Ver:  $pgVersion Fixed"
 echo "ProjectName:  $projectName"
 echo "Conf changes: $confChanges"
@@ -104,6 +111,13 @@ then
 else
     pgreplayUrl=null
     pgreplayFileName=null
+    if ([ "$queriesCustom" != "" ]  &&  [ "$queriesCustom" != "null" ])
+    then
+        echo "Use custom queries"
+    else
+        echo "Queries not given"
+        updateExperimentRunStatus "failed_1" "$DOCKER_MACHINE";
+    fi
 fi
 
 #PG_VERSION="${PG_VERSION:-10}"
