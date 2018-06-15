@@ -12,7 +12,6 @@ function updateExperimentRunStatus() {
       --header "authorization: Bearer $TOKEN" \
       --header 'content-type: application/x-www-form-urlencoded' \
       --header 'cache-control: no-cache' \
-      --header 'postman-token: 39be31c6-55ba-6ca1-fd33-8f02f65b278f' \
       --body-data "status=$status&status_changed=now()&machine_name=$machineName" \
       --output-document \
       - "$REST_URL/experiment_run?id=eq.$EXPERIMENT_RUN_ID")
@@ -31,7 +30,7 @@ function waitDockerReady() {
             status=$(aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$EC2_TYPE" | jq  '.SpotInstanceRequests[] | .Status.Code' | tail -n 1 )
             if [ "$status" == "\"price-too-low\"" ]
             then
-                echo "price-too-low";
+                echo "price-too-low"; # this value is result of function (not message for user), will check later
                 return 0
             fi
         fi
@@ -50,7 +49,6 @@ expData=$(wget --quiet \
   --method GET \
   --header "authorization: Bearer $TOKEN" \
   --header 'cache-control: no-cache' \
-  --header 'postman-token: 8237b87c-e2b5-f87c-6946-81bb01d01261' \
   --output-document \
   - "$REST_URL/experiment_runs?experiment_run_id=eq.$EXPERIMENT_RUN_ID")
 
@@ -86,13 +84,12 @@ if [ "$pgVersion" == "9.5" ]
 then
     pgVersion='9.6'
 fi
-pgVersion='9.6'
+pgVersion='9.6' # Because at pg 10  some functions renamed
 
-echo "Queries 1: '$queriesCustom'"
-#echo "Queries 2: $queriesUrl"
+echo "Custom queries: '$queriesCustom'"
 echo "Queries 3: $queriesFileName"
-echo "Queries 4: $pgreplayUrl"
-echo "Queries pgreplay file: $pgreplayFileName"
+echo "Pgreplay queries file path: $pgreplayUrl"
+echo "Pgreplay queries file name: $pgreplayFileName"
 echo "PG Ver:  $pgVersion Fixed"
 echo "ProjectName:  $projectName"
 echo "Conf changes: $confChanges"
@@ -134,7 +131,8 @@ EC2_KEY_PAIR=${EC2_KEY_PAIR:-awskey}
 EC2_KEY_PATH=${EC2_KEY_PATH:-/Users/nikolay/.ssh/awskey.pem}
 S3_BUCKET="${S3_BUCKET:-p-dumps}"
 
-CONTAINER_PG_VER=`php -r "print str_replace('.', '', '$PG_VERSION');"`
+CONTAINER_PG_VER="${PG_VERSION/\./}"
+echo "CONTAINER_PG_VER: $CONTAINER_PG_VER"
 
 updateExperimentRunStatus "in_progress" "$DOCKER_MACHINE";
 
@@ -144,13 +142,17 @@ set -ueo pipefail
 #get price
 prices=$(aws --region=us-east-1 ec2 describe-spot-price-history --instance-types $EC2_TYPE --no-paginate --start-time=$(date +%s) --product-descriptions="Linux/UNIX (Amazon VPC)" --query 'SpotPriceHistory[*].{az:AvailabilityZone, price:SpotPrice}')
 maxprice=$(echo $prices | jq 'max_by(.price) | .price') 
-delta="1.1" # 10%
-price=$(php -r "print $maxprice * $delta;")
+maxprice="${maxprice/\"/}"
+maxprice="${maxprice/\"/}"
+echo "MAX PRICE: $maxprice"
+multiplier="1.1"
+price=$(echo "$maxprice * $multiplier" | bc -l)
 echo "Max price: $maxprice Use price: $price"
 EC2_PRICE=$price
 
 createDockerMachine;
 status=$(waitDockerReady "docker-machine create" "$DOCKER_MACHINE" 1)
+echo "STATUS: $status";
 if [ "$status" == "price-too-low" ]
 then
     corrrectPriceForLastFailedRequest=$(aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$EC2_TYPE" | jq  '.SpotInstanceRequests[] | select(.Status.Code == "price-too-low") | .Status.Message' | grep -Eo '[0-9]+[.][0-9]+' | tail -n 1 &)
@@ -164,7 +166,7 @@ then
         DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
         echo "New machine name: $DOCKER_MACHINE"
         #try start docker machine name with new price
-        echo "Attempt to create a docker machine with new price..."
+        echo "Attempt to create a new docker machine: $DOCKER_MACHINE with price: $EC2_PRICE."
         createDockerMachine;
         waitDockerReady "docker-machine create" "$DOCKER_MACHINE" 0;
     fi
@@ -172,12 +174,13 @@ fi
 
 echo "Check a docker machine status"
 res=$(docker-machine status $DOCKER_MACHINE 2>&1 &)
+echo "RESULT: $res"
 if [ "$res" != "Running" ]
 then
     exit 1;
 fi
 
-echo "Docker is running."
+echo "Docker $DOCKER_MACHINE is running."
 
 echo "Prepare environment..."
 eval docker-machine env $DOCKER_MACHINE
@@ -323,7 +326,7 @@ fi
 
 updateExperimentRunStatus "aws_analyze" "$DOCKER_MACHINE";
 echo "Prepare JSON log..."
-sshdo bash -c "/machine_home/pgbadger/pgbadger -j 4 --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /${PROJECT}_experiment_${CURRENT_TS}_${EXPERIMENT_ID}_${EXPERIMENT_RUN_ID}.json"
+sshdo bash -c "/machine_home/pgbadger/pgbadger -j $(cat /proc/cpuinfo | grep processor | wc -l) --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /${PROJECT}_experiment_${CURRENT_TS}_${EXPERIMENT_ID}_${EXPERIMENT_RUN_ID}.json"
 echo "Upload JSON log..."
 sshdo s3cmd put /${PROJECT}_experiment_${CURRENT_TS}_${EXPERIMENT_ID}_${EXPERIMENT_RUN_ID}.json $storageDir/
 
@@ -332,7 +335,7 @@ if [ -f "/tmp/ddl_undo_$DOCKER_MACHINE.sql" ]; then
     sshdo bash -c "psql -U postgres test -E -f /machine_home/ddl_undo_$DOCKER_MACHINE.sql"
 fi
 
-sshdo sudo apt-get -y install jq
+#sshdo sudo apt-get -y install jq
 echo "Analyze JSON log..."
 sshdo s3cmd sync s3://p-dumps/tools/logloader.php ./
 sshdo s3cmd sync s3://p-dumps/tools/config.local.php ./
