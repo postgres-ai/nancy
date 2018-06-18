@@ -9,4 +9,4 @@ jobs:
       - run:
           name: Tests
           command: |
-            for f in tests/*.sh; do bash "$f" -H; done
+            for f in tests/*.sh; do printf "$f\t\t" && bash "$f" -H; done
