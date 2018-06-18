@@ -8,4 +8,6 @@ jobs:
       PGVERS: 10
     steps:
       - checkout
-      - run: apt-get update && apt-get install -y sudo
+      #- run: apt-get update && apt-get install -y sudo
+      - run: Tests
+        command: for f in tests/*.sh; do bash "$f" -H; done
