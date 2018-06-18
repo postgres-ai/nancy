@@ -6,6 +6,7 @@ jobs:
       - image: node:8.2
     steps:
       - checkout
-      - run: Tests
-        command: |
-          for f in tests/*.sh; do bash "$f" -H; done
+      - run:
+          name: Tests
+          command: |
+            for f in tests/*.sh; do bash "$f" -H; done
