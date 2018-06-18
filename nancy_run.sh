@@ -42,7 +42,7 @@ while true; do
         TARGET_CONFIG="$2"; shift 2 ;;
     --artifacts-destination )
         ARTIFACTS_DESTINATION="$2"; shift 2 ;;
-        
+
     --aws-key-pair )
         AWS_KEY_PAIR="$2"; shift 2 ;;
     --aws-key-path )
@@ -53,7 +53,7 @@ while true; do
         TMP_PATH="$2"; shift 2 ;;
     --debug-timeout )
         DEBUG_TIMEOUT="$2"; shift 2 ;;
-        
+
     -- ) shift; break ;;
     * ) break ;;
   esac
@@ -133,7 +133,7 @@ function checkParams() {
         WORKLOAD_BASIS_PATH=""
         WORKLOAD_CUSTOM_SQL=""
     fi
-    
+
     #--db-prepared-snapshot or --db-dump-path
     if (([ "$DB_PREPARED_SNAPSHOT" == "" ]  ||  [ "$DB_PREPARED_SNAPSHOT" == "null" ]) && ([ "$DB_DUMP_PATH" == "" ]  ||  [ "$DB_DUMP_PATH" == "null" ]))
     then
@@ -146,7 +146,7 @@ function checkParams() {
         echo "WARNING: Both snapshot and dump sources given. Will used value of '--db-prepared-snapshot'."
         DB_DUMP_PATH=""
     fi
-    
+
     #--target-ddl or --target-config or --clean-run-only
     if (([ "$TARGET_DDL_DO" == "" ]  ||  [ "$TARGET_DDL_DO" == "null" ]) && ([ "$TARGET_CONFIG" == "" ]  ||  [ "$TARGET_CONFIG" == "null" ]) && ([ "$CLEAN_RUN_ONLY" == "" ]  || [ "$CLEAN_RUN_ONLY" == "null" ]))
     then
@@ -203,7 +203,7 @@ docker-machine create --driver=amazonec2 --amazonec2-request-spot-instance \
 
 ## Get max price from history and apply multiplier
 prices=$(aws --region=us-east-1 ec2 describe-spot-price-history --instance-types $AWS_EC2_TYPE --no-paginate --start-time=$(date +%s) --product-descriptions="Linux/UNIX (Amazon VPC)" --query 'SpotPriceHistory[*].{az:AvailabilityZone, price:SpotPrice}')
-maxprice=$(echo $prices | jq 'max_by(.price) | .price') 
+maxprice=$(echo $prices | jq 'max_by(.price) | .price')
 maxprice="${maxprice/\"/}"
 maxprice="${maxprice/\"/}"
 echo "Max price from history: $maxprice"
