@@ -83,6 +83,12 @@ fi
 
 ## Check params
 function checkParams() {
+    if ([ ! -v AWS_KEY_PAIR ] || [ ! -v AWS_KEY_PATH ])
+    then
+        >&2 echo "ERROR: AWS keys not given."
+        exit 1
+    fi
+
     if [ ! -v AWS_EC2_TYPE ]
     then
         >&2 echo "ERROR: Instance type not given."
@@ -107,18 +113,6 @@ function checkParams() {
     then
         >&2 echo "WARNING: S3 config file path not given. Will used ~/.s3cfg"
         S3_CFG_PATH="~/.s3cfg"
-    fi
-
-    if ([ ! -v AWS_KEY_PAIR ] || [ ! -v AWS_KEY_PATH ])
-    then
-        >&2 echo "ERROR: AWS keys not given."
-        exit 1
-    fi
-
-    if [ ! -v ARTIFACTS_DESTINATION ]
-    then
-        >&2 echo "WARNING: Artifacts destination not given. Will used ./"
-        ARTIFACTS_DESTINATION="."
     fi
 
     workloads_count=0
@@ -158,17 +152,25 @@ function checkParams() {
         exit 1;
     fi
 
-    if (([ ! -v TARGET_DDL_UNDO ] && [ -v TARGET_DDL_DO ]) || ([ ! -v TARGET_DDL_UNDO ] && [ -v TARGET_DDL_DO ]))
+    if (([ ! -v TARGET_DDL_UNDO ] && [ -v TARGET_DDL_DO ]) || ([ ! -v TARGET_DDL_DO ] && [ -v TARGET_DDL_UNDO ]))
     then
         >&2 echo "ERROR: DDL code must have do and undo part."
         exit 1;
+    fi
+
+    if [ ! -v ARTIFACTS_DESTINATION ]
+    then
+        >&2 echo "WARNING: Artifacts destination not given. Will used ./"
+        ARTIFACTS_DESTINATION="."
     fi
 }
 
 checkParams;
 
+exit 1
+
 set -ueo pipefail
-set -ueox pipefail # to debug
+[ $DEBUG -eq 1 ] && set -ueox pipefail # to debug
 
 ## Docker tools
 function waitDockerReady() {
@@ -328,7 +330,7 @@ if [ -f "$TMP_PATH/conf_$DOCKER_MACHINE.tmp" ]; then
 fi
 # Clear statistics and log
 echo "Execute vacuumdb..."
-sshdo vacuumdb -U postgres test -j 10 --analyze
+sshdo vacuumdb -U postgres test -j $(cat /proc/cpuinfo | grep processor | wc -l) --analyze
 sshdo bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
 # Execute workload
 echo "Execute workload..."
