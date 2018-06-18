@@ -4,8 +4,9 @@ jobs:
     working_directory: ~/nancy
     docker:
       - image: node:8.2
-    environment:
-      PGVERS: 10
     steps:
       - checkout
-      - run: apt-get update && apt-get install -y sudo
+      - run:
+          name: Tests
+          command: |
+            for f in tests/*.sh; do printf "$f\t\t" && bash "$f" -H; done

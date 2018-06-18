@@ -42,7 +42,7 @@ while true; do
         TARGET_CONFIG="$2"; shift 2 ;;
     --artifacts-destination )
         ARTIFACTS_DESTINATION="$2"; shift 2 ;;
-        
+
     --aws-key-pair )
         AWS_KEY_PAIR="$2"; shift 2 ;;
     --aws-key-path )
@@ -53,7 +53,7 @@ while true; do
         TMP_PATH="$2"; shift 2 ;;
     --debug-timeout )
         DEBUG_TIMEOUT="$2"; shift 2 ;;
-        
+
     -- ) shift; break ;;
     * ) break ;;
   esac
@@ -87,82 +87,82 @@ fi
 function checkParams() {
     if ([ "$AWS_EC2_TYPE" == "" ]  ||  [ "$AWS_EC2_TYPE" == "null" ])
     then
-        echo "WARNING: Instance type not given. Will used r4.large"
+        >&2 echo "WARNING: Instance type not given. Will used r4.large"
         AWS_EC2_TYPE="r4.large"
     fi
 
     if ([ "$PG_VERSION" == "" ]  ||  [ "$PG_VERSION" == "null" ])
     then
-        echo "WARNING: Postgres version not given. Will used 9.6"
+        >&2 echo "WARNING: Postgres version not given. Will used 9.6"
         PG_VERSION="9.6"
     fi
 
     if ([ "$TMP_PATH" == "" ]  ||  [ "$TMP_PATH" == "null" ])
     then
-        echo "WARNING: Temp path not given. Will used /tmp"
+        >&2 echo "WARNING: Temp path not given. Will used /tmp"
         TMP_PATH="/tmp"
     fi
 
     if ([ "$S3_CFG_PATH" == "" ]  ||  [ "$S3_CFG_PATH" == "null" ])
     then
-        echo "WARNING: S3 config file path not given. Cannot use S3 as source or destination of dump, artifacts!"
+        >&2 echo "WARNING: S3 config file path not given. Cannot use S3 as source or destination of dump, artifacts!"
     fi
 
     if ([ "$AWS_KEY_PAIR" == "" ]  ||  [ "$AWS_KEY_PAIR" == "null" ] || [ "$AWS_KEY_PATH" == "" ]  || [ "$AWS_KEY_PATH" == "null" ])
     then
-        echo "ERROR: AWS keys not given."
+        >&2 echo "ERROR: AWS keys not given."
         exit 1;
     fi
 
     if ([ "$ARTIFACTS_DESTINATION" == "" ]  ||  [ "$ARTIFACTS_DESTINATION" == "null" ])
     then
-        echo "ERROR: Artifacts destination not given."
+        >&2 echo "ERROR: Artifacts destination not given."
         exit 1;
     fi
 
     # --workload-full-path or --workload-basis-path or --workload-custom-sql
     if (([ "$WORKLOAD_BASIS_PATH" == "" ]  ||  [ "$WORKLOAD_BASIS_PATH" == "null" ]) && ([ "$WORKLOAD_FULL_PATH" == "" ]  ||  [ "$WORKLOAD_FULL_PATH" == "null" ]) && ([ "$WORKLOAD_CUSTOM_SQL" == "" ]  || [ "$WORKLOAD_CUSTOM_SQL" == "null" ]))
     then
-        echo "ERROR: Workload not given."
+        >&2 echo "ERROR: Workload not given."
         exit 1;
     fi
 
     if (([ "$WORKLOAD_BASIS_PATH" != "" ]  &&  [ "$WORKLOAD_FULL_PATH" != "" ]) || ([ "$WORKLOAD_CUSTOM_SQL" != "" ] && [ "$WORKLOAD_BASIS_PATH" != "" ]) || ([ "$WORKLOAD_FULL_PATH" != "" ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]))
     then
-        echo "WARNING: 2 or more workload source given. Will used value of '--workload-full-path'."
+        >&2 echo "WARNING: 2 or more workload source given. Will used value of '--workload-full-path'."
         WORKLOAD_BASIS_PATH=""
         WORKLOAD_CUSTOM_SQL=""
     fi
-    
+
     #--db-prepared-snapshot or --db-dump-path
     if (([ "$DB_PREPARED_SNAPSHOT" == "" ]  ||  [ "$DB_PREPARED_SNAPSHOT" == "null" ]) && ([ "$DB_DUMP_PATH" == "" ]  ||  [ "$DB_DUMP_PATH" == "null" ]))
     then
-        echo "ERROR: Snapshot or dump not given."
+        >&2 echo "ERROR: Snapshot or dump not given."
         exit 1;
     fi
 
     if ([ "$DB_PREPARED_SNAPSHOT" != "" ] && [ "$DB_DUMP_PATH" != "" ])
     then
-        echo "WARNING: Both snapshot and dump sources given. Will used value of '--db-prepared-snapshot'."
+        >&2 echo "WARNING: Both snapshot and dump sources given. Will used value of '--db-prepared-snapshot'."
         DB_DUMP_PATH=""
     fi
-    
+
     #--target-ddl or --target-config or --clean-run-only
     if (([ "$TARGET_DDL_DO" == "" ]  ||  [ "$TARGET_DDL_DO" == "null" ]) && ([ "$TARGET_CONFIG" == "" ]  ||  [ "$TARGET_CONFIG" == "null" ]) && ([ "$CLEAN_RUN_ONLY" == "" ]  || [ "$CLEAN_RUN_ONLY" == "null" ]))
     then
-        echo "ERROR: Target of test not given."
+        >&2 echo "ERROR: Target of test not given."
         exit 1;
     fi
 
     if (([ "$TARGET_DDL_DO" != "" ]  &&  [ "$TARGET_CONFIG" != "" ]) || ([ "$CLEAN_RUN_ONLY" != "" ] && [ "$TARGET_DDL_DO" != "" ]) || ([ "$TARGET_CONFIG" != "" ] && [ "$CLEAN_RUN_ONLY" != "" ]))
     then
-        echo "ERROR: 2 or more targets given."
+        >&2 echo "ERROR: 2 or more targets given."
         exit 1;
     fi
 
     if ([ "$TARGET_DDL_DO" != "" ]  && ([ "$TARGET_DDL_UNDO" == "" ]  ||  [ "$TARGET_DDL_UNDO" == "null" ]))
     then
-        echo "ERROR: Target ddl code given but undo code not given."
+        >&2 echo "ERROR: Target ddl code given but undo code not given."
         exit 1;
     fi
 }
@@ -203,7 +203,7 @@ docker-machine create --driver=amazonec2 --amazonec2-request-spot-instance \
 
 ## Get max price from history and apply multiplier
 prices=$(aws --region=us-east-1 ec2 describe-spot-price-history --instance-types $AWS_EC2_TYPE --no-paginate --start-time=$(date +%s) --product-descriptions="Linux/UNIX (Amazon VPC)" --query 'SpotPriceHistory[*].{az:AvailabilityZone, price:SpotPrice}')
-maxprice=$(echo $prices | jq 'max_by(.price) | .price') 
+maxprice=$(echo $prices | jq 'max_by(.price) | .price')
 maxprice="${maxprice/\"/}"
 maxprice="${maxprice/\"/}"
 echo "Max price from history: $maxprice"
@@ -236,7 +236,7 @@ echo "Check a docker machine status."
 res=$(docker-machine status $DOCKER_MACHINE 2>&1 &)
 if [ "$res" != "Running" ]
 then
-    echo "Failed: Docker $DOCKER_MACHINE is NOT running."
+    >&2 echo "Failed: Docker $DOCKER_MACHINE is NOT running."
     exit 1;
 fi
 
