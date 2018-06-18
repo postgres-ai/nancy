@@ -167,8 +167,6 @@ function checkParams() {
 
 checkParams;
 
-exit 1
-
 set -ueo pipefail
 [ $DEBUG -eq 1 ] && set -ueox pipefail # to debug
 
