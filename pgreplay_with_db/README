@@ -1,0 +1,26 @@
+Крон файл cron.pgreplay копируем в /etc/cron.d/
+
+Копируем скрипт конвертации где нам удобнее его разместить, поправив путь вызова скрипта в cron файле
+# cp pgreplay_processing.sh ~postgres/
+
+Базовый каталог, где создаются in/out каталоги принимаемых и конвертированых данных создаются относительно
+basedir=/var/lib/postgresql
+который может быть передан как аргумент скрипту
+[ "$1" != '' ] && basedir=$1
+
+incoming_dir=$basedir/$(basename $0).in
+outcoming_dir=$basedir/$(basename $0).out
+
+Итого, скрипт при запуске ищет какие-либо логи в $incoming_dir/ (сжатые или нет), обрабатывает их и результаты скидывает в $outcoming_dir
+
+При обработке файла:
+postgres@dev:~/pgreplay_processing.sh.in/db2.imgdata.ru_postgresql-9.6-main.csv-20180607
+
+Получаем на выходе:
+postgres@dev:~/pgreplay_processing.sh.out/db2.imgdata.ru_postgresql-9.6-main.csv-20180607.pgreplay
+postgres@dev:~/pgreplay_processing.sh.out/db2.imgdata.ru_postgresql-9.6-main.csv-20180607.stats
+postgres@dev:~/pgreplay_processing.sh.out/db2.imgdata.ru_postgresql-9.6-main.csv-20180607.updated
+
+это pgreplay сценарий
+статистика по обработке лога
+и сам лог после апдейта в базе (перед генерацией pgreplay сценария)
