@@ -9,9 +9,7 @@ DEBUG_TIMEOUT=0
 ## Get command line params
 while true; do
   case "$1" in
-    -v | --verbose ) VERBOSE=true; shift ;;
     -d | --debug ) DEBUG=1; shift ;;
-    -m | --memory ) MEMORY=""$2""; shift 2 ;;
     --aws-ec2-type )
         AWS_EC2_TYPE="$2"; shift 2 ;;
     --pg-version )
@@ -37,15 +35,15 @@ while true; do
     --target-ddl-undo )
         TARGET_DDL_UNDO="$2"; shift 2 ;;
     --clean-run-only )
-        CLEAN_RUN_ONLY="$2"; shift 2 ;;
+        CLEAN_RUN_ONLY=1; shift 1 ;;
     --target-config )
         TARGET_CONFIG="$2"; shift 2 ;;
     --artifacts-destination )
         ARTIFACTS_DESTINATION="$2"; shift 2 ;;
 
-    --aws-key-pair )
+    --aws-keypair-name )
         AWS_KEY_PAIR="$2"; shift 2 ;;
-    --aws-key-path )
+    --aws-ssh-key-path )
         AWS_KEY_PATH="$2"; shift 2 ;;
     --s3-cfg-path )
         S3_CFG_PATH="$2"; shift 2 ;;
@@ -85,84 +83,84 @@ fi
 
 ## Check params
 function checkParams() {
-    if ([ "$AWS_EC2_TYPE" == "" ]  ||  [ "$AWS_EC2_TYPE" == "null" ])
+    if [ ! -v AWS_EC2_TYPE ]
     then
-        >&2 echo "WARNING: Instance type not given. Will used r4.large"
-        AWS_EC2_TYPE="r4.large"
+        >&2 echo "ERROR: Instance type not given."
+        exit 1
     fi
 
-    if ([ "$PG_VERSION" == "" ]  ||  [ "$PG_VERSION" == "null" ])
+    if [ ! -v PG_VERSION ]
     then
-        >&2 echo "WARNING: Postgres version not given. Will used 9.6"
+        >&2 echo "WARNING: Postgres version not given. Will used 9.6."
         PG_VERSION="9.6"
     fi
 
-    if ([ "$TMP_PATH" == "" ]  ||  [ "$TMP_PATH" == "null" ])
+    if [ ! -v TMP_PATH ]
     then
-        >&2 echo "WARNING: Temp path not given. Will used /tmp"
-        TMP_PATH="/tmp"
+        TMP_PATH="/var/tmp/nancy_run"
+        >&2 echo "WARNING: Temp path not given. Will used $TMP_PATH"
+    fi
+    #make tmp path if not found
+    [ ! -d $TMP_PATH ] && mkdir $TMP_PATH
+
+    if [ ! -v S3_CFG_PATH ]
+    then
+        >&2 echo "WARNING: S3 config file path not given. Will used ~/.s3cfg"
+        S3_CFG_PATH="~/.s3cfg"
     fi
 
-    if ([ "$S3_CFG_PATH" == "" ]  ||  [ "$S3_CFG_PATH" == "null" ])
-    then
-        >&2 echo "WARNING: S3 config file path not given. Cannot use S3 as source or destination of dump, artifacts!"
-    fi
-
-    if ([ "$AWS_KEY_PAIR" == "" ]  ||  [ "$AWS_KEY_PAIR" == "null" ] || [ "$AWS_KEY_PATH" == "" ]  || [ "$AWS_KEY_PATH" == "null" ])
+    if ([ ! -v AWS_KEY_PAIR ] || [ ! -v AWS_KEY_PATH ])
     then
         >&2 echo "ERROR: AWS keys not given."
-        exit 1;
+        exit 1
     fi
 
-    if ([ "$ARTIFACTS_DESTINATION" == "" ]  ||  [ "$ARTIFACTS_DESTINATION" == "null" ])
+    if [ ! -v ARTIFACTS_DESTINATION ]
     then
-        >&2 echo "ERROR: Artifacts destination not given."
-        exit 1;
+        >&2 echo "WARNING: Artifacts destination not given. Will used ./"
+        ARTIFACTS_DESTINATION="."
     fi
+
+    workloads_count=0
+    [ -v WORKLOAD_BASIS_PATH ] && let workloads_count=$workloads_count+1
+    [ -v WORKLOAD_FULL_PATH ] && let workloads_count=$workloads_count+1
+    [ -v WORKLOAD_CUSTOM_SQL ] && let workloads_count=$workloads_count+1
 
     # --workload-full-path or --workload-basis-path or --workload-custom-sql
-    if (([ "$WORKLOAD_BASIS_PATH" == "" ]  ||  [ "$WORKLOAD_BASIS_PATH" == "null" ]) && ([ "$WORKLOAD_FULL_PATH" == "" ]  ||  [ "$WORKLOAD_FULL_PATH" == "null" ]) && ([ "$WORKLOAD_CUSTOM_SQL" == "" ]  || [ "$WORKLOAD_CUSTOM_SQL" == "null" ]))
+    if [ "$workloads_count" -eq "0" ]
     then
         >&2 echo "ERROR: Workload not given."
         exit 1;
     fi
 
-    if (([ "$WORKLOAD_BASIS_PATH" != "" ]  &&  [ "$WORKLOAD_FULL_PATH" != "" ]) || ([ "$WORKLOAD_CUSTOM_SQL" != "" ] && [ "$WORKLOAD_BASIS_PATH" != "" ]) || ([ "$WORKLOAD_FULL_PATH" != "" ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]))
+    if  [ "$workloads_count" -gt "1" ]
     then
-        >&2 echo "WARNING: 2 or more workload source given. Will used value of '--workload-full-path'."
-        WORKLOAD_BASIS_PATH=""
-        WORKLOAD_CUSTOM_SQL=""
+        >&2 echo "ERROR: 2 or more workload source given."
+        exit 1
     fi
 
     #--db-prepared-snapshot or --db-dump-path
-    if (([ "$DB_PREPARED_SNAPSHOT" == "" ]  ||  [ "$DB_PREPARED_SNAPSHOT" == "null" ]) && ([ "$DB_DUMP_PATH" == "" ]  ||  [ "$DB_DUMP_PATH" == "null" ]))
+    if ([ ! -v DB_PREPARED_SNAPSHOT ]  &&  [ ! -v DB_DUMP_PATH ])
     then
         >&2 echo "ERROR: Snapshot or dump not given."
         exit 1;
     fi
 
-    if ([ "$DB_PREPARED_SNAPSHOT" != "" ] && [ "$DB_DUMP_PATH" != "" ])
+    if ([ -v DB_PREPARED_SNAPSHOT ]  &&  [ -v DB_DUMP_PATH ])
     then
-        >&2 echo "WARNING: Both snapshot and dump sources given. Will used value of '--db-prepared-snapshot'."
-        DB_DUMP_PATH=""
+        >&2 echo "ERROR: Both snapshot and dump sources given."
+        exit 1
     fi
 
-    #--target-ddl or --target-config or --clean-run-only
-    if (([ "$TARGET_DDL_DO" == "" ]  ||  [ "$TARGET_DDL_DO" == "null" ]) && ([ "$TARGET_CONFIG" == "" ]  ||  [ "$TARGET_CONFIG" == "null" ]) && ([ "$CLEAN_RUN_ONLY" == "" ]  || [ "$CLEAN_RUN_ONLY" == "null" ]))
+    if (([ -v TARGET_DDL_DO ] || [ -v TARGET_CONFIG ]) && [ -v CLEAN_RUN_ONLY ])
     then
-        >&2 echo "ERROR: Target of test not given."
+        >&2 echo "ERROR: Cannot be execute 'target run' and 'clean run' at the same time."
         exit 1;
     fi
 
-    if (([ "$TARGET_DDL_DO" != "" ]  &&  [ "$TARGET_CONFIG" != "" ]) || ([ "$CLEAN_RUN_ONLY" != "" ] && [ "$TARGET_DDL_DO" != "" ]) || ([ "$TARGET_CONFIG" != "" ] && [ "$CLEAN_RUN_ONLY" != "" ]))
+    if (([ ! -v TARGET_DDL_UNDO ] && [ -v TARGET_DDL_DO ]) || ([ ! -v TARGET_DDL_UNDO ] && [ -v TARGET_DDL_DO ]))
     then
-        >&2 echo "ERROR: 2 or more targets given."
-        exit 1;
-    fi
-
-    if ([ "$TARGET_DDL_DO" != "" ]  && ([ "$TARGET_DDL_UNDO" == "" ]  ||  [ "$TARGET_DDL_UNDO" == "null" ]))
-    then
-        >&2 echo "ERROR: Target ddl code given but undo code not given."
+        >&2 echo "ERROR: DDL code must have do and undo part."
         exit 1;
     fi
 }
@@ -194,11 +192,11 @@ function waitDockerReady() {
 }
 
 function createDockerMachine() {
-echo "Attempt to create a docker machine..."
-docker-machine create --driver=amazonec2 --amazonec2-request-spot-instance \
-  --amazonec2-keypair-name="$AWS_KEY_PAIR" --amazonec2-ssh-keypath="$AWS_KEY_PATH" \
-  --amazonec2-block-duration-minutes=60 \
-  --amazonec2-instance-type=$AWS_EC2_TYPE --amazonec2-spot-price=$EC2_PRICE $DOCKER_MACHINE &
+    echo "Attempt to create a docker machine..."
+    docker-machine create --driver=amazonec2 --amazonec2-request-spot-instance \
+      --amazonec2-keypair-name="$AWS_KEY_PAIR" --amazonec2-ssh-keypath="$AWS_KEY_PATH" \
+      --amazonec2-block-duration-minutes=60 \
+      --amazonec2-instance-type=$AWS_EC2_TYPE --amazonec2-spot-price=$EC2_PRICE $DOCKER_MACHINE &
 }
 
 ## Get max price from history and apply multiplier
@@ -247,22 +245,14 @@ containerHash=$(docker `docker-machine config $DOCKER_MACHINE` run --name="pg_na
 dockerConfig=$(docker-machine config $DOCKER_MACHINE)
 
 function cleanup {
-  cmdout=$(docker-machine rm --force $DOCKER_MACHINE)
-  echo "Finished working with machine $DOCKER_MACHINE, termination requested, current status: $cmdout"
-  echo "Remove temp files..."
-  if [ -f "$TMP_PATH/conf_$DOCKER_MACHINE.tmp" ]; then
-    rm /tmp/conf_$DOCKER_MACHINE.tmp
-  fi
-  if [ -f "$TMP_PATH/ddl_do_$DOCKER_MACHINE.sql" ]; then
-    rm $TMP_PATH/ddl_do_$DOCKER_MACHINE.sql
-  fi
-  if [ -f "$TMP_PATH/ddl_undo_$DOCKER_MACHINE.sql" ]; then
-    rm $TMP_PATH/ddl_undo_$DOCKER_MACHINE.sql
-  fi
-  if [ -f "$TMP_PATH/queries_custom_$DOCKER_MACHINE.sql" ]; then
-    rm $TMP_PATH/queries_custom_$DOCKER_MACHINE.sql
-  fi
-  echo "Done."
+    cmdout=$(docker-machine rm --force $DOCKER_MACHINE)
+    echo "Finished working with machine $DOCKER_MACHINE, termination requested, current status: $cmdout"
+    echo "Remove temp files..."
+    rm -f "$TMP_PATH/conf_$DOCKER_MACHINE.tmp"
+    rm -f "$TMP_PATH/ddl_do_$DOCKER_MACHINE.sql"
+    rm -f "$TMP_PATH/ddl_undo_$DOCKER_MACHINE.sql"
+    rm -f "$TMP_PATH/queries_custom_$DOCKER_MACHINE.sql"
+    echo "Done."
 }
 trap cleanup EXIT
 
@@ -360,6 +350,14 @@ sshdo bash -c "git clone https://github.com/dmius/pgbadger.git /machine_home/pgb
 echo "Prepare JSON log..."
 sshdo bash -c "/machine_home/pgbadger/pgbadger -j $(cat /proc/cpuinfo | grep processor | wc -l) --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /$DOCKER_MACHINE.json"
 echo "Upload JSON log..."
+
+if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
+    sshdo s3cmd put /$DOCKER_MACHINE.json $ARTIFACTS_DESTINATION/
+else
+    sshdo cp /$DOCKER_MACHINE.json /machine_home/
+    docker-machine scp $DOCKER_MACHINE:/home/ubuntu/$DOCKER_MACHINE.json  $ARTIFACTS_DESTINATION/
+fi
+
 sshdo s3cmd put /$DOCKER_MACHINE.json $ARTIFACTS_DESTINATION/
 
 echo "Apply DDL undo SQL code from /machine_home/ddl_undo_$DOCKER_MACHINE.sql"
