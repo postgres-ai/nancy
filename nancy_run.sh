@@ -358,8 +358,6 @@ else
     docker-machine scp $DOCKER_MACHINE:/home/ubuntu/$DOCKER_MACHINE.json  $ARTIFACTS_DESTINATION/
 fi
 
-sshdo s3cmd put /$DOCKER_MACHINE.json $ARTIFACTS_DESTINATION/
-
 echo "Apply DDL undo SQL code from /machine_home/ddl_undo_$DOCKER_MACHINE.sql"
 if [ -f "$TMP_PATH/ddl_undo_$DOCKER_MACHINE.sql" ]; then
     sshdo bash -c "psql -U postgres test -E -f /machine_home/ddl_undo_$DOCKER_MACHINE.sql"
