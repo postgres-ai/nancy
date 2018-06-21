@@ -40,6 +40,8 @@ while true; do
         TARGET_CONFIG="$2"; shift 2 ;;
     --artifacts-destination )
         ARTIFACTS_DESTINATION="$2"; shift 2 ;;
+    --artifacts-filename )
+        ARTIFACTS_FILENAME="$2"; shift 2 ;;
 
     --aws-keypair-name )
         AWS_KEY_PAIR="$2"; shift 2 ;;
@@ -162,6 +164,12 @@ function checkParams() {
     then
         >&2 echo "WARNING: Artifacts destination not given. Will used ./"
         ARTIFACTS_DESTINATION="."
+    fi
+
+    if [ ! -v ARTIFACTS_FILENAME ]
+    then
+        >&2 echo "WARNING: Artifacts destination not given. Will used $$DOCKER_MACHINE"
+        ARTIFACTS_FILENAME=$DOCKER_MACHINE
     fi
 }
 
@@ -348,14 +356,14 @@ fi
 ## Get statistics
 sshdo bash -c "git clone https://github.com/dmius/pgbadger.git /machine_home/pgbadger"
 echo "Prepare JSON log..."
-sshdo bash -c "/machine_home/pgbadger/pgbadger -j $(cat /proc/cpuinfo | grep processor | wc -l) --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /$DOCKER_MACHINE.json"
+sshdo bash -c "/machine_home/pgbadger/pgbadger -j $(cat /proc/cpuinfo | grep processor | wc -l) --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /$ARTIFACTS_FILENAME.json"
 echo "Upload JSON log..."
 
 if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
-    sshdo s3cmd put /$DOCKER_MACHINE.json $ARTIFACTS_DESTINATION/
+    sshdo s3cmd put /$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
 else
-    sshdo cp /$DOCKER_MACHINE.json /machine_home/
-    docker-machine scp $DOCKER_MACHINE:/home/ubuntu/$DOCKER_MACHINE.json  $ARTIFACTS_DESTINATION/
+    sshdo cp /$ARTIFACTS_FILENAME.json /machine_home/
+    docker-machine scp $DOCKER_MACHINE:/home/ubuntu/$ARTIFACTS_FILENAME.json  $ARTIFACTS_DESTINATION/
 fi
 
 echo "Apply DDL undo SQL code from /machine_home/ddl_undo_$DOCKER_MACHINE.sql"
