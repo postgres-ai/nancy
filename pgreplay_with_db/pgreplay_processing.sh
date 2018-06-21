@@ -22,13 +22,13 @@ function drop_sessions2db {
 
 function recreate_db {
   echo "Recreating DB for convertize..."
-  echo "Droping  DB=$dbname sessions if exist"
+  echo "Dropping  DB \"$dbname\" sessions if exist"
   drop_sessions2db
-  echo "Droping  DB=$dbname"
+  echo "Dropping  DB \"$dbname\""
   dropdb $dbname
-  echo "Creating DB=$dbname"
+  echo "Creating DB \"$dbname\""
   createdb $dbname
-  echo "Creating Table=postgres_log"
+  echo "Creating table \"postgres_log\""
   psql -q -A -t $dbname -c 'set statement_timeout = 0' -c 'CREATE TABLE postgres_log
   (
     log_time timestamp(3) with time zone,
