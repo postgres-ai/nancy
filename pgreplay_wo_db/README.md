@@ -2,7 +2,9 @@
 далее awk скрипт режет по этому сепаратору (RS) и разбивает на поля по формату (FPAT)
 
 ```bash
-$ cat example.log | sed -r 's/^([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3} .*)$/\nseparator_by_yorick\n\1/' | awk -f prog.awk >/dev/null
+$ cat example.log \
+  | sed -r 's/^([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3} .*)$/\nseparator_by_yorick\n\1/' \
+  | awk -f prog.awk >/dev/null
 ```
 
 Вычисления времени из полей строки:
@@ -25,6 +27,8 @@ log_time = log_time - CAST(substring(message FROM E'\\d+.\\d* ms') AS interval)
   ```
 
 ```bash
-$ date -u -d @$(echo "scale=6; $(($(date -u --date='2018-06-05 21:02:18.373+00' +'%s%6N') - $(date -u --date='1970-01-01 21:02:00.936579' +'%6N')))/1000000" | bc) +"%Y-%m-%d %H:%M:%S.%6N"
+$ date -u -d @$(echo "scale=6; $(($(date -u --date='2018-06-05 21:02:18.373+00' +'%s%6N') - \
+  $(date -u --date='1970-01-01 21:02:00.936579' +'%6N')))/1000000" \
+  | bc) +"%Y-%m-%d %H:%M:%S.%6N"
 2018-06-05 21:02:17.436421
 ```
