@@ -99,21 +99,21 @@ function checkParams() {
 
     if [ ! -v PG_VERSION ]
     then
-        >&2 echo "WARNING: Postgres version not given. Will used 9.6."
+        >&2 echo "WARNING: Postgres version not given. Will use 9.6."
         PG_VERSION="9.6"
     fi
 
     if [ ! -v TMP_PATH ]
     then
         TMP_PATH="/var/tmp/nancy_run"
-        >&2 echo "WARNING: Temp path not given. Will used $TMP_PATH"
+        >&2 echo "WARNING: Temp path not given. Will use $TMP_PATH"
     fi
     #make tmp path if not found
     [ ! -d $TMP_PATH ] && mkdir $TMP_PATH
 
     if [ ! -v S3_CFG_PATH ]
     then
-        >&2 echo "WARNING: S3 config file path not given. Will used ~/.s3cfg"
+        >&2 echo "WARNING: S3 config file path not given. Will use ~/.s3cfg"
         S3_CFG_PATH="~/.s3cfg"
     fi
 
@@ -162,13 +162,13 @@ function checkParams() {
 
     if [ ! -v ARTIFACTS_DESTINATION ]
     then
-        >&2 echo "WARNING: Artifacts destination not given. Will used ./"
+        >&2 echo "WARNING: Artifacts destination not given. Will use ./"
         ARTIFACTS_DESTINATION="."
     fi
 
     if [ ! -v ARTIFACTS_FILENAME ]
     then
-        >&2 echo "WARNING: Artifacts destination not given. Will used $$DOCKER_MACHINE"
+        >&2 echo "WARNING: Artifacts destination not given. Will use $DOCKER_MACHINE"
         ARTIFACTS_FILENAME=$DOCKER_MACHINE
     fi
 }
