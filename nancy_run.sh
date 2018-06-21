@@ -40,6 +40,8 @@ while true; do
         TARGET_CONFIG="$2"; shift 2 ;;
     --artifacts-destination )
         ARTIFACTS_DESTINATION="$2"; shift 2 ;;
+    --artifacts-filename )
+        ARTIFACTS_FILENAME="$2"; shift 2 ;;
 
     --aws-keypair-name )
         AWS_KEY_PAIR="$2"; shift 2 ;;
@@ -97,21 +99,21 @@ function checkParams() {
 
     if [ ! -v PG_VERSION ]
     then
-        >&2 echo "WARNING: Postgres version not given. Will used 9.6."
+        >&2 echo "WARNING: Postgres version not given. Will use 9.6."
         PG_VERSION="9.6"
     fi
 
     if [ ! -v TMP_PATH ]
     then
         TMP_PATH="/var/tmp/nancy_run"
-        >&2 echo "WARNING: Temp path not given. Will used $TMP_PATH"
+        >&2 echo "WARNING: Temp path not given. Will use $TMP_PATH"
     fi
     #make tmp path if not found
     [ ! -d $TMP_PATH ] && mkdir $TMP_PATH
 
     if [ ! -v S3_CFG_PATH ]
     then
-        >&2 echo "WARNING: S3 config file path not given. Will used ~/.s3cfg"
+        >&2 echo "WARNING: S3 config file path not given. Will use ~/.s3cfg"
         S3_CFG_PATH="~/.s3cfg"
     fi
 
@@ -160,8 +162,14 @@ function checkParams() {
 
     if [ ! -v ARTIFACTS_DESTINATION ]
     then
-        >&2 echo "WARNING: Artifacts destination not given. Will used ./"
+        >&2 echo "WARNING: Artifacts destination not given. Will use ./"
         ARTIFACTS_DESTINATION="."
+    fi
+
+    if [ ! -v ARTIFACTS_FILENAME ]
+    then
+        >&2 echo "WARNING: Artifacts destination not given. Will use $DOCKER_MACHINE"
+        ARTIFACTS_FILENAME=$DOCKER_MACHINE
     fi
 }
 
@@ -348,14 +356,14 @@ fi
 ## Get statistics
 sshdo bash -c "git clone https://github.com/dmius/pgbadger.git /machine_home/pgbadger"
 echo "Prepare JSON log..."
-sshdo bash -c "/machine_home/pgbadger/pgbadger -j $(cat /proc/cpuinfo | grep processor | wc -l) --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /$DOCKER_MACHINE.json"
+sshdo bash -c "/machine_home/pgbadger/pgbadger -j $(cat /proc/cpuinfo | grep processor | wc -l) --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /$ARTIFACTS_FILENAME.json"
 echo "Upload JSON log..."
 
 if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
-    sshdo s3cmd put /$DOCKER_MACHINE.json $ARTIFACTS_DESTINATION/
+    sshdo s3cmd put /$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
 else
-    sshdo cp /$DOCKER_MACHINE.json /machine_home/
-    docker-machine scp $DOCKER_MACHINE:/home/ubuntu/$DOCKER_MACHINE.json  $ARTIFACTS_DESTINATION/
+    sshdo cp /$ARTIFACTS_FILENAME.json /machine_home/
+    docker-machine scp $DOCKER_MACHINE:/home/ubuntu/$ARTIFACTS_FILENAME.json  $ARTIFACTS_DESTINATION/
 fi
 
 echo "Apply DDL undo SQL code from /machine_home/ddl_undo_$DOCKER_MACHINE.sql"
