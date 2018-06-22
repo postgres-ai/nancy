@@ -15,28 +15,37 @@ while true; do
     --pg-version )
         PG_VERSION="$2"; shift 2 ;;
     --pg-config )
-        PG_CONFIG="$2"; shift 2 ;;
+        #Still unsupported
+        PG_CONFIG="$2"; shift 2;;
     --db-prepared-snapshot )
+        #Still unsupported
         DB_PREPARED_SNAPSHOT="$2"; shift 2 ;;
     --db-dump-path )
         DB_DUMP_PATH="$2"; shift 2 ;;
     --after-db-init-code )
+        #s3 url|filename +
         AFTER_DB_INIT_CODE="$2"; shift 2 ;;
     --workload-full-path )
+        #s3 url
         WORKLOAD_FULL_PATH="$2"; shift 2 ;;
     --workload-basis-path )
+        #Still unsuported
         WORKLOAD_BASIS_PATH="$2"; shift 2 ;;
     --workload-custom-sql )
+        #s3 url|filename +
         WORKLOAD_CUSTOM_SQL="$2"; shift 2 ;;
     --workload-replay-speed )
         WORKLOAD_REPLAY_SPEED="$2"; shift 2 ;;
     --target-ddl-do )
+        #s3 url|filename
         TARGET_DDL_DO="$2"; shift 2 ;;
     --target-ddl-undo )
+        #s3 url|filename
         TARGET_DDL_UNDO="$2"; shift 2 ;;
     --clean-run-only )
         CLEAN_RUN_ONLY=1; shift 1 ;;
     --target-config )
+        #s3 url|filename
         TARGET_CONFIG="$2"; shift 2 ;;
     --artifacts-destination )
         ARTIFACTS_DESTINATION="$2"; shift 2 ;;
@@ -171,9 +180,76 @@ function checkParams() {
         >&2 echo "WARNING: Artifacts destination not given. Will use $DOCKER_MACHINE"
         ARTIFACTS_FILENAME=$DOCKER_MACHINE
     fi
+
+    if [ -v AFTER_DB_INIT_CODE ]
+    then
+        if [[ ! $AFTER_DB_INIT_CODE =~ "s3://" ]]
+        then
+            if [ ! -f "$AFTER_DB_INIT_CODE" ]
+            then
+                >&2 echo "WARNING: file $AFTER_DB_INIT_CODE not found"
+            else
+                echo "$AFTER_DB_INIT_CODE found"
+            fi
+        fi
+    fi
+
+    if [ -v WORKLOAD_CUSTOM_SQL ]
+    then
+        if [[ ! $WORKLOAD_CUSTOM_SQL =~ "s3://" ]]
+        then
+            if [ ! -f "$WORKLOAD_CUSTOM_SQL" ]
+            then
+                >&2 echo "WARNING: file $WORKLOAD_CUSTOM_SQL not found"
+            else
+                echo "$WORKLOAD_CUSTOM_SQL found"
+            fi
+        fi
+    fi
+
+    if [ -v TARGET_DDL_DO ]
+    then
+        if [[ ! $TARGET_DDL_DO =~ "s3://" ]]
+        then
+            if [ ! -f "$TARGET_DDL_DO" ]
+            then
+                >&2 echo "WARNING: file $TARGET_DDL_DO not found"
+            else
+                echo "$TARGET_DDL_DO found"
+            fi
+        fi
+    fi
+
+    if [ -v TARGET_DDL_UNDO ]
+    then
+        if [[ ! $TARGET_DDL_UNDO =~ "s3://" ]]
+        then
+            if [ ! -f "$TARGET_DDL_UNDO" ]
+            then
+                >&2 echo "WARNING: file $TARGET_DDL_UNDO not found"
+            else
+                echo "$TARGET_DDL_UNDO found"
+            fi
+        fi
+    fi
+
+    if [ -v TARGET_CONFIG ]
+    then
+        if [[ ! $TARGET_CONFIG =~ "s3://" ]]
+        then
+            if [ ! -f "$TARGET_CONFIG" ]
+            then
+                >&2 echo "WARNING: file $TARGET_CONFIG not found"
+            else
+                echo "$TARGET_CONFIG found"
+            fi
+        fi
+    fi
 }
 
 checkParams;
+
+#exit 1;
 
 set -ueo pipefail
 [ $DEBUG -eq 1 ] && set -ueox pipefail # to debug
@@ -189,7 +265,8 @@ function waitDockerReady() {
         ((STOP==1)) && return 0
         if [ $checkPrice -eq 1 ]
         then
-            status=$(aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" | jq  '.SpotInstanceRequests[] | .Status.Code' | tail -n 1 )
+            #status=$(aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" | jq  '.SpotInstanceRequests[] |  .Status.Code' | tail -n 1 )
+            status=$(aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" | jq  '.SpotInstanceRequests | sort_by(.CreateTime) | .[] | .Status.Code' | tail -n 1)
             if [ "$status" == "\"price-too-low\"" ]
             then
                 echo "price-too-low"; # this value is result of function (not message for user), will check later
@@ -264,31 +341,6 @@ function cleanup {
 }
 trap cleanup EXIT
 
-## Prepare conf, queries and dump files
-if ([ "$TARGET_CONFIG" != "" ]  &&  [ "$TARGET_CONFIG" != "null" ])
-then
-    echo "TARGET_CONFIG is not empty: $TARGET_CONFIG"
-    echo "$TARGET_CONFIG" > $TMP_PATH/conf_$DOCKER_MACHINE.tmp
-fi
-
-if ([ -v TARGET_DDL_DO ] && [ "$TARGET_DDL_DO" != "" ])
-then
-    echo "TARGET_DDL_DO is not empty: $TARGET_DDL_DO"
-    echo "$TARGET_DDL_DO" > $TMP_PATH/ddl_do_$DOCKER_MACHINE.sql
-fi
-
-if ([ -v TARGET_DDL_UNDO ] && [ "$TARGET_DDL_UNDO" != "" ])
-then
-    echo "TARGET_DDL_UNDO is not empty: $TARGET_DDL_UNDO"
-    echo "$TARGET_DDL_UNDO" > $TMP_PATH/ddl_undo_$DOCKER_MACHINE.sql
-fi
-
-if ([ -v WORKLOAD_CUSTOM_SQL ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ])
-then
-    echo "WORKLOAD_CUSTOM_SQL is not empty: $WORKLOAD_CUSTOM_SQL"
-    echo "$WORKLOAD_CUSTOM_SQL" > $TMP_PATH/queries_custom_$DOCKER_MACHINE.sql
-fi
-
 shopt -s expand_aliases
 alias sshdo='docker $dockerConfig exec -i pg_nancy '
 
@@ -296,18 +348,43 @@ alias sshdo='docker $dockerConfig exec -i pg_nancy '
 docker-machine scp $S3_CFG_PATH $DOCKER_MACHINE:/home/ubuntu
 sshdo cp /machine_home/.s3cfg /root/.s3cfg
 sshdo s3cmd sync $DB_DUMP_PATH ./
-if [ -f "$TMP_PATH/conf_$DOCKER_MACHINE.tmp" ]; then
-    docker-machine scp $TMP_PATH/conf_$DOCKER_MACHINE.tmp $DOCKER_MACHINE:/home/ubuntu
+if ([ -v TARGET_CONFIG ] && [ "$TARGET_CONFIG" != "" ])
+then
+    if [[ $TARGET_CONFIG =~ "s3://" ]]; then
+        sshdo s3cmd sync $TARGET_CONFIG /machine_home/
+    else
+        docker-machine scp $TARGET_CONFIG $DOCKER_MACHINE:/home/ubuntu
+    fi
 fi
-if [ -f "$TMP_PATH/ddl_do_$DOCKER_MACHINE.sql" ]; then
-    docker-machine scp $TMP_PATH/ddl_do_$DOCKER_MACHINE.sql $DOCKER_MACHINE:/home/ubuntu
+
+if ([ -v TARGET_DDL_DO ] && [ "$TARGET_DDL_DO" != "" ])
+then
+    if [[ $TARGET_DDL_DO =~ "s3://" ]]; then
+        sshdo s3cmd sync $TARGET_DDL_DO /machine_home/
+    else
+        docker-machine scp $TARGET_DDL_DO $DOCKER_MACHINE:/home/ubuntu
+    fi
 fi
-if [ -f "$TMP_PATH/ddl_undo_$DOCKER_MACHINE.sql" ]; then
-    docker-machine scp $TMP_PATH/ddl_undo_$DOCKER_MACHINE.sql $DOCKER_MACHINE:/home/ubuntu
+
+if ([ -v TARGET_DDL_UNDO ] && [ "$TARGET_DDL_UNDO" != "" ])
+then
+    if [[ $TARGET_DDL_UNDO =~ "s3://" ]]; then
+        sshdo s3cmd sync $TARGET_DDL_UNDO /machine_home/
+    else
+        docker-machine scp $TARGET_DDL_UNDO $DOCKER_MACHINE:/home/ubuntu
+    fi
 fi
-if [ -f "$TMP_PATH/queries_custom_$DOCKER_MACHINE.sql" ]; then
-    docker-machine scp $TMP_PATH/queries_custom_$DOCKER_MACHINE.sql $DOCKER_MACHINE:/home/ubuntu
+
+if ([ -v WORKLOAD_CUSTOM_SQL ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ])
+then
+    WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
+    if [[ $WORKLOAD_CUSTOM_SQL =~ "s3://" ]]; then
+        sshdo s3cmd sync $WORKLOAD_CUSTOM_SQL /machine_home/
+    else
+        docker-machine scp $WORKLOAD_CUSTOM_SQL $DOCKER_MACHINE:/home/ubuntu
+    fi
 fi
+
 if ([ "$WORKLOAD_FULL_PATH" != "" ]  &&  [ "$WORKLOAD_FULL_PATH" != "null" ])
 then
     sshdo s3cmd sync $WORKLOAD_FULL_PATH ./
@@ -321,17 +398,25 @@ sshdo bash -c "bzcat ./$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgr
 # After init database sql code apply
 if ([ -v AFTER_DB_INIT_CODE ] && [ "$AFTER_DB_INIT_CODE" != "" ])
 then
-    sshdo psql -U postgres test -c "$AFTER_DB_INIT_CODE"
+    AFTER_DB_INIT_CODE_FILENAME=$(basename $AFTER_DB_INIT_CODE)
+    if [[ $AFTER_DB_INIT_CODE =~ "s3://" ]]; then
+        sshdo s3cmd sync $AFTER_DB_INIT_CODE /machine_home/
+    else
+        docker-machine scp $AFTER_DB_INIT_CODE $DOCKER_MACHINE:/home/ubuntu
+    fi
+    sshdo bash -c "psql -U postgres test -E -f /machine_home/$AFTER_DB_INIT_CODE_FILENAME"
 fi
 # Apply DDL code
-echo "Apply DDL SQL code from /machine_home/ddl_do_$DOCKER_MACHINE.sql"
-if [ -f "$TMP_PATH/ddl_do_$DOCKER_MACHINE.sql" ]; then
-    sshdo bash -c "psql -U postgres test -E -f /machine_home/ddl_do_$DOCKER_MACHINE.sql"
+echo "Apply DDL SQL code"
+if ([ -v TARGET_DDL_DO ] && [ "$TARGET_DDL_DO" != "" ]); then
+    TARGET_DDL_DO_FILENAME=$(basename $TARGET_DDL_DO)
+    sshdo bash -c "psql -U postgres test -E -f /machine_home/$TARGET_DDL_DO_FILENAME"
 fi
 # Apply postgres configuration
 echo "Apply postgres conf from /machine_home/conf_$DOCKER_MACHINE.tmp"
-if [ -f "$TMP_PATH/conf_$DOCKER_MACHINE.tmp" ]; then
-    sshdo bash -c "cat /machine_home/conf_$DOCKER_MACHINE.tmp >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+if ([ -v TARGET_CONFIG ] && [ "$TARGET_CONFIG" != "" ]); then
+    TARGET_CONFIG_FILENAME=$(basename $TARGET_CONFIG)
+    sshdo bash -c "cat /machine_home/$TARGET_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
     sshdo bash -c "sudo /etc/init.d/postgresql restart"
 fi
 # Clear statistics and log
@@ -340,16 +425,17 @@ sshdo vacuumdb -U postgres test -j $(cat /proc/cpuinfo | grep processor | wc -l)
 sshdo bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
 # Execute workload
 echo "Execute workload..."
-if ([ "$WORKLOAD_FULL_PATH" != "" ]  &&  [ "$WORKLOAD_FULL_PATH" != "null" ])
+if ([ -v WORKLOAD_FULL_PATH ] && [ "$WORKLOAD_FULL_PATH" != "" ]  &&  [ "$WORKLOAD_FULL_PATH" != "null" ])
 then
     echo "Execute pgreplay queries..."
     sshdo psql -U postgres test -c 'create role testuser superuser login;'
     WORKLOAD_FILE_NAME=$(basename $WORKLOAD_FULL_PATH)
     sshdo bash -c "pgreplay -r -j ./$WORKLOAD_FILE_NAME"
 else
-    if [ -f "$TMP_PATH/queries_custom_$DOCKER_MACHINE.sql" ]; then
+    if ([ -v WORKLOAD_CUSTOM_SQL ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
+        WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
         echo "Execute custom sql queries..."
-        sshdo bash -c "psql -U postgres test -E -f /machine_home/queries_custom_$DOCKER_MACHINE.sql"
+        sshdo bash -c "psql -U postgres test -E -f /machine_home/$WORKLOAD_CUSTOM_FILENAME"
     fi
 fi
 
@@ -363,12 +449,13 @@ if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
     sshdo s3cmd put /$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
 else
     sshdo cp /$ARTIFACTS_FILENAME.json /machine_home/
-    docker-machine scp $DOCKER_MACHINE:/home/ubuntu/$ARTIFACTS_FILENAME.json  $ARTIFACTS_DESTINATION/
+    docker-machine scp $DOCKER_MACHINE:/home/ubuntu/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
 fi
 
 echo "Apply DDL undo SQL code from /machine_home/ddl_undo_$DOCKER_MACHINE.sql"
-if [ -f "$TMP_PATH/ddl_undo_$DOCKER_MACHINE.sql" ]; then
-    sshdo bash -c "psql -U postgres test -E -f /machine_home/ddl_undo_$DOCKER_MACHINE.sql"
+if ([ -v TARGET_DDL_UNDO ] && [ "$TARGET_DDL_UNDO" != "" ]); then
+    TARGET_DDL_UNDO_FILENAME=$(basename $TARGET_DDL_UNDO)
+    sshdo bash -c "psql -U postgres test -E -f /machine_home/$TARGET_DDL_UNDO_FILENAME"
 fi
 
 sleep $DEBUG_TIMEOUT
