@@ -10,8 +10,8 @@ DEBUG_TIMEOUT=0
 while true; do
   case "$1" in
     -d | --debug ) DEBUG=1; shift ;;
-    --aws-ec2-type )
-        AWS_EC2_TYPE="$2"; shift 2 ;;
+    --run-on )
+        RUN_ON="$2"; shift 2 ;;
     --pg-version )
         PG_VERSION="$2"; shift 2 ;;
     --pg-config )
@@ -50,10 +50,13 @@ while true; do
     --artifacts-filename )
         ARTIFACTS_FILENAME="$2"; shift 2 ;;
 
+    --aws-ec2-type )
+        AWS_EC2_TYPE="$2"; shift 2 ;;
     --aws-keypair-name )
         AWS_KEY_PAIR="$2"; shift 2 ;;
     --aws-ssh-key-path )
         AWS_KEY_PATH="$2"; shift 2 ;;
+
     --s3-cfg-path )
         S3_CFG_PATH="$2"; shift 2 ;;
     --tmp-path )
@@ -66,9 +69,12 @@ while true; do
   esac
 done
 
+RUN_ON=${RUN_ON:-localhost}
+
 if [ $DEBUG -eq 1 ]
 then
     echo "debug: ${DEBUG}"
+    echo "run_on: ${RUN_ON}"
     echo "aws_ec2_type: ${AWS_EC2_TYPE}"
     echo "pg_version: ${PG_VERSION}"
     echo "pg_config: ${PG_CONFIG}"
@@ -131,16 +137,22 @@ function checkPath() {
 
 ## Check params
 function checkParams() {
-    if ([ ! -v AWS_KEY_PAIR ] || [ ! -v AWS_KEY_PATH ])
-    then
-        >&2 echo "ERROR: AWS keys not given."
-        exit 1
+    if [ "$RUN_ON" != "aws" ] && [ "$RUN_ON" != "localhost" ]; then
+      >&2 echo "ERROR: incorrect value for option --run-on"
+      exit 1
     fi
+    if [ "$RUN_ON" = "aws" ]; then
+      if [ ! -v AWS_KEY_PAIR ] || [ ! -v AWS_KEY_PATH ]
+      then
+          >&2 echo "ERROR: AWS keys not given."
+          exit 1
+      fi
 
-    if [ ! -v AWS_EC2_TYPE ]
-    then
-        >&2 echo "ERROR: Instance type not given."
-        exit 1
+      if [ ! -v AWS_EC2_TYPE ]
+      then
+          >&2 echo "ERROR: AWS EC2 Instance type not given."
+          exit 1
+      fi
     fi
 
     if [ ! -v PG_VERSION ]
@@ -264,35 +276,43 @@ function createDockerMachine() {
       --amazonec2-instance-type=$AWS_EC2_TYPE --amazonec2-spot-price=$EC2_PRICE $DOCKER_MACHINE &
 }
 
-## Get max price from history and apply multiplier
-prices=$(aws --region=us-east-1 ec2 describe-spot-price-history --instance-types $AWS_EC2_TYPE --no-paginate --start-time=$(date +%s) --product-descriptions="Linux/UNIX (Amazon VPC)" --query 'SpotPriceHistory[*].{az:AvailabilityZone, price:SpotPrice}')
-maxprice=$(echo $prices | jq 'max_by(.price) | .price')
-maxprice="${maxprice/\"/}"
-maxprice="${maxprice/\"/}"
-echo "Max price from history: $maxprice"
-multiplier="1.1"
-price=$(echo "$maxprice * $multiplier" | bc -l)
-echo "Increased price: $price"
-EC2_PRICE=$price
+if [[ "$RUN_ON" = "localhost" ]]; then
+  >&2 echo "ERROR: running locally is not yet implemented"
+  exit 1;
+elif [[ "$RUN_ON" = "aws" ]]; then
+  ## Get max price from history and apply multiplier
+  prices=$(aws --region=us-east-1 ec2 describe-spot-price-history --instance-types $AWS_EC2_TYPE --no-paginate --start-time=$(date +%s) --product-descriptions="Linux/UNIX (Amazon VPC)" --query 'SpotPriceHistory[*].{az:AvailabilityZone, price:SpotPrice}')
+  maxprice=$(echo $prices | jq 'max_by(.price) | .price')
+  maxprice="${maxprice/\"/}"
+  maxprice="${maxprice/\"/}"
+  echo "Max price from history: $maxprice"
+  multiplier="1.1"
+  price=$(echo "$maxprice * $multiplier" | bc -l)
+  echo "Increased price: $price"
+  EC2_PRICE=$price
 
-createDockerMachine;
-status=$(waitDockerReady "docker-machine create" "$DOCKER_MACHINE" 1)
-if [ "$status" == "price-too-low" ]
-then
-    echo "Price $price is too low for $AWS_EC2_TYPE instance. Try detect actual."
-    corrrectPriceForLastFailedRequest=$(aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" | jq  '.SpotInstanceRequests[] | select(.Status.Code == "price-too-low") | .Status.Message' | grep -Eo '[0-9]+[.][0-9]+' | tail -n 1 &)
-    if ([ "$corrrectPriceForLastFailedRequest" != "" ]  &&  [ "$corrrectPriceForLastFailedRequest" != "null" ])
-    then
-        EC2_PRICE=$corrrectPriceForLastFailedRequest
-        #update docker machine name
-        CURRENT_TS=$(date +%Y%m%d_%H%M%S%N_%Z)
-        DOCKER_MACHINE="nancy-$CURRENT_TS"
-        DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
-        #try start docker machine name with new price
-        echo "Attempt to create a new docker machine: $DOCKER_MACHINE with price: $EC2_PRICE."
-        createDockerMachine;
-        waitDockerReady "docker-machine create" "$DOCKER_MACHINE" 0;
-    fi
+  createDockerMachine;
+  status=$(waitDockerReady "docker-machine create" "$DOCKER_MACHINE" 1)
+  if [ "$status" == "price-too-low" ]
+  then
+      echo "Price $price is too low for $AWS_EC2_TYPE instance. Try detect actual."
+      corrrectPriceForLastFailedRequest=$(aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" | jq  '.SpotInstanceRequests[] | select(.Status.Code == "price-too-low") | .Status.Message' | grep -Eo '[0-9]+[.][0-9]+' | tail -n 1 &)
+      if [ "$corrrectPriceForLastFailedRequest" != "" ]  &&  [ "$corrrectPriceForLastFailedRequest" != "null" ]
+      then
+          EC2_PRICE=$corrrectPriceForLastFailedRequest
+          #update docker machine name
+          CURRENT_TS=$(date +%Y%m%d_%H%M%S%N_%Z)
+          DOCKER_MACHINE="nancy-$CURRENT_TS"
+          DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
+          #try start docker machine name with new price
+          echo "Attempt to create a new docker machine: $DOCKER_MACHINE with price: $EC2_PRICE."
+          createDockerMachine;
+          waitDockerReady "docker-machine create" "$DOCKER_MACHINE" 0;
+      else
+        >&2 echo "ERROR: Cannot determine actual price for the instance $AWS_EC2_TYPE."
+        exit 1;
+      fi
+  fi
 fi
 
 echo "Check a docker machine status."
@@ -307,7 +327,7 @@ echo "Docker $DOCKER_MACHINE is running."
 
 `aws ecr get-login --no-include-email`
 containerHash=$(docker `docker-machine config $DOCKER_MACHINE` run --name="pg_nancy" \
-  -v /home/ubuntu:/machine_home -dit "950603059350.dkr.ecr.us-east-1.amazonaws.com/nancy:postgres${PG_VERSION}")
+  -v /home/ubuntu:/machine_home -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}")
 dockerConfig=$(docker-machine config $DOCKER_MACHINE)
 
 function cleanup {
