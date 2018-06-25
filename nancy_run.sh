@@ -37,15 +37,15 @@ while true; do
     --workload-replay-speed )
         WORKLOAD_REPLAY_SPEED="$2"; shift 2 ;;
     --target-ddl-do )
-        #s3 url|filename
+        #s3 url|filename +
         TARGET_DDL_DO="$2"; shift 2 ;;
     --target-ddl-undo )
-        #s3 url|filename
+        #s3 url|filename +
         TARGET_DDL_UNDO="$2"; shift 2 ;;
     --clean-run-only )
         CLEAN_RUN_ONLY=1; shift 1 ;;
     --target-config )
-        #s3 url|filename
+        #s3 url|filename +
         TARGET_CONFIG="$2"; shift 2 ;;
     --artifacts-destination )
         ARTIFACTS_DESTINATION="$2"; shift 2 ;;
@@ -91,6 +91,46 @@ then
     echo "tmp-path: $TMP_PATH"
     echo "after-db-init-code: $AFTER_DB_INIT_CODE"
 fi
+
+function checkPath() {
+    if [ ! -v $1 ]
+    then
+        return 1
+    fi
+    eval path=\$$1
+    if [[ $path =~ "s3://" ]]
+    then
+        return 0; ## do not check
+    fi
+    if [[ $path =~ "file:///" ]]
+    then
+        path=${path/file:\/\//}
+        if [ -f $path ]
+        then
+            eval "$1=\"$path\"" # update original variable
+            return 0 # file found
+        else
+            return 2 # file not found
+        fi
+    fi
+    if [[ $path =~ "file://" ]]
+    then
+        curdir=$(pwd)
+        path=$curdir/${path/file:\/\//}
+        if [ -f $path ]
+        then
+            eval "$1=\"$path\"" # update original variable
+            return 0 # file found
+        else
+            return 3 # file not found
+        fi
+    fi
+    if [ -f $path ]
+    then
+        return 0;
+    fi
+    return -1 # incorrect path
+}
 
 ## Check params
 function checkParams() {
@@ -181,75 +221,24 @@ function checkParams() {
         ARTIFACTS_FILENAME=$DOCKER_MACHINE
     fi
 
-    if [ -v AFTER_DB_INIT_CODE ]
-    then
-        if [[ ! $AFTER_DB_INIT_CODE =~ "s3://" ]]
-        then
-            if [ ! -f "$AFTER_DB_INIT_CODE" ]
-            then
-                >&2 echo "WARNING: file $AFTER_DB_INIT_CODE not found"
-            else
-                echo "$AFTER_DB_INIT_CODE found"
-            fi
-        fi
-    fi
+    [ -v WORKLOAD_FULL_PATH ] && ! checkPath WORKLOAD_FULL_PATH && >&2 echo "WARNING: file $AFTER_DB_INIT_CODE not found"
 
-    if [ -v WORKLOAD_CUSTOM_SQL ]
-    then
-        if [[ ! $WORKLOAD_CUSTOM_SQL =~ "s3://" ]]
-        then
-            if [ ! -f "$WORKLOAD_CUSTOM_SQL" ]
-            then
-                >&2 echo "WARNING: file $WORKLOAD_CUSTOM_SQL not found"
-            else
-                echo "$WORKLOAD_CUSTOM_SQL found"
-            fi
-        fi
-    fi
+    [ -v WORKLOAD_BASIS_PATH ] && ! checkPath WORKLOAD_BASIS_PATH && >&2 echo "WARNING: file $WORKLOAD_BASIS_PATH not found"
 
-    if [ -v TARGET_DDL_DO ]
-    then
-        if [[ ! $TARGET_DDL_DO =~ "s3://" ]]
-        then
-            if [ ! -f "$TARGET_DDL_DO" ]
-            then
-                >&2 echo "WARNING: file $TARGET_DDL_DO not found"
-            else
-                echo "$TARGET_DDL_DO found"
-            fi
-        fi
-    fi
+    [ -v WORKLOAD_CUSTOM_SQL ] && ! checkPath WORKLOAD_CUSTOM_SQL && >&2 echo "WARNING: file $WORKLOAD_CUSTOM_SQL not found"
 
-    if [ -v TARGET_DDL_UNDO ]
-    then
-        if [[ ! $TARGET_DDL_UNDO =~ "s3://" ]]
-        then
-            if [ ! -f "$TARGET_DDL_UNDO" ]
-            then
-                >&2 echo "WARNING: file $TARGET_DDL_UNDO not found"
-            else
-                echo "$TARGET_DDL_UNDO found"
-            fi
-        fi
-    fi
+    [ -v DB_DUMP_PATH ] && ! checkPath DB_DUMP_PATH && >&2 echo "WARNING: file $DB_DUMP_PATH not found"
 
-    if [ -v TARGET_CONFIG ]
-    then
-        if [[ ! $TARGET_CONFIG =~ "s3://" ]]
-        then
-            if [ ! -f "$TARGET_CONFIG" ]
-            then
-                >&2 echo "WARNING: file $TARGET_CONFIG not found"
-            else
-                echo "$TARGET_CONFIG found"
-            fi
-        fi
-    fi
+    [ -v AFTER_DB_INIT_CODE ] && ! checkPath AFTER_DB_INIT_CODE && >&2 echo "WARNING: file $AFTER_DB_INIT_CODE not found"
+
+    [ -v TARGET_DDL_DO ] && ! checkPath TARGET_DDL_DO && >&2 echo "WARNING: file $TARGET_DDL_DO not found"
+
+    [ -v TARGET_DDL_UNDO ] && ! checkPath TARGET_DDL_UNDO && >&2 echo "WARNING: file $TARGET_DDL_UNDO not found"
+
+    [ -v TARGET_CONFIG ] && ! checkPath TARGET_CONFIG && >&2 echo "WARNING: file $TARGET_CONFIG not found"
 }
 
 checkParams;
-
-#exit 1;
 
 set -ueo pipefail
 [ $DEBUG -eq 1 ] && set -ueox pipefail # to debug
