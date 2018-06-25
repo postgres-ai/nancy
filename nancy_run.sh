@@ -447,6 +447,9 @@ if ([ -v TARGET_DDL_UNDO ] && [ "$TARGET_DDL_UNDO" != "" ]); then
     sshdo bash -c "psql -U postgres test -E -f /machine_home/$TARGET_DDL_UNDO_FILENAME"
 fi
 
+echo "Run done!"
+echo "Result log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json"
+
 sleep $DEBUG_TIMEOUT
 
 echo Bye!
