@@ -42,8 +42,6 @@ while true; do
     --target-ddl-undo )
         #s3 url|filename +
         TARGET_DDL_UNDO="$2"; shift 2 ;;
-    --clean-run-only )
-        CLEAN_RUN_ONLY=1; shift 1 ;;
     --target-config )
         #s3 url|filename +
         TARGET_CONFIG="$2"; shift 2 ;;
@@ -82,7 +80,6 @@ then
     echo "workload_replay_speed: $WORKLOAD_REPLAY_SPEED"
     echo "target_ddl_do: $TARGET_DDL_DO"
     echo "target_ddl_undo: $TARGET_DDL_UNDO"
-    echo "clean_run_only: $CLEAN_RUN_ONLY"
     echo "target_config: $TARGET_CONFIG"
     echo "artifacts_destination: $ARTIFACTS_DESTINATION"
     echo "aws-key-pair: $AWS_KEY_PAIR"
@@ -197,12 +194,6 @@ function checkParams() {
         exit 1
     fi
 
-    if (([ -v TARGET_DDL_DO ] || [ -v TARGET_CONFIG ]) && [ -v CLEAN_RUN_ONLY ])
-    then
-        >&2 echo "ERROR: Cannot be execute 'target run' and 'clean run' at the same time."
-        exit 1;
-    fi
-
     if (([ ! -v TARGET_DDL_UNDO ] && [ -v TARGET_DDL_DO ]) || ([ ! -v TARGET_DDL_DO ] && [ -v TARGET_DDL_UNDO ]))
     then
         >&2 echo "ERROR: DDL code must have do and undo part."
@@ -314,6 +305,7 @@ fi
 
 echo "Docker $DOCKER_MACHINE is running."
 
+`aws ecr get-login --no-include-email`
 containerHash=$(docker `docker-machine config $DOCKER_MACHINE` run --name="pg_nancy" \
   -v /home/ubuntu:/machine_home -dit "950603059350.dkr.ecr.us-east-1.amazonaws.com/nancy:postgres${PG_VERSION}")
 dockerConfig=$(docker-machine config $DOCKER_MACHINE)
