@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#set -ueox pipefail #for debugging
+set -ueo pipefail
 
 thisDir="$(dirname "$(readlink -f "$BASH_SOURCE")")"
 parentDir="$(dirname "$thisDir")"
