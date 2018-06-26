@@ -284,18 +284,6 @@ if [[ "$RUN_ON" = "localhost" ]]; then
     -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}" \
   )
   dockerConfig=""
-
-  function cleanup {
-    echo "Remove docker container"
-    docker container rm -f $containerHash
-    echo "Remove temp files..."
-    rm -f "$TMP_PATH/conf_$DOCKER_MACHINE.tmp"
-    rm -f "$TMP_PATH/ddl_do_$DOCKER_MACHINE.sql"
-    rm -f "$TMP_PATH/ddl_undo_$DOCKER_MACHINE.sql"
-    rm -f "$TMP_PATH/queries_custom_$DOCKER_MACHINE.sql"
-    rm -rf "$TMP_PATH/pg_nancy_home_${CURRENT_TS}"
-    echo "Done."
-  }
 elif [[ "$RUN_ON" = "aws" ]]; then
   ## Get max price from history and apply multiplier
   prices=$(aws --region=us-east-1 ec2 describe-spot-price-history --instance-types $AWS_EC2_TYPE --no-paginate --start-time=$(date +%s) --product-descriptions="Linux/UNIX (Amazon VPC)" --query 'SpotPriceHistory[*].{az:AvailabilityZone, price:SpotPrice}')
@@ -312,31 +300,30 @@ elif [[ "$RUN_ON" = "aws" ]]; then
   status=$(waitEC2Ready "docker-machine create" "$DOCKER_MACHINE" 1)
   if [ "$status" == "price-too-low" ]
   then
-      echo "Price $price is too low for $AWS_EC2_TYPE instance. Try detect actual."
-      corrrectPriceForLastFailedRequest=$(aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" | jq  '.SpotInstanceRequests[] | select(.Status.Code == "price-too-low") | .Status.Message' | grep -Eo '[0-9]+[.][0-9]+' | tail -n 1 &)
-      if [ "$corrrectPriceForLastFailedRequest" != "" ]  &&  [ "$corrrectPriceForLastFailedRequest" != "null" ]
-      then
-          EC2_PRICE=$corrrectPriceForLastFailedRequest
-          #update docker machine name
-          CURRENT_TS=$(date +%Y%m%d_%H%M%S%N_%Z)
-          DOCKER_MACHINE="nancy-$CURRENT_TS"
-          DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
-          #try start docker machine name with new price
-          echo "Attempt to create a new docker machine: $DOCKER_MACHINE with price: $EC2_PRICE."
-          createDockerMachine;
-          waitEC2Ready "docker-machine create" "$DOCKER_MACHINE" 0;
-      else
-        >&2 echo "ERROR: Cannot determine actual price for the instance $AWS_EC2_TYPE."
-        exit 1;
-      fi
+    echo "Price $price is too low for $AWS_EC2_TYPE instance. Try detect actual."
+    corrrectPriceForLastFailedRequest=$(aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" | jq  '.SpotInstanceRequests[] | select(.Status.Code == "price-too-low") | .Status.Message' | grep -Eo '[0-9]+[.][0-9]+' | tail -n 1 &)
+    if [ "$corrrectPriceForLastFailedRequest" != "" ]  &&  [ "$corrrectPriceForLastFailedRequest" != "null" ]; then
+      EC2_PRICE=$corrrectPriceForLastFailedRequest
+      #update docker machine name
+      CURRENT_TS=$(date +%Y%m%d_%H%M%S%N_%Z)
+      DOCKER_MACHINE="nancy-$CURRENT_TS"
+      DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
+      #try start docker machine name with new price
+      echo "Attempt to create a new docker machine: $DOCKER_MACHINE with price: $EC2_PRICE."
+      createDockerMachine;
+      waitEC2Ready "docker-machine create" "$DOCKER_MACHINE" 0;
+    else
+      >&2 echo "ERROR: Cannot determine actual price for the instance $AWS_EC2_TYPE."
+      exit 1;
+    fi
   fi
 
   echo "Check a docker machine status."
   res=$(docker-machine status $DOCKER_MACHINE 2>&1 &)
   if [ "$res" != "Running" ]
   then
-      >&2 echo "Failed: Docker $DOCKER_MACHINE is NOT running."
-      exit 1;
+    >&2 echo "Failed: Docker $DOCKER_MACHINE is NOT running."
+    exit 1;
   fi
 
   echo "Docker $DOCKER_MACHINE is running."
@@ -344,22 +331,29 @@ elif [[ "$RUN_ON" = "aws" ]]; then
   containerHash=$(docker `docker-machine config $DOCKER_MACHINE` run --name="pg_nancy_${CURRENT_TS}" \
     -v /home/ubuntu:/machine_home -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}")
   dockerConfig=$(docker-machine config $DOCKER_MACHINE)
-
-  function cleanup {
-    cmdout=$(docker-machine rm --force $DOCKER_MACHINE)
-    echo "Finished working with machine $DOCKER_MACHINE, termination requested, current status: $cmdout"
-    echo "Remove temp files..."
-    rm -f "$TMP_PATH/conf_$DOCKER_MACHINE.tmp"
-    rm -f "$TMP_PATH/ddl_do_$DOCKER_MACHINE.sql"
-    rm -f "$TMP_PATH/ddl_undo_$DOCKER_MACHINE.sql"
-    rm -f "$TMP_PATH/queries_custom_$DOCKER_MACHINE.sql"
-    echo "Done."
-  }
 else
   >&2 echo "ASSERT: must not reach this point"
   exit 1
 fi
 
+function cleanup {
+  echo "Remove temp files..."
+  rm -f "$TMP_PATH/conf_$DOCKER_MACHINE.tmp"
+  rm -f "$TMP_PATH/ddl_do_$DOCKER_MACHINE.sql"
+  rm -f "$TMP_PATH/ddl_undo_$DOCKER_MACHINE.sql"
+  rm -f "$TMP_PATH/queries_custom_$DOCKER_MACHINE.sql"
+  if [ "$RUN_ON" = "localhost" ]; then
+    rm -rf "$TMP_PATH/pg_nancy_home_${CURRENT_TS}"
+    echo "Remove docker container"
+    docker container rm -f $containerHash
+  elif [ "$RUN_ON" = "aws" ]; then
+    cmdout=$(docker-machine rm --force $DOCKER_MACHINE)
+    echo "Finished working with machine $DOCKER_MACHINE, termination requested, current status: $cmdout"
+  else
+    >&2 echo "ASSERT: must not reach this point"
+    exit 1
+  fi
+}
 trap cleanup EXIT
 
 alias docker_exec='docker $dockerConfig exec -i pg_nancy_${CURRENT_TS} '
