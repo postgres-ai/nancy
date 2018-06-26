@@ -18,3 +18,4 @@ jobs:
               status=$? && [ $status -ne 0 ] && errcount="$(($errcount+1))"; done; \
               [ $errcount -ne 0 ] && >&2 echo -e "Oh no! $errcount tests failed" \
               [ $errcount -ne 0 ] && exit 1
+
