@@ -444,7 +444,7 @@ sleep 1 # wait for postgres up&running
 DB_DUMP_FILENAME=$(basename $DB_DUMP_PATH)
 docker_exec bash -c "bzcat /machine_home/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test"
 # After init database sql code apply
-echo "Apply sql code after db init from $AFTER_DB_INIT_CODE"
+echo "Apply sql code after db init"
 if ([ -v AFTER_DB_INIT_CODE ] && [ "$AFTER_DB_INIT_CODE" != "" ])
 then
     AFTER_DB_INIT_CODE_FILENAME=$(basename $AFTER_DB_INIT_CODE)
@@ -462,7 +462,7 @@ if ([ -v TARGET_DDL_DO ] && [ "$TARGET_DDL_DO" != "" ]); then
     docker_exec bash -c "psql -U postgres test -E -f /machine_home/$TARGET_DDL_DO_FILENAME"
 fi
 # Apply postgres configuration
-echo "Apply postgres conf from $TARGET_CONFIG"
+echo "Apply postgres conf"
 if ([ -v TARGET_CONFIG ] && [ "$TARGET_CONFIG" != "" ]); then
     TARGET_CONFIG_FILENAME=$(basename $TARGET_CONFIG)
     docker_exec bash -c "cat /machine_home/$TARGET_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
@@ -478,7 +478,7 @@ if [ -v WORKLOAD_FULL_PATH ] && [ "$WORKLOAD_FULL_PATH" != '' ];then
     echo "Execute pgreplay queries..."
     docker_exec psql -U postgres test -c 'create role testuser superuser login;'
     WORKLOAD_FILE_NAME=$(basename $WORKLOAD_FULL_PATH)
-    docker_exec bash -c "pgreplay -r -j ./$WORKLOAD_FILE_NAME"
+    docker_exec bash -c "pgreplay -r -j /machine_home/$WORKLOAD_FILE_NAME"
 else
     if ([ -v WORKLOAD_CUSTOM_SQL ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
         WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
@@ -490,22 +490,22 @@ fi
 ## Get statistics
 echo "Prepare JSON log..."
 docker_exec bash -c "/root/pgbadger/pgbadger -j $(cat /proc/cpuinfo | grep processor | wc -l) --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /machine_home/$ARTIFACTS_FILENAME.json"
-echo "Upload JSON log..."
 
+echo "Save JSON log..."
 if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
     docker_exec s3cmd put /machine_home/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
 else
     if [ "$RUN_ON" = "localhost" ]; then
       cp "$TMP_PATH/pg_nancy_home_${CURRENT_TS}/"$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
     elif [ "$RUN_ON" = "aws" ]; then
-      docker-machine scp /machine_home/$ARTIFACTS_FILENAME.json $DOCKER_MACHINE:/home/ubuntu
+      docker-machine scp $DOCKER_MACHINE:/home/ubuntu/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
     else
       >&2 echo "ASSERT: must not reach this point"
       exit 1
     fi
 fi
 
-echo "Apply DDL undo SQL code from /machine_home/ddl_undo_$DOCKER_MACHINE.sql"
+echo "Apply DDL undo SQL code"
 if ([ -v TARGET_DDL_UNDO ] && [ "$TARGET_DDL_UNDO" != "" ]); then
     TARGET_DDL_UNDO_FILENAME=$(basename $TARGET_DDL_UNDO)
     docker_exec bash -c "psql -U postgres test -E -f /machine_home/$TARGET_DDL_UNDO_FILENAME"
