@@ -1,6 +1,6 @@
 #!/bin/bash
 
-params="--aws-keypair-name awskey --aws-ssh-key-path \"/home/someuser/.ssh/awskey.pem\" --aws-ec2-type \"r4.large\" --s3-cfg-path \"/home/someuser/.s3cfg\" --workload-full-path \"s3://somedir/db.sql.30min.pgreplay\""
+params="--run-on aws --aws-keypair-name awskey --aws-ssh-key-path \"/home/someuser/.ssh/awskey.pem\" --aws-ec2-type \"r4.large\" --s3-cfg-path \"/home/someuser/.s3cfg\" --workload-full-path \"s3://somedir/db.sql.30min.pgreplay\""
 output=$(source "${BASH_SOURCE%/*}/../nancy_run.sh" $params 2>&1)
 
 if [[ $output =~ "ERROR: Snapshot or dump not given." ]]; then
