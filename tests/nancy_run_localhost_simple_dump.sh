@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#set -ueox pipefail
+#set -ueox pipefail #for debugging
 
 thisDir="$(dirname "$(readlink -f "$BASH_SOURCE")")"
 parentDir="$(dirname "$thisDir")"
@@ -11,7 +11,10 @@ if [ ! -d "$srcDir/tmp" ]; then
 fi
 nancyRun="$parentDir/nancy_run.sh"
 
-$nancyRun --workload-custom-sql $srcDir/custom.sql --db-dump-path $srcDir/test.dump.bz2 --tmp-path $srcDir/tmp >&2 \
-  || (echo -e "\e[31mFAILED\e[39m" && exit 1)
+output=$($nancyRun --workload-custom-sql $srcDir/custom.sql --db-dump-path $srcDir/test.dump.bz2 --tmp-path $srcDir/tmp 2>&1)
 
-echo -e "\e[36mOK\e[39m"
+if [[ $output =~ "Queries duration:" ]]; then
+  echo -e "\e[36mOK\e[39m"
+else
+  >&2 echo -e "\e[31mFAILED\e[39m"
+fi
