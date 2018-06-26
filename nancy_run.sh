@@ -96,7 +96,7 @@ then
 fi
 
 function checkPath() {
-    if [ ! -v $1 ]
+    if [ -z $1 ]
     then
         return 1
     fi
@@ -108,6 +108,7 @@ function checkPath() {
     if [[ $path =~ "file:///" ]]
     then
         path=${path/file:\/\//}
+        echo "CHECK $path"
         if [ -f $path ]
         then
             eval "$1=\"$path\"" # update original variable
@@ -138,26 +139,26 @@ function checkParams() {
       exit 1
     fi
     if [ "$RUN_ON" = "aws" ]; then
-      if [ ! -v AWS_KEY_PAIR ] || [ ! -v AWS_KEY_PATH ]
+      if [ -z ${AWS_KEY_PAIR+x} ] || [ -z ${AWS_KEY_PATH+x} ]
       then
           >&2 echo "ERROR: AWS keys not given."
           exit 1
       fi
 
-      if [ ! -v AWS_EC2_TYPE ]
+      if [ -z ${AWS_EC2_TYPE+x} ]
       then
           >&2 echo "ERROR: AWS EC2 Instance type not given."
           exit 1
       fi
     fi
 
-    if [ ! -v PG_VERSION ]
+    if [ -z ${PG_VERSION+x} ]
     then
         >&2 echo "WARNING: Postgres version not given. Will use 9.6."
         PG_VERSION="9.6"
     fi
 
-    if [ ! -v TMP_PATH ]
+    if [ -z ${TMP_PATH+x} ]
     then
         TMP_PATH="/var/tmp/nancy_run"
         >&2 echo "WARNING: Temp path not given. Will use $TMP_PATH"
@@ -165,16 +166,16 @@ function checkParams() {
     #make tmp path if not found
     [ ! -d $TMP_PATH ] && mkdir $TMP_PATH
 
-    if [ ! -v S3_CFG_PATH ]
+    if [ -z ${S3_CFG_PATH+x} ]
     then
         >&2 echo "WARNING: S3 config file path not given. Will use ~/.s3cfg"
         S3_CFG_PATH=$(echo ~)"/.s3cfg"
     fi
 
     workloads_count=0
-    [ -v WORKLOAD_BASIS_PATH ] && let workloads_count=$workloads_count+1
-    [ -v WORKLOAD_FULL_PATH ] && let workloads_count=$workloads_count+1
-    [ -v WORKLOAD_CUSTOM_SQL ] && let workloads_count=$workloads_count+1
+    [ ! -z ${WORKLOAD_BASIS_PATH+x} ] && let workloads_count=$workloads_count+1
+    [ ! -z ${WORKLOAD_FULL_PATH+x} ] && let workloads_count=$workloads_count+1
+    [ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && let workloads_count=$workloads_count+1
 
     # --workload-full-path or --workload-basis-path or --workload-custom-sql
     if [ "$workloads_count" -eq "0" ]
@@ -190,45 +191,52 @@ function checkParams() {
     fi
 
     #--db-prepared-snapshot or --db-dump-path
-    if ([ ! -v DB_PREPARED_SNAPSHOT ]  &&  [ ! -v DB_DUMP_PATH ])
+    if ([ -z ${DB_PREPARED_SNAPSHOT+x} ]  &&  [ -z ${DB_DUMP_PATH+x} ])
     then
         >&2 echo "ERROR: Snapshot or dump not given."
         exit 1;
     fi
 
-    if ([ -v DB_PREPARED_SNAPSHOT ]  &&  [ -v DB_DUMP_PATH ])
+    if ([ ! -z ${DB_PREPARED_SNAPSHOT+x} ]  &&  [ ! -z ${DB_DUMP_PATH+x} ])
     then
         >&2 echo "ERROR: Both snapshot and dump sources given."
         exit 1
     fi
 
-    [ -v DB_DUMP_PATH ] && ! checkPath DB_DUMP_PATH && >&2 echo "ERROR: file $DB_DUMP_PATH given by db_dump_path not found" && exit 1
+    if [ ! -z ${DB_DUMP_PATH+x} ]
+    then
+        echo "DB_DUMP_PATH found"
+    else
+        echo "DB_DUMP_PATH NOT found"
+    fi
 
-    if (([ ! -v TARGET_DDL_UNDO ] && [ -v TARGET_DDL_DO ]) || ([ ! -v TARGET_DDL_DO ] && [ -v TARGET_DDL_UNDO ]))
+    [ ! -z ${DB_DUMP_PATH+x} ] && ! checkPath DB_DUMP_PATH && >&2 echo "ERROR: file $DB_DUMP_PATH given by db_dump_path not found" && exit 1
+
+    if (([ -z ${TARGET_DDL_UNDO+x} ] && [ ! -z ${TARGET_DDL_DO+x} ]) || ([ -z ${TARGET_DDL_DO+x} ] && [ ! -z ${TARGET_DDL_UNDO+x} ]))
     then
         >&2 echo "ERROR: DDL code must have do and undo part."
         exit 1;
     fi
 
-    if [ ! -v ARTIFACTS_DESTINATION ]
+    if [ -z ${ARTIFACTS_DESTINATION+x} ]
     then
         >&2 echo "WARNING: Artifacts destination not given. Will use ./"
         ARTIFACTS_DESTINATION="."
     fi
 
-    if [ ! -v ARTIFACTS_FILENAME ]
+    if [ -z ${ARTIFACTS_FILENAME+x} ]
     then
         >&2 echo "WARNING: Artifacts destination not given. Will use $DOCKER_MACHINE"
         ARTIFACTS_FILENAME=$DOCKER_MACHINE
     fi
 
-    [ -v WORKLOAD_FULL_PATH ] && ! checkPath WORKLOAD_FULL_PATH && >&2 echo "ERROR: file $WORKLOAD_FULL_PATH given by workload_full_path not found" && exit 1
+    [ ! -z ${WORKLOAD_FULL_PATH+x} ] && ! checkPath WORKLOAD_FULL_PATH && >&2 echo "ERROR: file $WORKLOAD_FULL_PATH given by workload_full_path not found" && exit 1
 
     echo "WORKLOAD_FULL_PATH: $WORKLOAD_FULL_PATH"
 
-    [ -v WORKLOAD_BASIS_PATH ] && ! checkPath WORKLOAD_BASIS_PATH && >&2 echo "WARNING: file $WORKLOAD_BASIS_PATH given by workload_basis_path not found"
+    [ ! -z ${WORKLOAD_BASIS_PATH+x} ] && ! checkPath WORKLOAD_BASIS_PATH && >&2 echo "WARNING: file $WORKLOAD_BASIS_PATH given by workload_basis_path not found"
 
-    if [ -v WORKLOAD_CUSTOM_SQL ]
+    if [ ! -z ${WORKLOAD_CUSTOM_SQL+x} ]
     then
         checkPath WORKLOAD_CUSTOM_SQL
         if [ "$?" -ne "0" ]
@@ -241,7 +249,7 @@ function checkParams() {
         fi
     fi
 
-    if [ -v AFTER_DB_INIT_CODE ]
+    if [ ! -z ${AFTER_DB_INIT_CODE+x} ]
     then
         checkPath AFTER_DB_INIT_CODE
         if [ "$?" -ne "0" ]
@@ -254,7 +262,7 @@ function checkParams() {
         fi
     fi
 
-    if [ -v TARGET_DDL_DO ]
+    if [ ! -z ${TARGET_DDL_DO+x} ]
     then
         checkPath TARGET_DDL_DO
         if [ "$?" -ne "0" ]
@@ -267,7 +275,7 @@ function checkParams() {
         fi
     fi
 
-    if [ -v TARGET_DDL_UNDO ]
+    if [ ! -z ${TARGET_DDL_UNDO} ]
     then
         checkPath TARGET_DDL_UNDO
         if [ "$?" -ne "0" ]
@@ -280,7 +288,7 @@ function checkParams() {
         fi
     fi
 
-    if [ -v TARGET_CONFIG ]
+    if [ ! -z ${TARGET_CONFIG+x} ]
     then
         checkPath TARGET_CONFIG
         if [ "$?" -ne "0" ]
@@ -429,14 +437,14 @@ function copyFile() {
   fi
 }
 
-[ -v S3_CFG_PATH ] && copyFile $S3_CFG_PATH && docker_exec cp /machine_home/.s3cfg /root/.s3cfg
+[ ! -z ${S3_CFG_PATH+x} ] && copyFile $S3_CFG_PATH && docker_exec cp /machine_home/.s3cfg /root/.s3cfg
 
-[ -v DB_DUMP_PATH ] && copyFile $DB_DUMP_PATH
-[ -v TARGET_CONFIG ] && copyFile $TARGET_CONFIG
-[ -v TARGET_DDL_DO ] && copyFile $TARGET_DDL_DO
-[ -v TARGET_DDL_UNDO ] && copyFile $TARGET_DDL_UNDO
-[ -v WORKLOAD_CUSTOM_SQL ] && copyFile $WORKLOAD_CUSTOM_SQL
-[ -v WORKLOAD_FULL_PATH ] && copyFile $WORKLOAD_FULL_PATH
+[ ! -z ${DB_DUMP_PATH+x} ] && copyFile $DB_DUMP_PATH
+[ ! -z ${TARGET_CONFIG+x} ] && copyFile $TARGET_CONFIG
+[ ! -z ${TARGET_DDL_DO+x} ] && copyFile $TARGET_DDL_DO
+[ ! -z ${TARGET_DDL_UNDO+x} ] && copyFile $TARGET_DDL_UNDO
+[ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && copyFile $WORKLOAD_CUSTOM_SQL
+[ ! -z ${WORKLOAD_FULL_PATH+x} ] && copyFile $WORKLOAD_FULL_PATH
 
 ## Apply machine features
 # Dump
@@ -445,7 +453,7 @@ DB_DUMP_FILENAME=$(basename $DB_DUMP_PATH)
 docker_exec bash -c "bzcat /machine_home/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test"
 # After init database sql code apply
 echo "Apply sql code after db init"
-if ([ -v AFTER_DB_INIT_CODE ] && [ "$AFTER_DB_INIT_CODE" != "" ])
+if ([ ! -z ${AFTER_DB_INIT_CODE+x} ] && [ "$AFTER_DB_INIT_CODE" != "" ])
 then
     AFTER_DB_INIT_CODE_FILENAME=$(basename $AFTER_DB_INIT_CODE)
     if [[ $AFTER_DB_INIT_CODE =~ "s3://" ]]; then
@@ -457,13 +465,13 @@ then
 fi
 # Apply DDL code
 echo "Apply DDL SQL code"
-if ([ -v TARGET_DDL_DO ] && [ "$TARGET_DDL_DO" != "" ]); then
+if ([ ! -z ${TARGET_DDL_DO+x} ] && [ "$TARGET_DDL_DO" != "" ]); then
     TARGET_DDL_DO_FILENAME=$(basename $TARGET_DDL_DO)
     docker_exec bash -c "psql -U postgres test -E -f /machine_home/$TARGET_DDL_DO_FILENAME"
 fi
 # Apply postgres configuration
 echo "Apply postgres conf"
-if ([ -v TARGET_CONFIG ] && [ "$TARGET_CONFIG" != "" ]); then
+if ([ ! -z ${TARGET_CONFIG+x} ] && [ "$TARGET_CONFIG" != "" ]); then
     TARGET_CONFIG_FILENAME=$(basename $TARGET_CONFIG)
     docker_exec bash -c "cat /machine_home/$TARGET_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
     docker_exec bash -c "sudo /etc/init.d/postgresql restart"
@@ -474,13 +482,13 @@ docker_exec vacuumdb -U postgres test -j $(cat /proc/cpuinfo | grep processor | 
 docker_exec bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
 # Execute workload
 echo "Execute workload..."
-if [ -v WORKLOAD_FULL_PATH ] && [ "$WORKLOAD_FULL_PATH" != '' ];then
+if [ ! -z ${WORKLOAD_FULL_PATH+x} ] && [ "$WORKLOAD_FULL_PATH" != '' ];then
     echo "Execute pgreplay queries..."
     docker_exec psql -U postgres test -c 'create role testuser superuser login;'
     WORKLOAD_FILE_NAME=$(basename $WORKLOAD_FULL_PATH)
     docker_exec bash -c "pgreplay -r -j /machine_home/$WORKLOAD_FILE_NAME"
 else
-    if ([ -v WORKLOAD_CUSTOM_SQL ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
+    if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
         WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
         echo "Execute custom sql queries..."
         docker_exec bash -c "psql -U postgres test -E -f /machine_home/$WORKLOAD_CUSTOM_FILENAME"
@@ -495,10 +503,16 @@ echo "Save JSON log..."
 if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
     docker_exec s3cmd put /machine_home/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
 else
+    logpath=$(docker_exec bash -c "psql -XtU postgres \
+    -c \"select string_agg(setting, '/' order by name) from pg_settings where name in ('log_directory', 'log_filename');\" \
+    | grep / | sed -e 's/^[ \t]*//'")
+    docker_exec bash -c "gzip -c $logpath > /machine_home/$ARTIFACTS_FILENAME.log.gz"
     if [ "$RUN_ON" = "localhost" ]; then
       cp "$TMP_PATH/pg_nancy_home_${CURRENT_TS}/"$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
+      cp "$TMP_PATH/pg_nancy_home_${CURRENT_TS}/"$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
     elif [ "$RUN_ON" = "aws" ]; then
       docker-machine scp $DOCKER_MACHINE:/home/ubuntu/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
+      docker-machine scp $DOCKER_MACHINE:/home/ubuntu/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
     else
       >&2 echo "ASSERT: must not reach this point"
       exit 1
@@ -506,7 +520,7 @@ else
 fi
 
 echo "Apply DDL undo SQL code"
-if ([ -v TARGET_DDL_UNDO ] && [ "$TARGET_DDL_UNDO" != "" ]); then
+if ([ ! -z ${TARGET_DDL_UNDO+x} ] && [ "$TARGET_DDL_UNDO" != "" ]); then
     TARGET_DDL_UNDO_FILENAME=$(basename $TARGET_DDL_UNDO)
     docker_exec bash -c "psql -U postgres test -E -f /machine_home/$TARGET_DDL_UNDO_FILENAME"
 fi
