@@ -1,6 +1,9 @@
 #!/bin/bash
 
+echo "SKIP" && exit 0
+
 set -ueo pipefail
+#for debugging
 
 thisDir="$(dirname "$(readlink -f "$BASH_SOURCE")")"
 parentDir="$(dirname "$thisDir")"
