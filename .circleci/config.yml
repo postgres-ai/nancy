@@ -9,6 +9,6 @@ jobs:
       - run:
           name: Tests
           command: |
-            errcount=0; for f in tests/*.sh; do printf "$f\t\t" && $f; \
+            errcount=0; for f in tests/*.sh; do printf "$f\t\t" && bash "$f" -H; \
               status=$? && [ $status -ne 0 ] && errcount="$(($errcount+1))"; done; \
               [ $errcount -ne 0 ] && >&2 echo -e "Oh no! $errcount tests failed" && exit 1
