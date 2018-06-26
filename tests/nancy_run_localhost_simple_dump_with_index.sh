@@ -13,6 +13,7 @@ nancyRun="$parentDir/nancy_run.sh"
 
 output=$(
   $nancyRun --workload-custom-sql $srcDir/custom.sql --db-dump-path $srcDir/test.dump.bz2 \
+    --target-ddl-do $srcDir/ddl_create_index.sql --target-ddl-undo $srcDir/ddl_drop_index.sql \
     --tmp-path $srcDir/tmp --debug 2>&1
 )
 
