@@ -356,7 +356,7 @@ elif [[ "$RUN_ON" = "aws" ]]; then
     echo "Done."
   }
 else
-  >&2 echo "ASSERT: cannot reach this point"
+  >&2 echo "ASSERT: must not reach this point"
   exit 1
 fi
 
@@ -374,7 +374,7 @@ function copyFile() {
       elif [ "$RUN_ON" = "aws" ]; then
         docker-machine scp $1 $DOCKER_MACHINE:/home/ubuntu
       else
-        >&2 echo "ASSERT: cannot reach this point"
+        >&2 echo "ASSERT: must not reach this point"
         exit 1
       fi
     fi
@@ -451,7 +451,7 @@ else
     elif [ "$RUN_ON" = "aws" ]; then
       docker-machine scp /machine_home/$ARTIFACTS_FILENAME.json $DOCKER_MACHINE:/home/ubuntu
     else
-      >&2 echo "ASSERT: cannot reach this point"
+      >&2 echo "ASSERT: must not reach this point"
       exit 1
     fi
 fi
