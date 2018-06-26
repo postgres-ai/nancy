@@ -23,7 +23,7 @@ while true; do
     --db-dump-path )
         DB_DUMP_PATH="$2"; shift 2 ;;
     --after-db-init-code )
-        #s3 url|filename +
+        #s3 url|filename|content
         AFTER_DB_INIT_CODE="$2"; shift 2 ;;
     --workload-full-path )
         #s3 url
@@ -32,18 +32,18 @@ while true; do
         #Still unsuported
         WORKLOAD_BASIS_PATH="$2"; shift 2 ;;
     --workload-custom-sql )
-        #s3 url|filename +
+        #s3 url|filename|content
         WORKLOAD_CUSTOM_SQL="$2"; shift 2 ;;
     --workload-replay-speed )
         WORKLOAD_REPLAY_SPEED="$2"; shift 2 ;;
     --target-ddl-do )
-        #s3 url|filename +
+        #s3 url|filename|content
         TARGET_DDL_DO="$2"; shift 2 ;;
     --target-ddl-undo )
-        #s3 url|filename +
+        #s3 url|filename|content
         TARGET_DDL_UNDO="$2"; shift 2 ;;
     --target-config )
-        #s3 url|filename +
+        #s3 url|filename|content
         TARGET_CONFIG="$2"; shift 2 ;;
     --artifacts-destination )
         ARTIFACTS_DESTINATION="$2"; shift 2 ;;
@@ -125,12 +125,8 @@ function checkPath() {
             eval "$1=\"$path\"" # update original variable
             return 0 # file found
         else
-            return 3 # file not found
+            return 2 # file not found
         fi
-    fi
-    if [ -f $path ]
-    then
-        return 0;
     fi
     return -1 # incorrect path
 }
@@ -206,6 +202,8 @@ function checkParams() {
         exit 1
     fi
 
+    [ -v DB_DUMP_PATH ] && ! checkPath DB_DUMP_PATH && >&2 echo "ERROR: file $DB_DUMP_PATH given by db_dump_path not found" && exit 1
+
     if (([ ! -v TARGET_DDL_UNDO ] && [ -v TARGET_DDL_DO ]) || ([ ! -v TARGET_DDL_DO ] && [ -v TARGET_DDL_UNDO ]))
     then
         >&2 echo "ERROR: DDL code must have do and undo part."
@@ -224,21 +222,76 @@ function checkParams() {
         ARTIFACTS_FILENAME=$DOCKER_MACHINE
     fi
 
-    [ -v WORKLOAD_FULL_PATH ] && ! checkPath WORKLOAD_FULL_PATH && >&2 echo "WARNING: file $AFTER_DB_INIT_CODE not found"
+    [ -v WORKLOAD_FULL_PATH ] && ! checkPath WORKLOAD_FULL_PATH && >&2 echo "ERROR: file $WORKLOAD_FULL_PATH given by workload_full_path not found" && exit 1
 
-    [ -v WORKLOAD_BASIS_PATH ] && ! checkPath WORKLOAD_BASIS_PATH && >&2 echo "WARNING: file $WORKLOAD_BASIS_PATH not found"
+    echo "WORKLOAD_FULL_PATH: $WORKLOAD_FULL_PATH"
 
-    [ -v WORKLOAD_CUSTOM_SQL ] && ! checkPath WORKLOAD_CUSTOM_SQL && >&2 echo "WARNING: file $WORKLOAD_CUSTOM_SQL not found"
+    [ -v WORKLOAD_BASIS_PATH ] && ! checkPath WORKLOAD_BASIS_PATH && >&2 echo "WARNING: file $WORKLOAD_BASIS_PATH given by workload_basis_path not found"
 
-    [ -v DB_DUMP_PATH ] && ! checkPath DB_DUMP_PATH && >&2 echo "WARNING: file $DB_DUMP_PATH not found"
+    if [ -v WORKLOAD_CUSTOM_SQL ]
+    then
+        checkPath WORKLOAD_CUSTOM_SQL
+        if [ "$?" -ne "0" ]
+        then
+            >&2 echo "WARNING: Value given as workload-custom-sql: '$WORKLOAD_CUSTOM_SQL' not found as file will use as content"
+            echo "$WORKLOAD_CUSTOM_SQL" > $TMP_PATH/workload_custom_sql_tmp.sql
+            WORKLOAD_CUSTOM_SQL="$TMP_PATH/workload_custom_sql_tmp.sql"
+        else
+            [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as workload-custom-sql will use as filename"
+        fi
+    fi
 
-    [ -v AFTER_DB_INIT_CODE ] && ! checkPath AFTER_DB_INIT_CODE && >&2 echo "WARNING: file $AFTER_DB_INIT_CODE not found"
+    if [ -v AFTER_DB_INIT_CODE ]
+    then
+        checkPath AFTER_DB_INIT_CODE
+        if [ "$?" -ne "0" ]
+        then
+            >&2 echo "WARNING: Value given as after_db_init_code: '$AFTER_DB_INIT_CODE' not found as file will use as content"
+            echo "$AFTER_DB_INIT_CODE" > $TMP_PATH/after_db_init_code_tmp.sql
+            AFTER_DB_INIT_CODE="$TMP_PATH/after_db_init_code_tmp.sql"
+        else
+            [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as after_db_init_code will use as filename"
+        fi
+    fi
 
-    [ -v TARGET_DDL_DO ] && ! checkPath TARGET_DDL_DO && >&2 echo "WARNING: file $TARGET_DDL_DO not found"
+    if [ -v TARGET_DDL_DO ]
+    then
+        checkPath TARGET_DDL_DO
+        if [ "$?" -ne "0" ]
+        then
+            >&2 echo "WARNING: Value given as target_ddl_do: '$TARGET_DDL_DO' not found as file will use as content"
+            echo "$TARGET_DDL_DO" > $TMP_PATH/target_ddl_do_tmp.sql
+            TARGET_DDL_DO="$TMP_PATH/target_ddl_do_tmp.sql"
+        else
+            [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as target_ddl_do will use as filename"
+        fi
+    fi
 
-    [ -v TARGET_DDL_UNDO ] && ! checkPath TARGET_DDL_UNDO && >&2 echo "WARNING: file $TARGET_DDL_UNDO not found"
+    if [ -v TARGET_DDL_UNDO ]
+    then
+        checkPath TARGET_DDL_UNDO
+        if [ "$?" -ne "0" ]
+        then
+            >&2 echo "WARNING: Value given as target_ddl_undo: '$TARGET_DDL_UNDO' not found as file will use as content"
+            echo "$TARGET_DDL_UNDO" > $TMP_PATH/target_ddl_undo_tmp.sql
+            TARGET_DDL_UNDO="$TMP_PATH/target_ddl_undo_tmp.sql"
+        else
+            [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as target_ddl_undo will use as filename"
+        fi
+    fi
 
-    [ -v TARGET_CONFIG ] && ! checkPath TARGET_CONFIG && >&2 echo "WARNING: file $TARGET_CONFIG not found"
+    if [ -v TARGET_CONFIG ]
+    then
+        checkPath TARGET_CONFIG
+        if [ "$?" -ne "0" ]
+        then
+            >&2 echo "WARNING: Value given as target_config: '$TARGET_CONFIG' not found as file will use as content"
+            echo "$TARGET_CONFIG" > $TMP_PATH/target_config_tmp.conf
+            TARGET_CONFIG="$TMP_PATH/target_config_tmp.conf"
+        else
+            [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as target_config will use as filename"
+        fi
+    fi
 }
 
 checkParams;
@@ -258,7 +311,6 @@ function waitEC2Ready() {
         ((STOP==1)) && return 0
         if [ $checkPrice -eq 1 ]
         then
-            #status=$(aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" | jq  '.SpotInstanceRequests[] |  .Status.Code' | tail -n 1 )
             status=$(aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" | jq  '.SpotInstanceRequests | sort_by(.CreateTime) | .[] | .Status.Code' | tail -n 1)
             if [ "$status" == "\"price-too-low\"" ]
             then
@@ -337,11 +389,13 @@ else
 fi
 
 function cleanup {
-  echo "Remove temp files..."
-  rm -f "$TMP_PATH/conf_$DOCKER_MACHINE.tmp"
-  rm -f "$TMP_PATH/ddl_do_$DOCKER_MACHINE.sql"
-  rm -f "$TMP_PATH/ddl_undo_$DOCKER_MACHINE.sql"
-  rm -f "$TMP_PATH/queries_custom_$DOCKER_MACHINE.sql"
+  echo "Remove temp files..." # if exists
+  rm -f "$TMP_PATH/after_db_init_code_tmp.sql"
+  rm -f "$TMP_PATH/workload_custom_sql_tmp.sql"
+  rm -f "$TMP_PATH/target_ddl_do_tmp.sql"
+  rm -f "$TMP_PATH/target_ddl_undo_tmp.sql"
+  rm -f "$TMP_PATH/target_config_tmp.conf"
+  
   if [ "$RUN_ON" = "localhost" ]; then
     rm -rf "$TMP_PATH/pg_nancy_home_${CURRENT_TS}"
     echo "Remove docker container"
@@ -390,6 +444,7 @@ sleep 1 # wait for postgres up&running
 DB_DUMP_FILENAME=$(basename $DB_DUMP_PATH)
 docker_exec bash -c "bzcat /machine_home/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test"
 # After init database sql code apply
+echo "Apply sql code after db init from $AFTER_DB_INIT_CODE"
 if ([ -v AFTER_DB_INIT_CODE ] && [ "$AFTER_DB_INIT_CODE" != "" ])
 then
     AFTER_DB_INIT_CODE_FILENAME=$(basename $AFTER_DB_INIT_CODE)
@@ -407,7 +462,7 @@ if ([ -v TARGET_DDL_DO ] && [ "$TARGET_DDL_DO" != "" ]); then
     docker_exec bash -c "psql -U postgres test -E -f /machine_home/$TARGET_DDL_DO_FILENAME"
 fi
 # Apply postgres configuration
-echo "Apply postgres conf from /machine_home/conf_$DOCKER_MACHINE.tmp"
+echo "Apply postgres conf from $TARGET_CONFIG"
 if ([ -v TARGET_CONFIG ] && [ "$TARGET_CONFIG" != "" ]); then
     TARGET_CONFIG_FILENAME=$(basename $TARGET_CONFIG)
     docker_exec bash -c "cat /machine_home/$TARGET_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
