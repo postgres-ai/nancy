@@ -27,6 +27,5 @@ do
     shift
 done
 
-#echo "CMD: $cmd"
 ${cmd}
 
