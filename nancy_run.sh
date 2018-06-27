@@ -203,14 +203,20 @@ function checkParams() {
         exit 1
     fi
 
-    if [ ! -z ${DB_DUMP_PATH+x} ]
-    then
-        echo "DB_DUMP_PATH found"
-    else
-        echo "DB_DUMP_PATH NOT found"
-    fi
-
     [ ! -z ${DB_DUMP_PATH+x} ] && ! checkPath DB_DUMP_PATH && >&2 echo "ERROR: file $DB_DUMP_PATH given by db_dump_path not found" && exit 1
+
+    if [ -z ${PG_CONGIF+x} ]
+    then
+        >&2 echo "WARNING: Initial database server configuration not given. Will use default."
+    else
+        checkPath PG_CONGIF
+        if [ "$?" -ne "0" ]
+        then
+            >&2 echo "WARNING: Value given as pg_congif: '$PG_CONGIF' not found as file will use as content"
+            echo "$PG_CONGIF" > $TMP_PATH/pg_congif_tmp.sql
+            WORKLOAD_CUSTOM_SQL="$TMP_PATH/pg_congif_tmp.sql"
+        fi
+    fi
 
     if (([ -z ${TARGET_DDL_UNDO+x} ] && [ ! -z ${TARGET_DDL_DO+x} ]) || ([ -z ${TARGET_DDL_DO+x} ] && [ ! -z ${TARGET_DDL_UNDO+x} ]))
     then
@@ -275,7 +281,7 @@ function checkParams() {
         fi
     fi
 
-    if [ ! -z ${TARGET_DDL_UNDO} ]
+    if [ ! -z ${TARGET_DDL_UNDO+x} ]
     then
         checkPath TARGET_DDL_UNDO
         if [ "$?" -ne "0" ]
@@ -403,6 +409,7 @@ function cleanup {
   rm -f "$TMP_PATH/target_ddl_do_tmp.sql"
   rm -f "$TMP_PATH/target_ddl_undo_tmp.sql"
   rm -f "$TMP_PATH/target_config_tmp.conf"
+  rm -f "$TMP_PATH/pg_config_tmp.conf"
   
   if [ "$RUN_ON" = "localhost" ]; then
     rm -rf "$TMP_PATH/pg_nancy_home_${CURRENT_TS}"
@@ -440,6 +447,7 @@ function copyFile() {
 [ ! -z ${S3_CFG_PATH+x} ] && copyFile $S3_CFG_PATH && docker_exec cp /machine_home/.s3cfg /root/.s3cfg
 
 [ ! -z ${DB_DUMP_PATH+x} ] && copyFile $DB_DUMP_PATH
+[ ! -z ${PG_CONGIF+x} ] && copyFile $PG_CONGIF
 [ ! -z ${TARGET_CONFIG+x} ] && copyFile $TARGET_CONFIG
 [ ! -z ${TARGET_DDL_DO+x} ] && copyFile $TARGET_DDL_DO
 [ ! -z ${TARGET_DDL_UNDO+x} ] && copyFile $TARGET_DDL_UNDO
@@ -469,8 +477,18 @@ if ([ ! -z ${TARGET_DDL_DO+x} ] && [ "$TARGET_DDL_DO" != "" ]); then
     TARGET_DDL_DO_FILENAME=$(basename $TARGET_DDL_DO)
     docker_exec bash -c "psql -U postgres test -E -f /machine_home/$TARGET_DDL_DO_FILENAME"
 fi
+# Apply initial postgres configuration
+echo "Apply initial postgres configuration"
+if ([ ! -z ${PG_CONFIG+x} ] && [ "$PG_CONFIG" != "" ]); then
+    PG_CONFIG_FILENAME=$(basename $PG_CONFIG)
+    docker_exec bash -c "cat /machine_home/$PG_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    if [ -z ${TARGET_CONFIG+x} ]
+    then
+        docker_exec bash -c "sudo /etc/init.d/postgresql restart"
+    fi
+fi
 # Apply postgres configuration
-echo "Apply postgres conf"
+echo "Apply postgres configuration"
 if ([ ! -z ${TARGET_CONFIG+x} ] && [ "$TARGET_CONFIG" != "" ]); then
     TARGET_CONFIG_FILENAME=$(basename $TARGET_CONFIG)
     docker_exec bash -c "cat /machine_home/$TARGET_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
