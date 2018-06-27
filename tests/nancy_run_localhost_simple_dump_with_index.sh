@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "SKIP" && exit 0
+#echo "SKIP" && exit 0
 #set -ueox pipefail #for debugging
 
 thisDir="$(dirname "$(readlink -f "$BASH_SOURCE")")"
