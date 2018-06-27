@@ -12,6 +12,8 @@ while true; do
     -d | --debug ) DEBUG=1; shift ;;
     --run-on )
         RUN_ON="$2"; shift 2 ;;
+    --container-id )
+        CONTAINER_ID="$2"; shift 2 ;;
     --pg-version )
         PG_VERSION="$2"; shift 2 ;;
     --pg-config )
@@ -75,6 +77,7 @@ if [ $DEBUG -eq 1 ]
 then
     echo "debug: ${DEBUG}"
     echo "run_on: ${RUN_ON}"
+    echo "container_id: ${CONTAINER_ID}"
     echo "aws_ec2_type: ${AWS_EC2_TYPE}"
     echo "aws-key-pair: $AWS_KEY_PAIR"
     echo "aws-key-path: $AWS_KEY_PATH"
@@ -139,6 +142,11 @@ function checkParams() {
       exit 1
     fi
     if [ "$RUN_ON" = "aws" ]; then
+      if [ ! -z ${CONTAINER_ID+x} ]
+      then
+          >&2 echo "ERROR: Container ID may be specified only for local runs."
+          exit 1
+      fi
       if [ -z ${AWS_KEY_PAIR+x} ] || [ -z ${AWS_KEY_PATH+x} ]
       then
           >&2 echo "ERROR: AWS keys not given."
@@ -339,10 +347,14 @@ function createDockerMachine() {
 
 if [[ "$RUN_ON" = "localhost" ]]; then
   mkdir "$TMP_PATH/pg_nancy_home_${CURRENT_TS}"
-  containerHash=$(docker run --name="pg_nancy_${CURRENT_TS}" \
-    -v $TMP_PATH/pg_nancy_home_${CURRENT_TS}:/machine_home \
-    -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}" \
-  )
+  if [ -z ${CONTAINER_ID+x} ]; then
+    containerHash=$(docker run --name="pg_nancy_${CURRENT_TS}" \
+      -v $TMP_PATH/pg_nancy_home_${CURRENT_TS}:/machine_home \
+      -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}" \
+    )
+  else
+    containerHash="$CONTAINER_ID"
+  fi
   dockerConfig=""
 elif [[ "$RUN_ON" = "aws" ]]; then
   ## Get max price from history and apply multiplier
@@ -403,7 +415,7 @@ function cleanup {
   rm -f "$TMP_PATH/target_ddl_do_tmp.sql"
   rm -f "$TMP_PATH/target_ddl_undo_tmp.sql"
   rm -f "$TMP_PATH/target_config_tmp.conf"
-  
+
   if [ "$RUN_ON" = "localhost" ]; then
     rm -rf "$TMP_PATH/pg_nancy_home_${CURRENT_TS}"
     echo "Remove docker container"
@@ -418,7 +430,7 @@ function cleanup {
 }
 trap cleanup EXIT
 
-alias docker_exec='docker $dockerConfig exec -i pg_nancy_${CURRENT_TS} '
+alias docker_exec='docker $dockerConfig exec -i ${containerHash} '
 
 function copyFile() {
   if [ "$1" != '' ]; then
