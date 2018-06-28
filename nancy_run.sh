@@ -610,13 +610,20 @@ trap cleanup EXIT
 
 alias docker_exec='docker $dockerConfig exec -i pg_nancy_${CURRENT_TS} '
 
+if [[ "$RUN_ON" = "localhost" ]]; then
+    MACHINE_HOME="/machine_home/${containerHash}"
+    mkdir $TMP_PATH/pg_nancy_home_${CURRENT_TS}/${containerHash}
+else
+    MACHINE_HOME="/machine_home"
+fi
+
 function copyFile() {
   if [ "$1" != '' ]; then
     if [[ "$1" =~ "s3://" ]]; then # won't work for .s3cfg!
-      docker_exec s3cmd sync $1 /machine_home/
+      docker_exec s3cmd sync $1 $MACHINE_HOME/
     else
       if [ "$RUN_ON" = "localhost" ]; then
-        ln $1 "$TMP_PATH/pg_nancy_home_${CURRENT_TS}/" # TODO: option – hard links OR regular `cp`
+        ln $1 "$TMP_PATH/pg_nancy_home_${CURRENT_TS}/$containerHash/" # TODO: option – hard links OR regular `cp`
       elif [ "$RUN_ON" = "aws" ]; then
         docker-machine scp $1 $DOCKER_MACHINE:/home/ubuntu
       else
@@ -627,8 +634,7 @@ function copyFile() {
   fi
 }
 
-[ ! -z ${S3_CFG_PATH+x} ] && copyFile $S3_CFG_PATH && docker_exec cp /machine_home/.s3cfg /root/.s3cfg
-
+[ ! -z ${S3_CFG_PATH+x} ] && copyFile $S3_CFG_PATH && docker_exec cp /$MACHINE_HOME/.s3cfg /root/.s3cfg
 [ ! -z ${DB_DUMP_PATH+x} ] && copyFile $DB_DUMP_PATH
 [ ! -z ${PG_CONGIF+x} ] && copyFile $PG_CONGIF
 [ ! -z ${TARGET_CONFIG+x} ] && copyFile $TARGET_CONFIG
@@ -641,30 +647,30 @@ function copyFile() {
 # Dump
 sleep 1 # wait for postgres up&running
 DB_DUMP_FILENAME=$(basename $DB_DUMP_PATH)
-docker_exec bash -c "bzcat /machine_home/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test"
+docker_exec bash -c "bzcat /$MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test"
 # After init database sql code apply
 echo "Apply sql code after db init"
 if ([ ! -z ${AFTER_DB_INIT_CODE+x} ] && [ "$AFTER_DB_INIT_CODE" != "" ])
 then
     AFTER_DB_INIT_CODE_FILENAME=$(basename $AFTER_DB_INIT_CODE)
     if [[ $AFTER_DB_INIT_CODE =~ "s3://" ]]; then
-        docker_exec s3cmd sync $AFTER_DB_INIT_CODE /machine_home/
+        docker_exec s3cmd sync $AFTER_DB_INIT_CODE /$MACHINE_HOME/
     else
         docker-machine scp $AFTER_DB_INIT_CODE $DOCKER_MACHINE:/home/ubuntu
     fi
-    docker_exec bash -c "psql -U postgres test -E -f /machine_home/$AFTER_DB_INIT_CODE_FILENAME"
+    docker_exec bash -c "psql -U postgres test -E -f /$MACHINE_HOME/$AFTER_DB_INIT_CODE_FILENAME"
 fi
 # Apply DDL code
 echo "Apply DDL SQL code"
 if ([ ! -z ${TARGET_DDL_DO+x} ] && [ "$TARGET_DDL_DO" != "" ]); then
     TARGET_DDL_DO_FILENAME=$(basename $TARGET_DDL_DO)
-    docker_exec bash -c "psql -U postgres test -E -f /machine_home/$TARGET_DDL_DO_FILENAME"
+    docker_exec bash -c "psql -U postgres test -E -f /$MACHINE_HOME/$TARGET_DDL_DO_FILENAME"
 fi
 # Apply initial postgres configuration
 echo "Apply initial postgres configuration"
 if ([ ! -z ${PG_CONFIG+x} ] && [ "$PG_CONFIG" != "" ]); then
     PG_CONFIG_FILENAME=$(basename $PG_CONFIG)
-    docker_exec bash -c "cat /machine_home/$PG_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "cat /$MACHINE_HOME/$PG_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
     if [ -z ${TARGET_CONFIG+x} ]
     then
         docker_exec bash -c "sudo /etc/init.d/postgresql restart"
@@ -674,7 +680,7 @@ fi
 echo "Apply postgres configuration"
 if ([ ! -z ${TARGET_CONFIG+x} ] && [ "$TARGET_CONFIG" != "" ]); then
     TARGET_CONFIG_FILENAME=$(basename $TARGET_CONFIG)
-    docker_exec bash -c "cat /machine_home/$TARGET_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "cat /$MACHINE_HOME/$TARGET_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
     docker_exec bash -c "sudo /etc/init.d/postgresql restart"
 fi
 # Clear statistics and log
@@ -687,30 +693,30 @@ if [ ! -z ${WORKLOAD_FULL_PATH+x} ] && [ "$WORKLOAD_FULL_PATH" != '' ];then
     echo "Execute pgreplay queries..."
     docker_exec psql -U postgres test -c 'create role testuser superuser login;'
     WORKLOAD_FILE_NAME=$(basename $WORKLOAD_FULL_PATH)
-    docker_exec bash -c "pgreplay -r -j /machine_home/$WORKLOAD_FILE_NAME"
+    docker_exec bash -c "pgreplay -r -j /$MACHINE_HOME/$WORKLOAD_FILE_NAME"
 else
     if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
         WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
         echo "Execute custom sql queries..."
-        docker_exec bash -c "psql -U postgres test -E -f /machine_home/$WORKLOAD_CUSTOM_FILENAME"
+        docker_exec bash -c "psql -U postgres test -E -f /$MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME"
     fi
 fi
 
 ## Get statistics
 echo "Prepare JSON log..."
-docker_exec bash -c "/root/pgbadger/pgbadger -j $(cat /proc/cpuinfo | grep processor | wc -l) --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /machine_home/$ARTIFACTS_FILENAME.json"
+docker_exec bash -c "/root/pgbadger/pgbadger -j $(cat /proc/cpuinfo | grep processor | wc -l) --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /$MACHINE_HOME/$ARTIFACTS_FILENAME.json"
 
 echo "Save JSON log..."
 if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
-    docker_exec s3cmd put /machine_home/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
+    docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
 else
     logpath=$(docker_exec bash -c "psql -XtU postgres \
     -c \"select string_agg(setting, '/' order by name) from pg_settings where name in ('log_directory', 'log_filename');\" \
     | grep / | sed -e 's/^[ \t]*//'")
-    docker_exec bash -c "gzip -c $logpath > /machine_home/$ARTIFACTS_FILENAME.log.gz"
+    docker_exec bash -c "gzip -c $logpath > /$MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz"
     if [ "$RUN_ON" = "localhost" ]; then
-      cp "$TMP_PATH/pg_nancy_home_${CURRENT_TS}/"$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
-      cp "$TMP_PATH/pg_nancy_home_${CURRENT_TS}/"$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
+      cp "$TMP_PATH/pg_nancy_home_${CURRENT_TS}/$containerHash/"$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
+      cp "$TMP_PATH/pg_nancy_home_${CURRENT_TS}/$containerHash/"$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
     elif [ "$RUN_ON" = "aws" ]; then
       docker-machine scp $DOCKER_MACHINE:/home/ubuntu/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
       docker-machine scp $DOCKER_MACHINE:/home/ubuntu/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
@@ -723,7 +729,7 @@ fi
 echo "Apply DDL undo SQL code"
 if ([ ! -z ${TARGET_DDL_UNDO+x} ] && [ "$TARGET_DDL_UNDO" != "" ]); then
     TARGET_DDL_UNDO_FILENAME=$(basename $TARGET_DDL_UNDO)
-    docker_exec bash -c "psql -U postgres test -E -f /machine_home/$TARGET_DDL_UNDO_FILENAME"
+    docker_exec bash -c "psql -U postgres test -E -f /$MACHINE_HOME/$TARGET_DDL_UNDO_FILENAME"
 fi
 
 echo -e "Run done!"
