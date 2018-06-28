@@ -1,6 +1,6 @@
 #!/bin/bash
 
-output=$(${BASH_SOURCE%/*}/../nancy.sh run --run-on aws 2>&1)
+output=$(${BASH_SOURCE%/*}/../nancy run --run-on aws 2>&1)
 
 if [[ $output =~ "ERROR: AWS keys not given" ]]; then
   echo -e "\e[36mOK\e[39m"
