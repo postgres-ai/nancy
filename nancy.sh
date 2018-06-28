@@ -30,12 +30,13 @@ case "$1" in
         exit 1;
         ;;
     * ) 
-        if [ ! -f "./nancy_$1.sh" ]
+        if [ ! -f "${BASH_SOURCE%/*}/nancy_$1.sh" ]
         then
             >&2 echo "ERROR: Unknown command."
             exit 1;
         fi
-        cmd="./nancy_$1.sh"
+        cmd="${BASH_SOURCE%/*}/nancy_$1.sh"
+        shift;
     ;;
 esac
 
@@ -44,6 +45,8 @@ do
     cmd="$cmd $1"
     shift
 done
+
+echo "CMD: $cmd"
 
 ${cmd}
 
