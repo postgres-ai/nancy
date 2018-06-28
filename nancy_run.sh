@@ -9,6 +9,190 @@ DEBUG_TIMEOUT=0
 ## Get command line params
 while true; do
   case "$1" in
+    help )
+        echo -e "\033[1mCOMMAND\033[22m
+
+    run
+
+\033[1mDESCRIPTION\033[22m
+
+  Nancy is a member of Postgres.ai's Artificial DBA team
+  responsible for conducting experiments.
+
+  Use 'nancy run' to request a new run for some experiment
+  being conducted.
+
+  An experiment consists of one or more 'runs'. For instance,
+  if Nancy is being used to verify that a new index will
+  affect performance only in a positive way, two runs are needed.
+  If one needs to only collect query plans for each query group,
+  a single run is enough. And finally, if there is a goal to
+  find an optimal value for some PostgreSQL setting,
+  multiple runs will be needed to check how various
+  values of specified setting affect performance
+  of specified database and workload.
+
+  4 main parts of each run are:
+    - environment: where it will happen, PostgreSQL version, etc;
+    - database: copy or clone of some database;
+    - workload: 'real' workload or custom SQL;
+    - target: PostgreSQL config changes or some DDL such as
+    'CREATE INDEX ...'.
+
+\033[1mOPTIONS\033[22m
+
+  NOTICE: A value for a string option that starts with 'file://'
+          is treated as a path to a local file. A string value
+          starting with 's3://' is treated as a path
+          to remote file located in S3 (AWS S3 or its analog).
+          Otherwise, a string values is considered as 'content',
+          not a link to a file.
+
+  \033[1m--debug\033[22m (boolean)
+
+  Turn on debug logging.
+
+  \033[1m--debug-timeout\033[22m (string)
+
+  How many seconds the entity (Docker container, Docker machine)
+  where experimental run is being made will be alive after the
+  main activity is finished. This is useful for various debugging:
+  one can access container via ssh / docker exec and see PostgreSQL
+  with data, logs, etc.
+
+  \033[1m--run-on\033[22m (string)
+
+  Specify, where the experimental run will take place
+
+    * 'localhost' (default)
+
+    * aws
+
+    * gcp (WIP)
+
+  If 'localhost' is specified (or --run-on is omitted),
+  Nancy will perform the run on the localhost in a Docker container
+  so (`docker run` must work locally).
+
+  If 'aws' is specified, Nancy will use a Docker machine with a single
+  container running on an EC2 Spot instance.
+
+  \033[1m--pg-version\033[22m (string)
+
+  Specify Major PostgreSQL version.
+
+    * 9.6 (default)
+
+    * 10
+
+    * 11devel (WIP)
+
+  \033[1m--pg-config\033[22m (string)
+
+  Specify PostgreSQL config to be used (may be partial).
+
+  \033[1m--db-prepared-snapshot\033[22m (string)
+
+  Reserved / Not yet implemented.
+
+  \033[1m--db-dump-path\033[22m (string)
+
+  Specify the path to database dump (creted by pg_dump) to be used
+  as an input.
+
+  \033[1m--after-db-init-code\033[22m (string)
+
+  Specify additional commands to be executed after database
+  is initiated (dump loaded or snapshot attached).
+
+  \033[1m--workload-full-path\033[22m (string)
+
+  Path to 'real' workload prepared by using `nancy prepare-workload`.
+
+  \033[1m--workload-basis-path\033[22m (string)
+
+  Reserved / Not yet implemented.
+
+  \033[1m--workload-custom-sql\033[22m (string)
+
+  Specify custom SQL queries to be used as an input.
+
+  \033[1m--workload-replay-speed\033[22m (string)
+
+  Reserved / Not yet implemented.
+
+  \033[1m--target-ddl-do\033[22m (string)
+
+  SQL changing database somehow before workload is applied.
+  'Do DDL' example:
+
+      create index i_t1_experiment on t1 using btree(col1);
+      vacuum analyze t1;
+
+  \033[1m--target-ddl-undo\033[22m (string)
+
+  SQL reverting changes produced by those specified in the
+  the value of the `--target-ddl-do` option. Reverting allows
+  to serialize multiple runs, but it might be not possible
+  in some cases. 'Undo DDL' example:
+
+      drop index i_t1_experiment;
+
+  \033[1m--target-config\033[22m (string)
+
+  Config changes to be applied to postgresql.conf before
+  workload is applied. Once configuration changes are made,
+  PostgreSQL is restarted. Example:
+
+      random_page_cost = 1.1
+
+  \033[1m--artifacts-destination\033[22m (string)
+
+  Path to a local ('file://...') or S3 ('s3://...') directory
+  where Nancy will put all collected results of the run,
+  including:
+
+  * detailed performance report in JSON format
+
+  * whole PostgreSQL log, gzipped
+
+  \033[1m--aws-ec2-type\033[22m (string)
+
+  EC2 instance type where the run will be performed. EC2 Spot
+  instance will be used. WARNING: 'i3-metal' instances are
+  not currently supported (WIP).
+
+  The option may be used only with `--run-on aws`.
+
+  \033[1m--aws-keypair-name\033[22m (string)
+
+  THe name of key pair used on EC2 instance to allow accessing
+  to it. Must correspond to the value of the `--aws-ssh-key-path`
+  option.
+
+  The option may be used only with `--run-on aws`.
+
+  \033[1m--aws-ssh-key-path\033[22m (string)
+
+  Path to SSH key file (usually, has '.pem' extension).
+
+  The option may be used only with `--run-on aws`.
+
+  \033[1m--s3cfg-path\033[22m
+
+  The path the '.s3cfg' configuration file to be used when
+  accessing files in S3. This file must be local and must
+  be specified if some options' values are in 's3://***'
+  format.
+
+  See also: https://github.com/s3tools/s3cmd
+
+\033[1mSEE ALSO\033[22m
+
+  nancy help
+
+    " | less -RFX
+        exit ;;
     -d | --debug ) DEBUG=1; shift ;;
     --run-on )
         RUN_ON="$2"; shift 2 ;;
@@ -57,13 +241,12 @@ while true; do
     --aws-ssh-key-path )
         AWS_KEY_PATH="$2"; shift 2 ;;
 
-    --s3-cfg-path )
+    --s3cfg-path )
         S3_CFG_PATH="$2"; shift 2 ;;
     --tmp-path )
         TMP_PATH="$2"; shift 2 ;;
     --debug-timeout )
         DEBUG_TIMEOUT="$2"; shift 2 ;;
-
     -- ) shift; break ;;
     * ) break ;;
   esac
@@ -203,14 +386,20 @@ function checkParams() {
         exit 1
     fi
 
-    if [ ! -z ${DB_DUMP_PATH+x} ]
-    then
-        echo "DB_DUMP_PATH found"
-    else
-        echo "DB_DUMP_PATH NOT found"
-    fi
-
     [ ! -z ${DB_DUMP_PATH+x} ] && ! checkPath DB_DUMP_PATH && >&2 echo "ERROR: file $DB_DUMP_PATH given by db_dump_path not found" && exit 1
+
+    if [ -z ${PG_CONGIF+x} ]
+    then
+        >&2 echo "WARNING: Initial database server configuration not given. Will use default."
+    else
+        checkPath PG_CONGIF
+        if [ "$?" -ne "0" ]
+        then
+            >&2 echo "WARNING: Value given as pg_congif: '$PG_CONGIF' not found as file will use as content"
+            echo "$PG_CONGIF" > $TMP_PATH/pg_congif_tmp.sql
+            WORKLOAD_CUSTOM_SQL="$TMP_PATH/pg_congif_tmp.sql"
+        fi
+    fi
 
     if (([ -z ${TARGET_DDL_UNDO+x} ] && [ ! -z ${TARGET_DDL_DO+x} ]) || ([ -z ${TARGET_DDL_DO+x} ] && [ ! -z ${TARGET_DDL_UNDO+x} ]))
     then
@@ -275,7 +464,7 @@ function checkParams() {
         fi
     fi
 
-    if [ ! -z ${TARGET_DDL_UNDO} ]
+    if [ ! -z ${TARGET_DDL_UNDO+x} ]
     then
         checkPath TARGET_DDL_UNDO
         if [ "$?" -ne "0" ]
@@ -403,6 +592,7 @@ function cleanup {
   rm -f "$TMP_PATH/target_ddl_do_tmp.sql"
   rm -f "$TMP_PATH/target_ddl_undo_tmp.sql"
   rm -f "$TMP_PATH/target_config_tmp.conf"
+  rm -f "$TMP_PATH/pg_config_tmp.conf"
   
   if [ "$RUN_ON" = "localhost" ]; then
     rm -rf "$TMP_PATH/pg_nancy_home_${CURRENT_TS}"
@@ -440,6 +630,7 @@ function copyFile() {
 [ ! -z ${S3_CFG_PATH+x} ] && copyFile $S3_CFG_PATH && docker_exec cp /machine_home/.s3cfg /root/.s3cfg
 
 [ ! -z ${DB_DUMP_PATH+x} ] && copyFile $DB_DUMP_PATH
+[ ! -z ${PG_CONGIF+x} ] && copyFile $PG_CONGIF
 [ ! -z ${TARGET_CONFIG+x} ] && copyFile $TARGET_CONFIG
 [ ! -z ${TARGET_DDL_DO+x} ] && copyFile $TARGET_DDL_DO
 [ ! -z ${TARGET_DDL_UNDO+x} ] && copyFile $TARGET_DDL_UNDO
@@ -469,8 +660,18 @@ if ([ ! -z ${TARGET_DDL_DO+x} ] && [ "$TARGET_DDL_DO" != "" ]); then
     TARGET_DDL_DO_FILENAME=$(basename $TARGET_DDL_DO)
     docker_exec bash -c "psql -U postgres test -E -f /machine_home/$TARGET_DDL_DO_FILENAME"
 fi
+# Apply initial postgres configuration
+echo "Apply initial postgres configuration"
+if ([ ! -z ${PG_CONFIG+x} ] && [ "$PG_CONFIG" != "" ]); then
+    PG_CONFIG_FILENAME=$(basename $PG_CONFIG)
+    docker_exec bash -c "cat /machine_home/$PG_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    if [ -z ${TARGET_CONFIG+x} ]
+    then
+        docker_exec bash -c "sudo /etc/init.d/postgresql restart"
+    fi
+fi
 # Apply postgres configuration
-echo "Apply postgres conf"
+echo "Apply postgres configuration"
 if ([ ! -z ${TARGET_CONFIG+x} ] && [ "$TARGET_CONFIG" != "" ]); then
     TARGET_CONFIG_FILENAME=$(basename $TARGET_CONFIG)
     docker_exec bash -c "cat /machine_home/$TARGET_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
