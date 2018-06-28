@@ -191,7 +191,7 @@ while true; do
 
   nancy help
 
-    " | less -R
+    " | less -RFX
         exit ;;
     -d | --debug ) DEBUG=1; shift ;;
     --run-on )
