@@ -189,9 +189,9 @@ while true; do
 
 \033[1mSEE ALSO\033[22m
 
-  'nancy help'
+  nancy help
 
-    "
+    " | less -R
         exit ;;
     -d | --debug ) DEBUG=1; shift ;;
     --run-on )
