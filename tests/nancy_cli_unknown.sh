@@ -1,6 +1,6 @@
 #!/bin/bash
 
-output=$(${BASH_SOURCE%/*}/../nancy.sh init --run-on aws 2>&1)
+output=$(${BASH_SOURCE%/*}/../nancy init --run-on aws 2>&1)
 
 if [[ $output =~ "ERROR: Unknown command" ]]; then
   echo -e "\e[36mOK\e[39m"
