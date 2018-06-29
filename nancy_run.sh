@@ -91,7 +91,7 @@ while true; do
 
   \033[1m--db-dump-path\033[22m (string)
 
-  Specify the path to database dump (creted by pg_dump) to be used as an input.
+  Specify the path to database dump (created by pg_dump) to be used as an input.
 
   \033[1m--after-db-init-code\033[22m (string)
 
@@ -380,7 +380,7 @@ function checkParams() {
         exit 1
     fi
 
-    ! -z ${DB_DUMP_PATH+x} && ! checkPath DB_DUMP_PATH \
+    [ ! -z ${DB_DUMP_PATH+x} ] && ! checkPath DB_DUMP_PATH \
       && >&2 echo "ERROR: file $DB_DUMP_PATH given by db_dump_path not found" \
       && exit 1
 
@@ -655,7 +655,7 @@ function copyFile() {
 
 ## Apply machine features
 # Dump
-sleep 1 # wait for postgres up&running
+sleep 2 # wait for postgres up&running
 DB_DUMP_FILENAME=$(basename $DB_DUMP_PATH)
 docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test"
 # After init database sql code apply
