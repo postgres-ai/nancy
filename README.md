@@ -17,8 +17,9 @@ Currently Nancy works only with PostgreSQL versions 9.6 and 10.
 
 Requirements
 ===
-Linux or MacOS machine with installed Docker. To use Nancy CLI on AWS EC2
-instances, you also need Docker Machine (https://docs.docker.com/machine/).
+To use Nancy CLI you need Linux or MacOS with installed Docker. If you plan 
+to run experiments in AWS EC2 instances, you also need Docker Machine
+(https://docs.docker.com/machine/).
 
 Installation
 ===
