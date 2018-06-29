@@ -1,5 +1,7 @@
 #!/bin/bash
 
+echo "SKIP" && exit 0
+
 thisDir="$(dirname "$(readlink -f "$BASH_SOURCE")")"
 parentDir="$(dirname "$thisDir")"
 srcDir="$parentDir/.circleci"
@@ -10,10 +12,10 @@ nancyRun="$parentDir/nancy_run.sh"
 
 output=$(
   $nancyRun --workload-custom-sql "file://$srcDir/custom.sql" \
+    --tmp-path ${srcDir}/tmp \
     --db-dump-path "file://$srcDir/test.dump.bz2" \
     --target-ddl-do "file://$srcDir/ddl_create_index.sql" \
-    --target-ddl-undo "file://$srcDir/ddl_drop_index.sql" \
-    --tmp-path $srcDir/tmp
+    --target-ddl-undo "file://$srcDir/ddl_drop_index.sql"
 )
 
 if [[ $output =~ "Queries duration:" ]]; then
