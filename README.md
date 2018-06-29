@@ -30,7 +30,7 @@ source ~/.bashrc
 
 Getting started
 ===
-To these commands:
+Start with these commands:
 ```bash
 nancy help
 nancy run help
