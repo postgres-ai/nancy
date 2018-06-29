@@ -376,7 +376,7 @@ function checkParams() {
 
     if ([ ! -z ${DB_PREPARED_SNAPSHOT+x} ]  &&  [ ! -z ${DB_DUMP_PATH+x} ])
     then
-        >&2 echo "ERROR: Both snapshot and dump sources given."
+        >&2 echo "ERROR: Both snapshot and dump sources are given."
         exit 1
     fi
 
