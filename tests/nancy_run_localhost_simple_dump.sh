@@ -11,7 +11,7 @@ nancyRun="$parentDir/nancy_run.sh"
 output=$(
   $nancyRun --workload-custom-sql "file://$srcDir/custom.sql" \
     --db-dump-path "file://$srcDir/test.dump.bz2" \
-    --tmp-path $srcDir/tmp
+    --tmp-path $srcDir/tmp 2>&
 )
 
 if [[ $output =~ "Queries duration:" ]]; then

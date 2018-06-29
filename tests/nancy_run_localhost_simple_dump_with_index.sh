@@ -13,7 +13,7 @@ output=$(
     --tmp-path ${srcDir}/tmp \
     --db-dump-path "file://$srcDir/test.dump.bz2" \
     --target-ddl-do "file://$srcDir/ddl_create_index.sql" \
-    --target-ddl-undo "file://$srcDir/ddl_drop_index.sql"
+    --target-ddl-undo "file://$srcDir/ddl_drop_index.sql" 2>&
 )
 
 if [[ $output =~ "Queries duration:" ]]; then
