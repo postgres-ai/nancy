@@ -1,6 +1,6 @@
 #!/bin/bash
 
-params <<PARAMS
+params=<<PARAMS
   --run-on aws --aws-keypair-name awskey --pg-version 9.6 \
   --aws-ssh-key-path "/home/someuser/.ssh/awskey.pem" \
   --aws-ec2-type "r4.large" \
