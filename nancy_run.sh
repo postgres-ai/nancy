@@ -380,10 +380,9 @@ function checkParams() {
         exit 1
     fi
 
-    if [ ! -z ${DB_DUMP_PATH+x} ] && [ ! checkPath DB_DUMP_PATH ]; then
-      >&2 echo "ERROR: file $DB_DUMP_PATH given by db_dump_path not found"
-      exit 1
-    fi
+    ! -z ${DB_DUMP_PATH+x} && ! checkPath DB_DUMP_PATH \
+      && >&2 echo "ERROR: file $DB_DUMP_PATH given by db_dump_path not found" \
+      && exit 1
 
     if [ -z ${PG_CONFIG+x} ]
     then
