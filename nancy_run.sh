@@ -16,37 +16,32 @@ while true; do
 
 \033[1mDESCRIPTION\033[22m
 
-  Nancy is a member of Postgres.ai's Artificial DBA team
-  responsible for conducting experiments.
+  Nancy is a member of Postgres.ai's Artificial DBA team responsible for
+  conducting experiments.
 
-  Use 'nancy run' to request a new run for some experiment
-  being conducted.
+  Use 'nancy run' to request a new run for some experiment being conducted.
 
-  An experiment consists of one or more 'runs'. For instance,
-  if Nancy is being used to verify that a new index will
-  affect performance only in a positive way, two runs are needed.
-  If one needs to only collect query plans for each query group,
-  a single run is enough. And finally, if there is a goal to
-  find an optimal value for some PostgreSQL setting,
-  multiple runs will be needed to check how various
-  values of specified setting affect performance
-  of specified database and workload.
+  An experiment consists of one or more 'runs'. For instance, if Nancy is being
+  used to verify  that a new index  will affect  performance only in a positive
+  way, two runs are needed. If one needs to only  collect  query plans for each
+  query group, a single run is enough. And finally, if there is  a goal to find
+  an optimal value for some PostgreSQL setting, multiple runs will be needed to
+  check how various values of specified setting affect performance of specified
+  database and workload.
 
   4 main parts of each run are:
     - environment: where it will happen, PostgreSQL version, etc;
     - database: copy or clone of some database;
     - workload: 'real' workload or custom SQL;
-    - target: PostgreSQL config changes or some DDL such as
-    'CREATE INDEX ...'.
+    - target: PostgreSQL config changes or some DDL such as 'CREATE INDEX ...'.
 
 \033[1mOPTIONS\033[22m
 
-  NOTICE: A value for a string option that starts with 'file://'
-          is treated as a path to a local file. A string value
-          starting with 's3://' is treated as a path
-          to remote file located in S3 (AWS S3 or its analog).
-          Otherwise, a string values is considered as 'content',
-          not a link to a file.
+  NOTICE: A value for a string option that starts with 'file://' is treated as
+          a path to a local file. A string value starting with 's3://' is
+          treated as a path to remote file located in S3 (AWS S3 or analog).
+          Otherwise, a string values is considered as 'content', not a link to
+          a file.
 
   \033[1m--debug\033[22m (boolean)
 
@@ -54,11 +49,10 @@ while true; do
 
   \033[1m--debug-timeout\033[22m (string)
 
-  How many seconds the entity (Docker container, Docker machine)
-  where experimental run is being made will be alive after the
-  main activity is finished. This is useful for various debugging:
-  one can access container via ssh / docker exec and see PostgreSQL
-  with data, logs, etc.
+  How many seconds the entity (Docker container, Docker machine) where
+  experimental run is being made will be alive after the main activity is
+  finished. This is useful for various debugging: one can access container via
+  ssh / docker exec and see PostgreSQL with data, logs, etc.
 
   \033[1m--run-on\033[22m (string)
 
@@ -70,9 +64,9 @@ while true; do
 
     * gcp (WIP)
 
-  If 'localhost' is specified (or --run-on is omitted),
-  Nancy will perform the run on the localhost in a Docker container
-  so (`docker run` must work locally).
+  If 'localhost' is specified (or --run-on is omitted), Nancy will perform the
+  run on the localhost in a Docker container so ('docker run' must work
+  locally).
 
   If 'aws' is specified, Nancy will use a Docker machine with a single
   container running on an EC2 Spot instance.
@@ -97,17 +91,16 @@ while true; do
 
   \033[1m--db-dump-path\033[22m (string)
 
-  Specify the path to database dump (creted by pg_dump) to be used
-  as an input.
+  Specify the path to database dump (creted by pg_dump) to be used as an input.
 
   \033[1m--after-db-init-code\033[22m (string)
 
-  Specify additional commands to be executed after database
-  is initiated (dump loaded or snapshot attached).
+  Specify additional commands to be executed after database is initiated (dump
+  loaded or snapshot attached).
 
   \033[1m--workload-full-path\033[22m (string)
 
-  Path to 'real' workload prepared by using `nancy prepare-workload`.
+  Path to 'real' workload prepared by using 'nancy prepare-workload'.
 
   \033[1m--workload-basis-path\033[22m (string)
 
@@ -123,34 +116,30 @@ while true; do
 
   \033[1m--target-ddl-do\033[22m (string)
 
-  SQL changing database somehow before workload is applied.
-  'Do DDL' example:
+  SQL changing database somehow before workload is applied. 'Do DDL' example:
 
       create index i_t1_experiment on t1 using btree(col1);
       vacuum analyze t1;
 
   \033[1m--target-ddl-undo\033[22m (string)
 
-  SQL reverting changes produced by those specified in the
-  the value of the `--target-ddl-do` option. Reverting allows
-  to serialize multiple runs, but it might be not possible
-  in some cases. 'Undo DDL' example:
+  SQL reverting changes produced by those specified in the value of the
+  '--target-ddl-do' option. Reverting allows to serialize multiple runs, but it
+  might be not possible in some cases. 'Undo DDL' example:
 
       drop index i_t1_experiment;
 
   \033[1m--target-config\033[22m (string)
 
-  Config changes to be applied to postgresql.conf before
-  workload is applied. Once configuration changes are made,
-  PostgreSQL is restarted. Example:
+  Config changes to be applied to postgresql.conf before workload is applied.
+  Once configuration changes are made, PostgreSQL is restarted. Example:
 
       random_page_cost = 1.1
 
   \033[1m--artifacts-destination\033[22m (string)
 
-  Path to a local ('file://...') or S3 ('s3://...') directory
-  where Nancy will put all collected results of the run,
-  including:
+  Path to a local ('file://...') or S3 ('s3://...') directory where Nancy will
+  put all collected results of the run, including:
 
   * detailed performance report in JSON format
 
@@ -158,32 +147,29 @@ while true; do
 
   \033[1m--aws-ec2-type\033[22m (string)
 
-  EC2 instance type where the run will be performed. EC2 Spot
-  instance will be used. WARNING: 'i3-metal' instances are
-  not currently supported (WIP).
+  EC2 instance type where the run will be performed. An EC2 Spot instance will
+  be used. WARNING: 'i3-metal' instances are not currently supported (WIP).
 
-  The option may be used only with `--run-on aws`.
+  The option may be used only with '--run-on aws'.
 
   \033[1m--aws-keypair-name\033[22m (string)
 
-  THe name of key pair used on EC2 instance to allow accessing
-  to it. Must correspond to the value of the `--aws-ssh-key-path`
-  option.
+  THe name of key pair used on EC2 instance to allow accessing to it. Must
+  correspond to the value of the '--aws-ssh-key-path' option.
 
-  The option may be used only with `--run-on aws`.
+  The option may be used only with '--run-on aws'.
 
   \033[1m--aws-ssh-key-path\033[22m (string)
 
   Path to SSH key file (usually, has '.pem' extension).
 
-  The option may be used only with `--run-on aws`.
+  The option may be used only with '--run-on aws'.
 
   \033[1m--s3cfg-path\033[22m
 
-  The path the '.s3cfg' configuration file to be used when
-  accessing files in S3. This file must be local and must
-  be specified if some options' values are in 's3://***'
-  format.
+  The path the '.s3cfg' configuration file to be used when accessing files in
+  S3. This file must be local and must be specified if some options' values are
+  in 's3://***' format.
 
   See also: https://github.com/s3tools/s3cmd
 
@@ -396,15 +382,15 @@ function checkParams() {
 
     [ ! -z ${DB_DUMP_PATH+x} ] && ! checkPath DB_DUMP_PATH && >&2 echo "ERROR: file $DB_DUMP_PATH given by db_dump_path not found" && exit 1
 
-    if [ -z ${PG_CONGIF+x} ]
+    if [ -z ${PG_CONFIG+x} ]
     then
         >&2 echo "WARNING: Initial database server configuration not given. Will use default."
     else
-        checkPath PG_CONGIF
+        checkPath PG_CONFIG
         if [ "$?" -ne "0" ]
         then
-            >&2 echo "WARNING: Value given as pg_congif: '$PG_CONGIF' not found as file will use as content"
-            echo "$PG_CONGIF" > $TMP_PATH/pg_congif_tmp.sql
+            >&2 echo "WARNING: Value given as pg_config: '$PG_CONFIG' not found as file will use as content"
+            echo "$PG_CONFIG" > $TMP_PATH/pg_congif_tmp.sql
             WORKLOAD_CUSTOM_SQL="$TMP_PATH/pg_congif_tmp.sql"
         fi
     fi
@@ -516,7 +502,9 @@ function waitEC2Ready() {
         ((STOP==1)) && return 0
         if [ $checkPrice -eq 1 ]
         then
-            status=$(aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" | jq  '.SpotInstanceRequests | sort_by(.CreateTime) | .[] | .Status.Code' | tail -n 1)
+            status=$(
+              aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" \
+              | jq  '.SpotInstanceRequests | sort_by(.CreateTime) | .[] | .Status.Code' | tail -n 1)
             if [ "$status" == "\"price-too-low\"" ]
             then
                 echo "price-too-low"; # this value is result of function (not message for user), will check later
@@ -547,7 +535,12 @@ if [[ "$RUN_ON" = "localhost" ]]; then
   dockerConfig=""
 elif [[ "$RUN_ON" = "aws" ]]; then
   ## Get max price from history and apply multiplier
-  prices=$(aws --region=us-east-1 ec2 describe-spot-price-history --instance-types $AWS_EC2_TYPE --no-paginate --start-time=$(date +%s) --product-descriptions="Linux/UNIX (Amazon VPC)" --query 'SpotPriceHistory[*].{az:AvailabilityZone, price:SpotPrice}')
+  prices=$(
+    aws --region=us-east-1 ec2 \ # TODO detect region and/or allow to choose via options
+    describe-spot-price-history --instance-types $AWS_EC2_TYPE --no-paginate \
+    --start-time=$(date +%s) --product-descriptions="Linux/UNIX (Amazon VPC)" \
+    --query 'SpotPriceHistory[*].{az:AvailabilityZone, price:SpotPrice}'
+  )
   maxprice=$(echo $prices | jq 'max_by(.price) | .price')
   maxprice="${maxprice/\"/}"
   maxprice="${maxprice/\"/}"
@@ -562,7 +555,11 @@ elif [[ "$RUN_ON" = "aws" ]]; then
   if [ "$status" == "price-too-low" ]
   then
     echo "Price $price is too low for $AWS_EC2_TYPE instance. Try detect actual."
-    corrrectPriceForLastFailedRequest=$(aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" | jq  '.SpotInstanceRequests[] | select(.Status.Code == "price-too-low") | .Status.Message' | grep -Eo '[0-9]+[.][0-9]+' | tail -n 1 &)
+    corrrectPriceForLastFailedRequest=$(
+      aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" \
+      | jq  '.SpotInstanceRequests[] | select(.Status.Code == "price-too-low") | .Status.Message' \
+      | grep -Eo '[0-9]+[.][0-9]+' | tail -n 1 &
+    )
     if [ "$corrrectPriceForLastFailedRequest" != "" ]  &&  [ "$corrrectPriceForLastFailedRequest" != "null" ]; then
       EC2_PRICE=$corrrectPriceForLastFailedRequest
       #update docker machine name
@@ -645,9 +642,9 @@ function copyFile() {
   fi
 }
 
-[ ! -z ${S3_CFG_PATH+x} ] && copyFile $S3_CFG_PATH && docker_exec cp /$MACHINE_HOME/.s3cfg /root/.s3cfg
+[ ! -z ${S3_CFG_PATH+x} ] && copyFile $S3_CFG_PATH && docker_exec cp $MACHINE_HOME/.s3cfg /root/.s3cfg
 [ ! -z ${DB_DUMP_PATH+x} ] && copyFile $DB_DUMP_PATH
-[ ! -z ${PG_CONGIF+x} ] && copyFile $PG_CONGIF
+[ ! -z ${PG_CONFIG+x} ] && copyFile $PG_CONFIG
 [ ! -z ${TARGET_CONFIG+x} ] && copyFile $TARGET_CONFIG
 [ ! -z ${TARGET_DDL_DO+x} ] && copyFile $TARGET_DDL_DO
 [ ! -z ${TARGET_DDL_UNDO+x} ] && copyFile $TARGET_DDL_UNDO
@@ -658,30 +655,30 @@ function copyFile() {
 # Dump
 sleep 1 # wait for postgres up&running
 DB_DUMP_FILENAME=$(basename $DB_DUMP_PATH)
-docker_exec bash -c "bzcat /$MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test"
+docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test"
 # After init database sql code apply
 echo "Apply sql code after db init"
 if ([ ! -z ${AFTER_DB_INIT_CODE+x} ] && [ "$AFTER_DB_INIT_CODE" != "" ])
 then
     AFTER_DB_INIT_CODE_FILENAME=$(basename $AFTER_DB_INIT_CODE)
     if [[ $AFTER_DB_INIT_CODE =~ "s3://" ]]; then
-        docker_exec s3cmd sync $AFTER_DB_INIT_CODE /$MACHINE_HOME/
+        docker_exec s3cmd sync $AFTER_DB_INIT_CODE $MACHINE_HOME/
     else
         docker-machine scp $AFTER_DB_INIT_CODE $DOCKER_MACHINE:/home/ubuntu
     fi
-    docker_exec bash -c "psql -U postgres test -E -f /$MACHINE_HOME/$AFTER_DB_INIT_CODE_FILENAME"
+    docker_exec bash -c "psql -U postgres test -E -f $MACHINE_HOME/$AFTER_DB_INIT_CODE_FILENAME"
 fi
 # Apply DDL code
 echo "Apply DDL SQL code"
 if ([ ! -z ${TARGET_DDL_DO+x} ] && [ "$TARGET_DDL_DO" != "" ]); then
     TARGET_DDL_DO_FILENAME=$(basename $TARGET_DDL_DO)
-    docker_exec bash -c "psql -U postgres test -E -f /$MACHINE_HOME/$TARGET_DDL_DO_FILENAME"
+    docker_exec bash -c "psql -U postgres test -E -f $MACHINE_HOME/$TARGET_DDL_DO_FILENAME"
 fi
 # Apply initial postgres configuration
 echo "Apply initial postgres configuration"
 if ([ ! -z ${PG_CONFIG+x} ] && [ "$PG_CONFIG" != "" ]); then
     PG_CONFIG_FILENAME=$(basename $PG_CONFIG)
-    docker_exec bash -c "cat /$MACHINE_HOME/$PG_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "cat $MACHINE_HOME/$PG_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
     if [ -z ${TARGET_CONFIG+x} ]
     then
         docker_exec bash -c "sudo /etc/init.d/postgresql restart"
@@ -691,7 +688,7 @@ fi
 echo "Apply postgres configuration"
 if ([ ! -z ${TARGET_CONFIG+x} ] && [ "$TARGET_CONFIG" != "" ]); then
     TARGET_CONFIG_FILENAME=$(basename $TARGET_CONFIG)
-    docker_exec bash -c "cat /$MACHINE_HOME/$TARGET_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "cat $MACHINE_HOME/$TARGET_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
     docker_exec bash -c "sudo /etc/init.d/postgresql restart"
 fi
 # Clear statistics and log
@@ -704,18 +701,20 @@ if [ ! -z ${WORKLOAD_FULL_PATH+x} ] && [ "$WORKLOAD_FULL_PATH" != '' ];then
     echo "Execute pgreplay queries..."
     docker_exec psql -U postgres test -c 'create role testuser superuser login;'
     WORKLOAD_FILE_NAME=$(basename $WORKLOAD_FULL_PATH)
-    docker_exec bash -c "pgreplay -r -j /$MACHINE_HOME/$WORKLOAD_FILE_NAME"
+    docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
 else
     if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
         WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
         echo "Execute custom sql queries..."
-        docker_exec bash -c "psql -U postgres test -E -f /$MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME"
+        docker_exec bash -c "psql -U postgres test -E -f $MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME"
     fi
 fi
 
 ## Get statistics
 echo "Prepare JSON log..."
-docker_exec bash -c "/root/pgbadger/pgbadger -j $(cat /proc/cpuinfo | grep processor | wc -l) --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr -o /$MACHINE_HOME/$ARTIFACTS_FILENAME.json"
+docker_exec bash -c "/root/pgbadger/pgbadger -j $(cat /proc/cpuinfo | grep processor | wc -l) \
+  --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr \
+  -o $MACHINE_HOME/$ARTIFACTS_FILENAME.json"
 
 echo "Save JSON log..."
 if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
@@ -724,7 +723,7 @@ else
     logpath=$(docker_exec bash -c "psql -XtU postgres \
     -c \"select string_agg(setting, '/' order by name) from pg_settings where name in ('log_directory', 'log_filename');\" \
     | grep / | sed -e 's/^[ \t]*//'")
-    docker_exec bash -c "gzip -c $logpath > /$MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz"
+    docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz"
     if [ "$RUN_ON" = "localhost" ]; then
       cp "$TMP_PATH/pg_nancy_home_${CURRENT_TS}/$containerHash/"$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
       cp "$TMP_PATH/pg_nancy_home_${CURRENT_TS}/$containerHash/"$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
@@ -740,7 +739,7 @@ fi
 echo "Apply DDL undo SQL code"
 if ([ ! -z ${TARGET_DDL_UNDO+x} ] && [ "$TARGET_DDL_UNDO" != "" ]); then
     TARGET_DDL_UNDO_FILENAME=$(basename $TARGET_DDL_UNDO)
-    docker_exec bash -c "psql -U postgres test -E -f /$MACHINE_HOME/$TARGET_DDL_UNDO_FILENAME"
+    docker_exec bash -c "psql -U postgres test -E -f $MACHINE_HOME/$TARGET_DDL_UNDO_FILENAME"
 fi
 
 echo -e "Run done!"
