@@ -1,5 +1,7 @@
 #!/bin/bash
 
+echo "SKIP" && exit 0
+
 thisDir="$(dirname "$(readlink -f "$BASH_SOURCE")")"
 parentDir="$(dirname "$thisDir")"
 srcDir="$parentDir/.circleci"
