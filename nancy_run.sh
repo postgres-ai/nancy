@@ -392,85 +392,83 @@ function checkParams() {
     ([ -z ${TARGET_DDL_UNDO+x} ] && [ ! -z ${TARGET_DDL_DO+x} ]) \
     || ([ -z ${TARGET_DDL_DO+x} ] && [ ! -z ${TARGET_DDL_UNDO+x} ])
   ); then
-  >&2 echo "ERROR: DDL code must have do and undo part."
-  exit 1;
-fi
-
-if [ -z ${ARTIFACTS_DESTINATION+x} ]; then
-  >&2 echo "WARNING: Artifacts destination not given. Will use ./"
-  ARTIFACTS_DESTINATION="."
-fi
-
-if [ -z ${ARTIFACTS_FILENAME+x} ]
-then
-  >&2 echo "WARNING: Artifacts naming not set. Will use: $DOCKER_MACHINE"
-  ARTIFACTS_FILENAME=$DOCKER_MACHINE
-fi
-
-[ ! -z ${WORKLOAD_FULL_PATH+x} ] && ! checkPath WORKLOAD_FULL_PATH \
-  && >&2 echo "ERROR: workload file $WORKLOAD_FULL_PATH not found" \
-  && exit 1
-
-echo "WORKLOAD_FULL_PATH: $WORKLOAD_FULL_PATH"
-
-[ ! -z ${WORKLOAD_BASIS_PATH+x} ] && ! checkPath WORKLOAD_BASIS_PATH \
-  && >&2 echo "ERROR: workload file $WORKLOAD_BASIS_PATH not found" \
-  && exit 1
-
-if [ ! -z ${WORKLOAD_CUSTOM_SQL+x} ]; then
-  checkPath WORKLOAD_CUSTOM_SQL
-  if [ "$?" -ne "0" ]; then
-    #>&2 echo "WARNING: Value given as workload-custom-sql: '$WORKLOAD_CUSTOM_SQL' not found as file will use as content"
-    echo "$WORKLOAD_CUSTOM_SQL" > $TMP_PATH/workload_custom_sql_tmp.sql
-    WORKLOAD_CUSTOM_SQL="$TMP_PATH/workload_custom_sql_tmp.sql"
-  else
-    [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as workload-custom-sql will use as filename"
+    >&2 echo "ERROR: DDL code must have do and undo part."
+    exit 1;
   fi
-fi
 
-if [ ! -z ${AFTER_DB_INIT_CODE+x} ]; then
-  checkPath AFTER_DB_INIT_CODE
-  if [ "$?" -ne "0" ]; then
-    #>&2 echo "WARNING: Value given as after_db_init_code: '$AFTER_DB_INIT_CODE' not found as file will use as content"
-    echo "$AFTER_DB_INIT_CODE" > $TMP_PATH/after_db_init_code_tmp.sql
-    AFTER_DB_INIT_CODE="$TMP_PATH/after_db_init_code_tmp.sql"
-  else
-    [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as after_db_init_code will use as filename"
+  if [ -z ${ARTIFACTS_DESTINATION+x} ]; then
+    >&2 echo "WARNING: Artifacts destination not given. Will use ./"
+    ARTIFACTS_DESTINATION="."
   fi
-fi
 
-if [ ! -z ${TARGET_DDL_DO+x} ]; then
-  checkPath TARGET_DDL_DO
-  if [ "$?" -ne "0" ]; then
-    #>&2 echo "WARNING: Value given as target_ddl_do: '$TARGET_DDL_DO' not found as file will use as content"
-    echo "$TARGET_DDL_DO" > $TMP_PATH/target_ddl_do_tmp.sql
-    TARGET_DDL_DO="$TMP_PATH/target_ddl_do_tmp.sql"
-  else
-    [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as target_ddl_do will use as filename"
+  if [ -z ${ARTIFACTS_FILENAME+x} ]
+  then
+    >&2 echo "WARNING: Artifacts naming not set. Will use: $DOCKER_MACHINE"
+    ARTIFACTS_FILENAME=$DOCKER_MACHINE
   fi
-fi
 
-if [ ! -z ${TARGET_DDL_UNDO+x} ]; then
-  checkPath TARGET_DDL_UNDO
-  if [ "$?" -ne "0" ]; then
-    #>&2 echo "WARNING: Value given as target_ddl_undo: '$TARGET_DDL_UNDO' not found as file will use as content"
-    echo "$TARGET_DDL_UNDO" > $TMP_PATH/target_ddl_undo_tmp.sql
-    TARGET_DDL_UNDO="$TMP_PATH/target_ddl_undo_tmp.sql"
-  else
-    [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as target_ddl_undo will use as filename"
-  fi
-fi
+  [ ! -z ${WORKLOAD_FULL_PATH+x} ] && ! checkPath WORKLOAD_FULL_PATH \
+    && >&2 echo "ERROR: workload file $WORKLOAD_FULL_PATH not found" \
+    && exit 1
 
-if [ ! -z ${TARGET_CONFIG+x} ]; then
-  checkPath TARGET_CONFIG
-  if [ "$?" -ne "0" ]; then
-    #>&2 echo "WARNING: Value given as target_config: '$TARGET_CONFIG' not found as file will use as content"
-    echo "$TARGET_CONFIG" > $TMP_PATH/target_config_tmp.conf
-    TARGET_CONFIG="$TMP_PATH/target_config_tmp.conf"
-  else
-    [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as target_config will use as filename"
+  [ ! -z ${WORKLOAD_BASIS_PATH+x} ] && ! checkPath WORKLOAD_BASIS_PATH \
+    && >&2 echo "ERROR: workload file $WORKLOAD_BASIS_PATH not found" \
+    && exit 1
+
+  if [ ! -z ${WORKLOAD_CUSTOM_SQL+x} ]; then
+    checkPath WORKLOAD_CUSTOM_SQL
+    if [ "$?" -ne "0" ]; then
+      #>&2 echo "WARNING: Value given as workload-custom-sql: '$WORKLOAD_CUSTOM_SQL' not found as file will use as content"
+      echo "$WORKLOAD_CUSTOM_SQL" > $TMP_PATH/workload_custom_sql_tmp.sql
+      WORKLOAD_CUSTOM_SQL="$TMP_PATH/workload_custom_sql_tmp.sql"
+    else
+      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as workload-custom-sql will use as filename"
+    fi
   fi
-fi
+
+  if [ ! -z ${AFTER_DB_INIT_CODE+x} ]; then
+    checkPath AFTER_DB_INIT_CODE
+    if [ "$?" -ne "0" ]; then
+      #>&2 echo "WARNING: Value given as after_db_init_code: '$AFTER_DB_INIT_CODE' not found as file will use as content"
+      echo "$AFTER_DB_INIT_CODE" > $TMP_PATH/after_db_init_code_tmp.sql
+      AFTER_DB_INIT_CODE="$TMP_PATH/after_db_init_code_tmp.sql"
+    else
+      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as after_db_init_code will use as filename"
+    fi
+  fi
+
+  if [ ! -z ${TARGET_DDL_DO+x} ]; then
+    checkPath TARGET_DDL_DO
+    if [ "$?" -ne "0" ]; then
+      #>&2 echo "WARNING: Value given as target_ddl_do: '$TARGET_DDL_DO' not found as file will use as content"
+      echo "$TARGET_DDL_DO" > $TMP_PATH/target_ddl_do_tmp.sql
+      TARGET_DDL_DO="$TMP_PATH/target_ddl_do_tmp.sql"
+    else
+      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as target_ddl_do will use as filename"
+    fi
+  fi
+
+  if [ ! -z ${TARGET_DDL_UNDO+x} ]; then
+    checkPath TARGET_DDL_UNDO
+    if [ "$?" -ne "0" ]; then
+      #>&2 echo "WARNING: Value given as target_ddl_undo: '$TARGET_DDL_UNDO' not found as file will use as content"
+      echo "$TARGET_DDL_UNDO" > $TMP_PATH/target_ddl_undo_tmp.sql
+      TARGET_DDL_UNDO="$TMP_PATH/target_ddl_undo_tmp.sql"
+    else
+      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as target_ddl_undo will use as filename"
+    fi
+  fi
+
+  if [ ! -z ${TARGET_CONFIG+x} ]; then
+    checkPath TARGET_CONFIG
+    if [ "$?" -ne "0" ]; then
+      #>&2 echo "WARNING: Value given as target_config: '$TARGET_CONFIG' not found as file will use as content"
+      echo "$TARGET_CONFIG" > $TMP_PATH/target_config_tmp.conf
+      TARGET_CONFIG="$TMP_PATH/target_config_tmp.conf"
+    else
+      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as target_config will use as filename"
+    fi
+  fi
 }
 
 checkParams;
