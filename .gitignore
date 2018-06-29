@@ -1,1 +1,3 @@
 .circleci/tmp
+./*.json
+./*.gz

@@ -2,21 +2,18 @@
 
 echo "SKIP" && exit 0
 
-set -ueo pipefail
-#for debugging
-
 thisDir="$(dirname "$(readlink -f "$BASH_SOURCE")")"
 parentDir="$(dirname "$thisDir")"
 srcDir="$parentDir/.circleci"
-#bzip2 "$srcDir/test.dump"
 if [ ! -d "$srcDir/tmp" ]; then
   mkdir "$srcDir/tmp"
 fi
 nancyRun="$parentDir/nancy_run.sh"
 
 output=$(
-  $nancyRun --workload-custom-sql $srcDir/custom.sql --db-dump-path $srcDir/test.dump.bz2 \
-    --tmp-path $srcDir/tmp --debug 2>&1
+  $nancyRun --workload-custom-sql "file://$srcDir/custom.sql" \
+    --db-dump-path "file://$srcDir/test.dump.bz2" \
+    --tmp-path $srcDir/tmp
 )
 
 if [[ $output =~ "Queries duration:" ]]; then

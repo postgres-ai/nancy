@@ -33,6 +33,7 @@ case "$1" in
         if [ ! -f "${BASH_SOURCE%/*}/nancy_$1.sh" ]
         then
             >&2 echo "ERROR: Unknown command."
+            >&2 echo "Try 'nancy help'"
             exit 1;
         fi
         cmd="${BASH_SOURCE%/*}/nancy_$1.sh"
