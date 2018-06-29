@@ -2,7 +2,7 @@
 
 export PATH=$PATH:${BASH_SOURCE%/*}/..
 
-output=$(nancy run --run-on aws)
+output=$(nancy run --run-on aws 2>&1)
 
 if [[ $output =~ "ERROR: AWS keys not given" ]]; then
   echo -e "\e[36mOK\e[39m"
