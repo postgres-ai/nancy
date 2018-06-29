@@ -26,8 +26,8 @@ while true; do
   way, two runs are needed. If one needs to only  collect  query plans for each
   query group, a single run is enough. And finally, if there is  a goal to find
   an optimal value for some PostgreSQL setting, multiple runs will be needed to
-  check how various values of specified setting affect performance of specified
-  database and workload.
+  check how various values of the specified setting affect performance of the
+  specified database and workload.
 
   4 main parts of each run are:
     - environment: where it will happen, PostgreSQL version, etc;
@@ -154,7 +154,7 @@ while true; do
 
   \033[1m--aws-keypair-name\033[22m (string)
 
-  THe name of key pair used on EC2 instance to allow accessing to it. Must
+  The name of key pair used on EC2 instance to allow accessing to it. Must
   correspond to the value of the '--aws-ssh-key-path' option.
 
   The option may be used only with '--run-on aws'.
