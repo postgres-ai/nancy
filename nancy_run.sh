@@ -268,217 +268,209 @@ then
 fi
 
 function checkPath() {
-    if [ -z $1 ]
+  if [ -z $1 ]
+  then
+    return 1
+  fi
+  eval path=\$$1
+  if [[ $path =~ "s3://" ]]
+  then
+    return 0; ## do not check
+  fi
+  if [[ $path =~ "file:///" ]]
+  then
+    path=${path/file:\/\//}
+    echo "CHECK $path"
+    if [ -f $path ]
     then
-        return 1
+      eval "$1=\"$path\"" # update original variable
+      return 0 # file found
+    else
+      return 2 # file not found
     fi
-    eval path=\$$1
-    if [[ $path =~ "s3://" ]]
+  fi
+  if [[ $path =~ "file://" ]]
+  then
+    curdir=$(pwd)
+    path=$curdir/${path/file:\/\//}
+    if [ -f $path ]
     then
-        return 0; ## do not check
+      eval "$1=\"$path\"" # update original variable
+      return 0 # file found
+    else
+      return 2 # file not found
     fi
-    if [[ $path =~ "file:///" ]]
-    then
-        path=${path/file:\/\//}
-        echo "CHECK $path"
-        if [ -f $path ]
-        then
-            eval "$1=\"$path\"" # update original variable
-            return 0 # file found
-        else
-            return 2 # file not found
-        fi
-    fi
-    if [[ $path =~ "file://" ]]
-    then
-        curdir=$(pwd)
-        path=$curdir/${path/file:\/\//}
-        if [ -f $path ]
-        then
-            eval "$1=\"$path\"" # update original variable
-            return 0 # file found
-        else
-            return 2 # file not found
-        fi
-    fi
-    return -1 # incorrect path
+  fi
+  return -1 # incorrect path
 }
 
 ## Check params
 function checkParams() {
-    if [ "$RUN_ON" != "aws" ] && [ "$RUN_ON" != "localhost" ]; then
-      >&2 echo "ERROR: incorrect value for option --run-on"
+  if [ "$RUN_ON" != "aws" ] && [ "$RUN_ON" != "localhost" ]; then
+    >&2 echo "ERROR: incorrect value for option --run-on"
+    exit 1
+  fi
+  if [ "$RUN_ON" = "aws" ]; then
+    if [ ! -z ${CONTAINER_ID+x} ]
+    then
+      >&2 echo "ERROR: Container ID may be specified only for local runs."
       exit 1
     fi
-    if [ "$RUN_ON" = "aws" ]; then
-      if [ ! -z ${CONTAINER_ID+x} ]
-      then
-          >&2 echo "ERROR: Container ID may be specified only for local runs."
-          exit 1
-      fi
-      if [ -z ${AWS_KEY_PAIR+x} ] || [ -z ${AWS_KEY_PATH+x} ]
-      then
-          >&2 echo "ERROR: AWS keys not given."
-          exit 1
-      fi
-
-      if [ -z ${AWS_EC2_TYPE+x} ]
-      then
-          >&2 echo "ERROR: AWS EC2 Instance type not given."
-          exit 1
-      fi
-    fi
-
-    if [ -z ${PG_VERSION+x} ]
+    if [ -z ${AWS_KEY_PAIR+x} ] || [ -z ${AWS_KEY_PATH+x} ]
     then
-        >&2 echo "WARNING: Postgres version not given. Will use 9.6."
-        PG_VERSION="9.6"
+      >&2 echo "ERROR: AWS keys not given."
+      exit 1
     fi
 
-    if [ -z ${TMP_PATH+x} ]
+    if [ -z ${AWS_EC2_TYPE+x} ]
     then
-        TMP_PATH="/var/tmp/nancy_run"
-        >&2 echo "WARNING: Temp path not given. Will use $TMP_PATH"
+      >&2 echo "ERROR: AWS EC2 Instance type not given."
+      exit 1
     fi
-    #make tmp path if not found
-    [ ! -d $TMP_PATH ] && mkdir $TMP_PATH
+  fi
 
-    workloads_count=0
-    [ ! -z ${WORKLOAD_BASIS_PATH+x} ] && let workloads_count=$workloads_count+1
-    [ ! -z ${WORKLOAD_FULL_PATH+x} ] && let workloads_count=$workloads_count+1
-    [ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && let workloads_count=$workloads_count+1
+  if [ -z ${PG_VERSION+x} ]
+  then
+    >&2 echo "WARNING: Postgres version not given. Will use 9.6."
+    PG_VERSION="9.6"
+  fi
 
-    # --workload-full-path or --workload-basis-path or --workload-custom-sql
-    if [ "$workloads_count" -eq "0" ]
-    then
-        >&2 echo "ERROR: Workload not given."
-        exit 1;
+  if [ -z ${TMP_PATH+x} ]
+  then
+    TMP_PATH="/var/tmp/nancy_run"
+    >&2 echo "WARNING: Temp path not given. Will use $TMP_PATH"
+  fi
+  #make tmp path if not found
+  [ ! -d $TMP_PATH ] && mkdir $TMP_PATH
+
+  workloads_count=0
+  [ ! -z ${WORKLOAD_BASIS_PATH+x} ] && let workloads_count=$workloads_count+1
+  [ ! -z ${WORKLOAD_FULL_PATH+x} ] && let workloads_count=$workloads_count+1
+  [ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && let workloads_count=$workloads_count+1
+
+  # --workload-full-path or --workload-basis-path or --workload-custom-sql
+  if [ "$workloads_count" -eq "0" ]
+  then
+    >&2 echo "ERROR: Workload not given."
+    exit 1;
+  fi
+
+  if  [ "$workloads_count" -gt "1" ]
+  then
+    >&2 echo "ERROR: 2 or more workload sources are given."
+    exit 1
+  fi
+
+  #--db-prepared-snapshot or --db-dump-path
+  if ([ -z ${DB_PREPARED_SNAPSHOT+x} ]  &&  [ -z ${DB_DUMP_PATH+x} ]); then
+    >&2 echo "ERROR: Snapshot or dump not given."
+    exit 1;
+  fi
+
+  if ([ ! -z ${DB_PREPARED_SNAPSHOT+x} ]  &&  [ ! -z ${DB_DUMP_PATH+x} ])
+  then
+    >&2 echo "ERROR: Both snapshot and dump sources are given."
+    exit 1
+  fi
+
+  [ ! -z ${DB_DUMP_PATH+x} ] && ! checkPath DB_DUMP_PATH \
+    && >&2 echo "ERROR: file $DB_DUMP_PATH given by db_dump_path not found" \
+    && exit 1
+
+  if [ -z ${PG_CONFIG+x} ]; then
+    >&2 echo "WARNING: No DB config provided. Using default one."
+  else
+    checkPath PG_CONFIG
+    if [ "$?" -ne "0" ]; then
+      #>&2 echo "WARNING: Value given as pg_config: '$PG_CONFIG' not found as file will use as content"
+      echo "$PG_CONFIG" > $TMP_PATH/pg_congif_tmp.sql
+      WORKLOAD_CUSTOM_SQL="$TMP_PATH/pg_congif_tmp.sql"
     fi
+  fi
 
-    if  [ "$workloads_count" -gt "1" ]
-    then
-        >&2 echo "ERROR: 2 or more workload sources are given."
-        exit 1
-    fi
+  if ( \
+    ([ -z ${TARGET_DDL_UNDO+x} ] && [ ! -z ${TARGET_DDL_DO+x} ]) \
+    || ([ -z ${TARGET_DDL_DO+x} ] && [ ! -z ${TARGET_DDL_UNDO+x} ])
+  ); then
+  >&2 echo "ERROR: DDL code must have do and undo part."
+  exit 1;
+fi
 
-    #--db-prepared-snapshot or --db-dump-path
-    if ([ -z ${DB_PREPARED_SNAPSHOT+x} ]  &&  [ -z ${DB_DUMP_PATH+x} ])
-    then
-        >&2 echo "ERROR: Snapshot or dump not given."
-        exit 1;
-    fi
+if [ -z ${ARTIFACTS_DESTINATION+x} ]; then
+  >&2 echo "WARNING: Artifacts destination not given. Will use ./"
+  ARTIFACTS_DESTINATION="."
+fi
 
-    if ([ ! -z ${DB_PREPARED_SNAPSHOT+x} ]  &&  [ ! -z ${DB_DUMP_PATH+x} ])
-    then
-        >&2 echo "ERROR: Both snapshot and dump sources are given."
-        exit 1
-    fi
+if [ -z ${ARTIFACTS_FILENAME+x} ]
+then
+  >&2 echo "WARNING: Artifacts naming not set. Will use: $DOCKER_MACHINE"
+  ARTIFACTS_FILENAME=$DOCKER_MACHINE
+fi
 
-    [ ! -z ${DB_DUMP_PATH+x} ] && ! checkPath DB_DUMP_PATH \
-      && >&2 echo "ERROR: file $DB_DUMP_PATH given by db_dump_path not found" \
-      && exit 1
+[ ! -z ${WORKLOAD_FULL_PATH+x} ] && ! checkPath WORKLOAD_FULL_PATH \
+  && >&2 echo "ERROR: workload file $WORKLOAD_FULL_PATH not found" \
+  && exit 1
 
-    if [ -z ${PG_CONFIG+x} ]
-    then
-        >&2 echo "WARNING: Initial database server configuration not given. Will use default."
-    else
-        checkPath PG_CONFIG
-        if [ "$?" -ne "0" ]
-        then
-            >&2 echo "WARNING: Value given as pg_config: '$PG_CONFIG' not found as file will use as content"
-            echo "$PG_CONFIG" > $TMP_PATH/pg_congif_tmp.sql
-            WORKLOAD_CUSTOM_SQL="$TMP_PATH/pg_congif_tmp.sql"
-        fi
-    fi
+echo "WORKLOAD_FULL_PATH: $WORKLOAD_FULL_PATH"
 
-    if (([ -z ${TARGET_DDL_UNDO+x} ] && [ ! -z ${TARGET_DDL_DO+x} ]) || ([ -z ${TARGET_DDL_DO+x} ] && [ ! -z ${TARGET_DDL_UNDO+x} ]))
-    then
-        >&2 echo "ERROR: DDL code must have do and undo part."
-        exit 1;
-    fi
+[ ! -z ${WORKLOAD_BASIS_PATH+x} ] && ! checkPath WORKLOAD_BASIS_PATH \
+  && >&2 echo "ERROR: workload file $WORKLOAD_BASIS_PATH not found" \
+  && exit 1
 
-    if [ -z ${ARTIFACTS_DESTINATION+x} ]
-    then
-        >&2 echo "WARNING: Artifacts destination not given. Will use ./"
-        ARTIFACTS_DESTINATION="."
-    fi
+if [ ! -z ${WORKLOAD_CUSTOM_SQL+x} ]; then
+  checkPath WORKLOAD_CUSTOM_SQL
+  if [ "$?" -ne "0" ]; then
+    #>&2 echo "WARNING: Value given as workload-custom-sql: '$WORKLOAD_CUSTOM_SQL' not found as file will use as content"
+    echo "$WORKLOAD_CUSTOM_SQL" > $TMP_PATH/workload_custom_sql_tmp.sql
+    WORKLOAD_CUSTOM_SQL="$TMP_PATH/workload_custom_sql_tmp.sql"
+  else
+    [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as workload-custom-sql will use as filename"
+  fi
+fi
 
-    if [ -z ${ARTIFACTS_FILENAME+x} ]
-    then
-        >&2 echo "WARNING: Artifacts destination not given. Will use $DOCKER_MACHINE"
-        ARTIFACTS_FILENAME=$DOCKER_MACHINE
-    fi
+if [ ! -z ${AFTER_DB_INIT_CODE+x} ]; then
+  checkPath AFTER_DB_INIT_CODE
+  if [ "$?" -ne "0" ]; then
+    #>&2 echo "WARNING: Value given as after_db_init_code: '$AFTER_DB_INIT_CODE' not found as file will use as content"
+    echo "$AFTER_DB_INIT_CODE" > $TMP_PATH/after_db_init_code_tmp.sql
+    AFTER_DB_INIT_CODE="$TMP_PATH/after_db_init_code_tmp.sql"
+  else
+    [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as after_db_init_code will use as filename"
+  fi
+fi
 
-    [ ! -z ${WORKLOAD_FULL_PATH+x} ] && ! checkPath WORKLOAD_FULL_PATH && >&2 echo "ERROR: file $WORKLOAD_FULL_PATH given by workload_full_path not found" && exit 1
+if [ ! -z ${TARGET_DDL_DO+x} ]; then
+  checkPath TARGET_DDL_DO
+  if [ "$?" -ne "0" ]; then
+    #>&2 echo "WARNING: Value given as target_ddl_do: '$TARGET_DDL_DO' not found as file will use as content"
+    echo "$TARGET_DDL_DO" > $TMP_PATH/target_ddl_do_tmp.sql
+    TARGET_DDL_DO="$TMP_PATH/target_ddl_do_tmp.sql"
+  else
+    [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as target_ddl_do will use as filename"
+  fi
+fi
 
-    echo "WORKLOAD_FULL_PATH: $WORKLOAD_FULL_PATH"
+if [ ! -z ${TARGET_DDL_UNDO+x} ]; then
+  checkPath TARGET_DDL_UNDO
+  if [ "$?" -ne "0" ]; then
+    #>&2 echo "WARNING: Value given as target_ddl_undo: '$TARGET_DDL_UNDO' not found as file will use as content"
+    echo "$TARGET_DDL_UNDO" > $TMP_PATH/target_ddl_undo_tmp.sql
+    TARGET_DDL_UNDO="$TMP_PATH/target_ddl_undo_tmp.sql"
+  else
+    [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as target_ddl_undo will use as filename"
+  fi
+fi
 
-    [ ! -z ${WORKLOAD_BASIS_PATH+x} ] && ! checkPath WORKLOAD_BASIS_PATH && >&2 echo "WARNING: file $WORKLOAD_BASIS_PATH given by workload_basis_path not found"
-
-    if [ ! -z ${WORKLOAD_CUSTOM_SQL+x} ]
-    then
-        checkPath WORKLOAD_CUSTOM_SQL
-        if [ "$?" -ne "0" ]
-        then
-            >&2 echo "WARNING: Value given as workload-custom-sql: '$WORKLOAD_CUSTOM_SQL' not found as file will use as content"
-            echo "$WORKLOAD_CUSTOM_SQL" > $TMP_PATH/workload_custom_sql_tmp.sql
-            WORKLOAD_CUSTOM_SQL="$TMP_PATH/workload_custom_sql_tmp.sql"
-        else
-            [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as workload-custom-sql will use as filename"
-        fi
-    fi
-
-    if [ ! -z ${AFTER_DB_INIT_CODE+x} ]
-    then
-        checkPath AFTER_DB_INIT_CODE
-        if [ "$?" -ne "0" ]
-        then
-            >&2 echo "WARNING: Value given as after_db_init_code: '$AFTER_DB_INIT_CODE' not found as file will use as content"
-            echo "$AFTER_DB_INIT_CODE" > $TMP_PATH/after_db_init_code_tmp.sql
-            AFTER_DB_INIT_CODE="$TMP_PATH/after_db_init_code_tmp.sql"
-        else
-            [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as after_db_init_code will use as filename"
-        fi
-    fi
-
-    if [ ! -z ${TARGET_DDL_DO+x} ]
-    then
-        checkPath TARGET_DDL_DO
-        if [ "$?" -ne "0" ]
-        then
-            >&2 echo "WARNING: Value given as target_ddl_do: '$TARGET_DDL_DO' not found as file will use as content"
-            echo "$TARGET_DDL_DO" > $TMP_PATH/target_ddl_do_tmp.sql
-            TARGET_DDL_DO="$TMP_PATH/target_ddl_do_tmp.sql"
-        else
-            [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as target_ddl_do will use as filename"
-        fi
-    fi
-
-    if [ ! -z ${TARGET_DDL_UNDO+x} ]
-    then
-        checkPath TARGET_DDL_UNDO
-        if [ "$?" -ne "0" ]
-        then
-            >&2 echo "WARNING: Value given as target_ddl_undo: '$TARGET_DDL_UNDO' not found as file will use as content"
-            echo "$TARGET_DDL_UNDO" > $TMP_PATH/target_ddl_undo_tmp.sql
-            TARGET_DDL_UNDO="$TMP_PATH/target_ddl_undo_tmp.sql"
-        else
-            [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as target_ddl_undo will use as filename"
-        fi
-    fi
-
-    if [ ! -z ${TARGET_CONFIG+x} ]
-    then
-        checkPath TARGET_CONFIG
-        if [ "$?" -ne "0" ]
-        then
-            >&2 echo "WARNING: Value given as target_config: '$TARGET_CONFIG' not found as file will use as content"
-            echo "$TARGET_CONFIG" > $TMP_PATH/target_config_tmp.conf
-            TARGET_CONFIG="$TMP_PATH/target_config_tmp.conf"
-        else
-            [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as target_config will use as filename"
-        fi
-    fi
+if [ ! -z ${TARGET_CONFIG+x} ]; then
+  checkPath TARGET_CONFIG
+  if [ "$?" -ne "0" ]; then
+    #>&2 echo "WARNING: Value given as target_config: '$TARGET_CONFIG' not found as file will use as content"
+    echo "$TARGET_CONFIG" > $TMP_PATH/target_config_tmp.conf
+    TARGET_CONFIG="$TMP_PATH/target_config_tmp.conf"
+  else
+    [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as target_config will use as filename"
+  fi
+fi
 }
 
 checkParams;
@@ -489,33 +481,40 @@ shopt -s expand_aliases
 
 ## Docker tools
 function waitEC2Ready() {
-    cmd=$1
-    machine=$2
-    checkPrice=$3
-    while true; do
-        sleep 5; STOP=1
-        ps ax | grep "$cmd" | grep "$machine" >/dev/null && STOP=0
-        ((STOP==1)) && return 0
-        if [ $checkPrice -eq 1 ]
-        then
-            status=$(
-              aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" \
-              | jq  '.SpotInstanceRequests | sort_by(.CreateTime) | .[] | .Status.Code' | tail -n 1)
-            if [ "$status" == "\"price-too-low\"" ]
-            then
-                echo "price-too-low"; # this value is result of function (not message for user), will check later
-                return 0
-            fi
-        fi
-    done
+  cmd=$1
+  machine=$2
+  checkPrice=$3
+  while true; do
+    sleep 5; STOP=1
+    ps ax | grep "$cmd" | grep "$machine" >/dev/null && STOP=0
+    ((STOP==1)) && return 0
+    if [ $checkPrice -eq 1 ]
+    then
+      status=$( \
+        aws ec2 describe-spot-instance-requests \
+        --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" \
+        | jq  '.SpotInstanceRequests | sort_by(.CreateTime) | .[] | .Status.Code' \
+        | tail -n 1
+      )
+      if [ "$status" == "\"price-too-low\"" ]
+      then
+        echo "price-too-low"; # this value is result of function (not message for user), will check later
+        return 0
+      fi
+    fi
+  done
 }
 
 function createDockerMachine() {
-    echo "Attempt to create a docker machine..."
-    docker-machine create --driver=amazonec2 --amazonec2-request-spot-instance \
-      --amazonec2-keypair-name="$AWS_KEY_PAIR" --amazonec2-ssh-keypath="$AWS_KEY_PATH" \
-      --amazonec2-block-duration-minutes=60 \
-      --amazonec2-instance-type=$AWS_EC2_TYPE --amazonec2-spot-price=$EC2_PRICE $DOCKER_MACHINE &
+  echo "Attempt to create a docker machine..."
+  docker-machine create --driver=amazonec2 \
+    --amazonec2-request-spot-instance \
+    --amazonec2-keypair-name="$AWS_KEY_PAIR" \
+    --amazonec2-ssh-keypath="$AWS_KEY_PATH" \
+    --amazonec2-block-duration-minutes=60 \
+    --amazonec2-instance-type=$AWS_EC2_TYPE \
+    --amazonec2-spot-price=$EC2_PRICE \
+    $DOCKER_MACHINE &
 }
 
 if [[ "$RUN_ON" = "localhost" ]]; then
@@ -551,8 +550,9 @@ elif [[ "$RUN_ON" = "aws" ]]; then
   if [ "$status" == "price-too-low" ]
   then
     echo "Price $price is too low for $AWS_EC2_TYPE instance. Try detect actual."
-    corrrectPriceForLastFailedRequest=$(
-      aws ec2 describe-spot-instance-requests --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" \
+    corrrectPriceForLastFailedRequest=$( \
+      aws ec2 describe-spot-instance-requests \
+        --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" \
       | jq  '.SpotInstanceRequests[] | select(.Status.Code == "price-too-low") | .Status.Message' \
       | grep -Eo '[0-9]+[.][0-9]+' | tail -n 1 &
     )
@@ -582,8 +582,12 @@ elif [[ "$RUN_ON" = "aws" ]]; then
 
   echo "Docker $DOCKER_MACHINE is running."
 
-  containerHash=$(docker `docker-machine config $DOCKER_MACHINE` run --name="pg_nancy_${CURRENT_TS}" \
-    -v /home/ubuntu:/machine_home -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}")
+  containerHash=$( \
+    docker `docker-machine config $DOCKER_MACHINE` run \
+      --name="pg_nancy_${CURRENT_TS}" \
+      -v /home/ubuntu:/machine_home \
+      -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}"
+  )
   dockerConfig=$(docker-machine config $DOCKER_MACHINE)
 else
   >&2 echo "ASSERT: must not reach this point"
@@ -634,7 +638,8 @@ function copyFile() {
   fi
 }
 
-[ ! -z ${S3_CFG_PATH+x} ] && copyFile $S3_CFG_PATH && docker_exec cp $MACHINE_HOME/.s3cfg /root/.s3cfg
+[ ! -z ${S3_CFG_PATH+x} ] && copyFile $S3_CFG_PATH \
+  && docker_exec cp $MACHINE_HOME/.s3cfg /root/.s3cfg
 [ ! -z ${DB_DUMP_PATH+x} ] && copyFile $DB_DUMP_PATH
 [ ! -z ${PG_CONFIG+x} ] && copyFile $PG_CONFIG
 [ ! -z ${TARGET_CONFIG+x} ] && copyFile $TARGET_CONFIG
@@ -652,36 +657,36 @@ docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR
 echo "Apply sql code after db init"
 if ([ ! -z ${AFTER_DB_INIT_CODE+x} ] && [ "$AFTER_DB_INIT_CODE" != "" ])
 then
-    AFTER_DB_INIT_CODE_FILENAME=$(basename $AFTER_DB_INIT_CODE)
-    if [[ $AFTER_DB_INIT_CODE =~ "s3://" ]]; then
-        docker_exec s3cmd sync $AFTER_DB_INIT_CODE $MACHINE_HOME/
-    else
-        docker-machine scp $AFTER_DB_INIT_CODE $DOCKER_MACHINE:/home/ubuntu
-    fi
-    docker_exec bash -c "psql -U postgres test -E -f $MACHINE_HOME/$AFTER_DB_INIT_CODE_FILENAME"
+  AFTER_DB_INIT_CODE_FILENAME=$(basename $AFTER_DB_INIT_CODE)
+  if [[ $AFTER_DB_INIT_CODE =~ "s3://" ]]; then
+    docker_exec s3cmd sync $AFTER_DB_INIT_CODE $MACHINE_HOME/
+  else
+    docker-machine scp $AFTER_DB_INIT_CODE $DOCKER_MACHINE:/home/ubuntu
+  fi
+  docker_exec bash -c "psql -U postgres test -E -f $MACHINE_HOME/$AFTER_DB_INIT_CODE_FILENAME"
 fi
 # Apply DDL code
 echo "Apply DDL SQL code"
 if ([ ! -z ${TARGET_DDL_DO+x} ] && [ "$TARGET_DDL_DO" != "" ]); then
-    TARGET_DDL_DO_FILENAME=$(basename $TARGET_DDL_DO)
-    docker_exec bash -c "psql -U postgres test -E -f $MACHINE_HOME/$TARGET_DDL_DO_FILENAME"
+  TARGET_DDL_DO_FILENAME=$(basename $TARGET_DDL_DO)
+  docker_exec bash -c "psql -U postgres test -E -f $MACHINE_HOME/$TARGET_DDL_DO_FILENAME"
 fi
 # Apply initial postgres configuration
 echo "Apply initial postgres configuration"
 if ([ ! -z ${PG_CONFIG+x} ] && [ "$PG_CONFIG" != "" ]); then
-    PG_CONFIG_FILENAME=$(basename $PG_CONFIG)
-    docker_exec bash -c "cat $MACHINE_HOME/$PG_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
-    if [ -z ${TARGET_CONFIG+x} ]
-    then
-        docker_exec bash -c "sudo /etc/init.d/postgresql restart"
-    fi
+  PG_CONFIG_FILENAME=$(basename $PG_CONFIG)
+  docker_exec bash -c "cat $MACHINE_HOME/$PG_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+  if [ -z ${TARGET_CONFIG+x} ]
+  then
+    docker_exec bash -c "sudo /etc/init.d/postgresql restart"
+  fi
 fi
 # Apply postgres configuration
 echo "Apply postgres configuration"
 if ([ ! -z ${TARGET_CONFIG+x} ] && [ "$TARGET_CONFIG" != "" ]); then
-    TARGET_CONFIG_FILENAME=$(basename $TARGET_CONFIG)
-    docker_exec bash -c "cat $MACHINE_HOME/$TARGET_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
-    docker_exec bash -c "sudo /etc/init.d/postgresql restart"
+  TARGET_CONFIG_FILENAME=$(basename $TARGET_CONFIG)
+  docker_exec bash -c "cat $MACHINE_HOME/$TARGET_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+  docker_exec bash -c "sudo /etc/init.d/postgresql restart"
 fi
 # Clear statistics and log
 echo "Execute vacuumdb..."
@@ -690,31 +695,35 @@ docker_exec bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.l
 # Execute workload
 echo "Execute workload..."
 if [ ! -z ${WORKLOAD_FULL_PATH+x} ] && [ "$WORKLOAD_FULL_PATH" != '' ];then
-    echo "Execute pgreplay queries..."
-    docker_exec psql -U postgres test -c 'create role testuser superuser login;'
-    WORKLOAD_FILE_NAME=$(basename $WORKLOAD_FULL_PATH)
-    docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
+  echo "Execute pgreplay queries..."
+  docker_exec psql -U postgres test -c 'create role testuser superuser login;'
+  WORKLOAD_FILE_NAME=$(basename $WORKLOAD_FULL_PATH)
+  docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
 else
-    if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
-        WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
-        echo "Execute custom sql queries..."
-        docker_exec bash -c "psql -U postgres test -E -f $MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME"
-    fi
+  if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
+    WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
+    echo "Execute custom sql queries..."
+    docker_exec bash -c "psql -U postgres test -E -f $MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME"
+  fi
 fi
 
 ## Get statistics
 echo "Prepare JSON log..."
-docker_exec bash -c "/root/pgbadger/pgbadger -j $(cat /proc/cpuinfo | grep processor | wc -l) \
+docker_exec bash -c "/root/pgbadger/pgbadger \
+  -j $(cat /proc/cpuinfo | grep processor | wc -l) \
   --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr \
   -o $MACHINE_HOME/$ARTIFACTS_FILENAME.json"
 
 echo "Save JSON log..."
 if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
-    docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
+    docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.json \
+      $ARTIFACTS_DESTINATION/
 else
-    logpath=$(docker_exec bash -c "psql -XtU postgres \
-    -c \"select string_agg(setting, '/' order by name) from pg_settings where name in ('log_directory', 'log_filename');\" \
-    | grep / | sed -e 's/^[ \t]*//'")
+    logpath=$( \
+      docker_exec bash -c "psql -XtU postgres \
+        -c \"select string_agg(setting, '/' order by name) from pg_settings where name in ('log_directory', 'log_filename');\" \
+        | grep / | sed -e 's/^[ \t]*//'"
+    )
     docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz"
     if [ "$RUN_ON" = "localhost" ]; then
       cp "$TMP_PATH/nancy_$containerHash/"$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
