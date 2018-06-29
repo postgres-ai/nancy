@@ -343,12 +343,6 @@ function checkParams() {
     #make tmp path if not found
     [ ! -d $TMP_PATH ] && mkdir $TMP_PATH
 
-    if [ -z ${S3_CFG_PATH+x} ]
-    then
-        >&2 echo "WARNING: S3 config file path not given. Will use ~/.s3cfg"
-        S3_CFG_PATH=$(echo ~)"/.s3cfg"
-    fi
-
     workloads_count=0
     [ ! -z ${WORKLOAD_BASIS_PATH+x} ] && let workloads_count=$workloads_count+1
     [ ! -z ${WORKLOAD_FULL_PATH+x} ] && let workloads_count=$workloads_count+1
@@ -525,10 +519,9 @@ function createDockerMachine() {
 }
 
 if [[ "$RUN_ON" = "localhost" ]]; then
-  mkdir "$TMP_PATH/pg_nancy_home"
   if [ -z ${CONTAINER_ID+x} ]; then
     containerHash=$(docker run --name="pg_nancy_${CURRENT_TS}" \
-      -v $TMP_PATH/pg_nancy_home:/machine_home \
+      -v $TMP_PATH:/machine_home \
       -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}" \
     )
   else
@@ -606,7 +599,7 @@ function cleanup {
   rm -f "$TMP_PATH/target_config_tmp.conf"
   rm -f "$TMP_PATH/pg_config_tmp.conf"
   if [ "$RUN_ON" = "localhost" ]; then
-    rm -rf "$TMP_PATH/pg_nancy_home/${containerHash}"
+    rm -rf "$TMP_PATH/nancy_${containerHash}"
     echo "Remove docker container"
     docker container rm -f $containerHash
   elif [ "$RUN_ON" = "aws" ]; then
@@ -621,12 +614,8 @@ trap cleanup EXIT
 
 alias docker_exec='docker $dockerConfig exec -i ${containerHash} '
 
-if [[ "$RUN_ON" = "localhost" ]]; then
-    MACHINE_HOME="/machine_home/${containerHash}"
-    mkdir $TMP_PATH/pg_nancy_home/${containerHash}
-else
-    MACHINE_HOME="/machine_home"
-fi
+MACHINE_HOME="/machine_home/nancy_${containerHash}"
+docker_exec sh -c "mkdir $MACHINE_HOME && chmod a+w $MACHINE_HOME"
 
 function copyFile() {
   if [ "$1" != '' ]; then
@@ -634,7 +623,7 @@ function copyFile() {
       docker_exec s3cmd sync $1 $MACHINE_HOME/
     else
       if [ "$RUN_ON" = "localhost" ]; then
-        ln ${1/file:\/\//} "$TMP_PATH/pg_nancy_home/$containerHash/" # TODO: option – hard links OR regular `cp`
+        ln ${1/file:\/\//} "$TMP_PATH/nancy_$containerHash/" # TODO: option – hard links OR regular `cp`
       elif [ "$RUN_ON" = "aws" ]; then
         docker-machine scp $1 $DOCKER_MACHINE:/home/ubuntu
       else
@@ -728,8 +717,8 @@ else
     | grep / | sed -e 's/^[ \t]*//'")
     docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz"
     if [ "$RUN_ON" = "localhost" ]; then
-      cp "$TMP_PATH/pg_nancy_home/$containerHash/"$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
-      cp "$TMP_PATH/pg_nancy_home/$containerHash/"$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
+      cp "$TMP_PATH/nancy_$containerHash/"$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
+      cp "$TMP_PATH/nancy_$containerHash/"$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
     elif [ "$RUN_ON" = "aws" ]; then
       docker-machine scp $DOCKER_MACHINE:/home/ubuntu/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
       docker-machine scp $DOCKER_MACHINE:/home/ubuntu/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
