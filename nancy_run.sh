@@ -363,7 +363,7 @@ function checkParams() {
 
     if  [ "$workloads_count" -gt "1" ]
     then
-        >&2 echo "ERROR: 2 or more workload source given."
+        >&2 echo "ERROR: 2 or more workload sources are given."
         exit 1
     fi
 
