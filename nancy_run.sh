@@ -627,7 +627,7 @@ function copyFile() {
       if [ "$RUN_ON" = "localhost" ]; then
         ln ${1/file:\/\//} "$TMP_PATH/nancy_$containerHash/" # TODO: option – hard links OR regular `cp`
       elif [ "$RUN_ON" = "aws" ]; then
-        docker-machine scp $1 $DOCKER_MACHINE:/home/ubuntu
+        docker-machine scp $1 $DOCKER_MACHINE:/home/ubuntu/nancy_${containerHash}
       else
         >&2 echo "ASSERT: must not reach this point"
         exit 1
@@ -727,8 +727,8 @@ else
       cp "$TMP_PATH/nancy_$containerHash/"$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
       cp "$TMP_PATH/nancy_$containerHash/"$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
     elif [ "$RUN_ON" = "aws" ]; then
-      docker-machine scp $DOCKER_MACHINE:/home/ubuntu/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
-      docker-machine scp $DOCKER_MACHINE:/home/ubuntu/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
+      docker-machine scp $DOCKER_MACHINE:/home/ubuntu/nancy_$containerHash/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
+      docker-machine scp $DOCKER_MACHINE:/home/ubuntu/nancy_$containerHash/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
     else
       >&2 echo "ASSERT: must not reach this point"
       exit 1
