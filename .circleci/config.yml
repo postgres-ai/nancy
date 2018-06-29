@@ -19,7 +19,10 @@ jobs:
               status=$?; \
               if [ $status -ne 0 ]; then \
                 errcount="$(($errcount+1))"; \
-              fi; done; \
-              [ $errcount -ne 0 ] && >&2 echo "Oh no! $errcount tests failed"; \
-              [ $errcount -ne 0 ] && exit 1
+              fi; \
+            done; \
+            if [ $errcount -ne 0 ]; then \
+              >&2 echo "Oh no! $errcount tests failed"; \
+              exit 1; \
+            fi
 
