@@ -4,7 +4,7 @@ jobs:
     working_directory: ~/nancy
     docker:
       - image: ubuntu:16.04
-      - image: postgresmen/postgres-with-stuff/pg9.6
+      - image: postgresmen/postgres-with-stuff:pg9.6
     steps:
       - run:
           name: Install software
