@@ -14,11 +14,12 @@ jobs:
       - run:
           name: Tests
           command: |
-            errcount=0; for f in tests/*.sh; do printf "$f\t\t" && bash "$f" -H; \
+            set -ueo pipefail; errcount=0; \
+            for f in tests/*.sh; do printf "$f\t\t" && bash "$f" -H; \
               status=$?; \
               if [ $status -ne 0 ]; then \
                 errcount="$(($errcount+1))"; \
-              fi; done;
-              #[ $errcount -ne 0 ] && echo -e "Oh no! $errcount tests failed"
-              #[ $errcount -ne 0 ] && exit 1
+              fi; done; \
+              [ $errcount -ne 0 ] && echo -e "Oh no! $errcount tests failed" \
+              [ $errcount -ne 0 ] && exit 1
 
