@@ -380,7 +380,10 @@ function checkParams() {
         exit 1
     fi
 
-    [ ! -z ${DB_DUMP_PATH+x} ] && ! checkPath DB_DUMP_PATH && >&2 echo "ERROR: file $DB_DUMP_PATH given by db_dump_path not found" && exit 1
+    if [ ! -z ${DB_DUMP_PATH+x} ] && [ ! checkPath DB_DUMP_PATH ]; then
+      >&2 echo "ERROR: file $DB_DUMP_PATH given by db_dump_path not found"
+      exit 1
+    fi
 
     if [ -z ${PG_CONFIG+x} ]
     then
@@ -631,7 +634,7 @@ function copyFile() {
       docker_exec s3cmd sync $1 $MACHINE_HOME/
     else
       if [ "$RUN_ON" = "localhost" ]; then
-        ln $1 "$TMP_PATH/pg_nancy_home_${CURRENT_TS}/$containerHash/" # TODO: option – hard links OR regular `cp`
+        ln ${1/file:\/\//} "$TMP_PATH/pg_nancy_home_${CURRENT_TS}/$containerHash/" # TODO: option – hard links OR regular `cp`
       elif [ "$RUN_ON" = "aws" ]; then
         docker-machine scp $1 $DOCKER_MACHINE:/home/ubuntu
       else
