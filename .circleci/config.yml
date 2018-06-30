@@ -24,8 +24,9 @@ jobs:
           name: Tests
           command: |
             errcount=0
+            printTail="                                                                      "
             for f in tests/*.sh; do
-              printf "$f\t\t"
+              printf "$f${printTail:0:-${#f}}"
               bash "$f" -H
               status=$?
               if [ $status -ne 0 ]; then
