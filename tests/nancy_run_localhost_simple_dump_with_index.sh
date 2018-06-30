@@ -1,7 +1,5 @@
 #!/bin/bash
 
-echo "SKIP" && exit 0
-
 thisDir="$(dirname "$(readlink -f "$BASH_SOURCE")")"
 parentDir="$(dirname "$thisDir")"
 srcDir="$parentDir/.circleci"
@@ -15,7 +13,7 @@ output=$(
     --tmp-path ${srcDir}/tmp \
     --db-dump-path "file://$srcDir/test.dump.bz2" \
     --target-ddl-do "file://$srcDir/ddl_create_index.sql" \
-    --target-ddl-undo "file://$srcDir/ddl_drop_index.sql"
+    --target-ddl-undo "file://$srcDir/ddl_drop_index.sql" 2>&1
 )
 
 if [[ $output =~ "Queries duration:" ]]; then
