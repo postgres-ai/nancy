@@ -5,6 +5,7 @@ CURRENT_TS=$(date +%Y%m%d_%H%M%S%N_%Z)
 DOCKER_MACHINE="${DOCKER_MACHINE:-nancy-$CURRENT_TS}"
 DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
 DEBUG_TIMEOUT=0
+EBS_SIZE=1 #GB
 
 ## Get command line params
 while true; do
@@ -473,6 +474,33 @@ function checkParams() {
 
 checkParams;
 
+
+# Determine dump file size
+if [ ! -z ${DB_DUMP_PATH+x} ]; then
+    dumpFileSize=0
+    if [[ $DB_DUMP_PATH =~ "s3://" ]]; then
+      dumpFileSize=$(s3cmd info $DB_DUMP_PATH | grep "File size:" )
+      dumpFileSize=${dumpFileSize/File size:/}
+      dumpFileSize=${dumpFileSize/\t/}
+      dumpFileSize=${dumpFileSize// /}
+      #echo "S3 FILESIZE: $dumpFileSize"
+    else
+      dumpFileSize=$(stat -c%s "$DB_DUMP_PATH")
+    fi
+    [ $DEBUG -eq 1 ] && echo "Dump filesize: $dumpFileSize bytes"
+    KB=1024
+    let minSize=300*$KB*$KB*$KB
+    ebsSize=$minSize # 300 GB
+    if [ "$dumpFileSize" -gt "$minSize" ]; then
+        let ebsSize=$dumpFileSize
+    fi
+    ebsSize=$(numfmt --to-unit=G $ebsSize)
+    EBS_SIZE=$ebsSize
+    [ $DEBUG -eq 1 ] && echo "EBS Size: $EBS_SIZE Gb"
+fi
+
+exit 1
+
 set -ueo pipefail
 [ $DEBUG -eq 1 ] && set -ueox pipefail # to debug
 shopt -s expand_aliases
@@ -513,6 +541,8 @@ function createDockerMachine() {
     --amazonec2-instance-type=$AWS_EC2_TYPE \
     --amazonec2-spot-price=$EC2_PRICE \
     $DOCKER_MACHINE &
+
+#    --block-device-mappings "[{\"DeviceName\": \"/dev/sda1\",\"Ebs\":{\"VolumeSize\":$EBS_SIZE}}]" \
 }
 
 if [[ "$RUN_ON" = "localhost" ]]; then
