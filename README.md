@@ -1,3 +1,5 @@
+[![CircleCI](https://circleci.com/gh/startupturbo/nancy.svg?style=svg)](https://circleci.com/gh/startupturbo/nancy)
+
 Description
 ===
 Nancy helps to conduct automated database experiments.
