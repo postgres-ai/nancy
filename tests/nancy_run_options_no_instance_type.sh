@@ -8,5 +8,6 @@ if [[ $output =~ "ERROR: AWS EC2 Instance type not given." ]]; then
   exit 0
 else
   >&2 echo -e "\e[31mFAILED\e[39m"
+  >&2 echo -e "Output: $output"
   exit 1
 fi
