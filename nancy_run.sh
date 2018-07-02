@@ -625,7 +625,9 @@ function copyFile() {
       docker_exec s3cmd sync $1 $MACHINE_HOME/
     else
       if [ "$RUN_ON" = "localhost" ]; then
-        ln ${1/file:\/\//} "$TMP_PATH/nancy_$containerHash/" # TODO: option – hard links OR regular `cp`
+        #ln ${1/file:\/\//} "$TMP_PATH/nancy_$containerHash/"
+        # TODO: option – hard links OR regular `cp`
+        docker cp ${1/file:\/\//} $containerHash:$MACHINE_HOME/
       elif [ "$RUN_ON" = "aws" ]; then
         docker-machine scp $1 $DOCKER_MACHINE:/home/ubuntu/nancy_${containerHash}
       else
@@ -724,8 +726,11 @@ else
     )
     docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz"
     if [ "$RUN_ON" = "localhost" ]; then
-      cp "$TMP_PATH/nancy_$containerHash/"$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
-      cp "$TMP_PATH/nancy_$containerHash/"$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
+      docker cp $containerHash:$MACHINE_HOME/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
+      docker cp $containerHash:$MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
+      # TODO option: ln / cp
+      #cp "$TMP_PATH/nancy_$containerHash/"$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
+      #cp "$TMP_PATH/nancy_$containerHash/"$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
     elif [ "$RUN_ON" = "aws" ]; then
       docker-machine scp $DOCKER_MACHINE:/home/ubuntu/nancy_$containerHash/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
       docker-machine scp $DOCKER_MACHINE:/home/ubuntu/nancy_$containerHash/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
