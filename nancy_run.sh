@@ -6,6 +6,7 @@ DOCKER_MACHINE="${DOCKER_MACHINE:-nancy-$CURRENT_TS}"
 DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
 DEBUG_TIMEOUT=0
 EBS_SIZE=1 #GB
+EBS_SIZE_MULTIPLIER=15
 
 ## Get command line params
 while true; do
@@ -495,6 +496,8 @@ if [ ! -z ${DB_DUMP_PATH+x} ]; then
         let ebsSize=$dumpFileSize
     fi
     ebsSize=$(numfmt --to-unit=G $ebsSize)
+    #[ $DEBUG -eq 1 ] && echo "EBS Size: $ebsSize Gb"
+    let ebsSize=$ebsSize*$EBS_SIZE_MULTIPLIER
     EBS_SIZE=$ebsSize
     [ $DEBUG -eq 1 ] && echo "EBS Size: $EBS_SIZE Gb"
 fi
