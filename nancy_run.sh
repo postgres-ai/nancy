@@ -693,8 +693,6 @@ docker_exec sh -c "mkdir $MACHINE_HOME && chmod a+w $MACHINE_HOME"
 
 #docker_exec bash -c "ls -al /storage/"
 
-exit 1
-
 function copyFile() {
   if [ "$1" != '' ]; then
     if [[ "$1" =~ "s3://" ]]; then # won't work for .s3cfg!
