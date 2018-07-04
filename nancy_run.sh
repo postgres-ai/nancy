@@ -475,7 +475,6 @@ function checkParams() {
 
 checkParams;
 
-
 # Determine dump file size
 if [ ! -z ${DB_DUMP_PATH+x} ]; then
     dumpFileSize=0
@@ -501,8 +500,6 @@ if [ ! -z ${DB_DUMP_PATH+x} ]; then
     EBS_SIZE=$ebsSize
     [ $DEBUG -eq 1 ] && echo "EBS Size: $EBS_SIZE Gb"
 fi
-
-exit 1
 
 set -ueo pipefail
 [ $DEBUG -eq 1 ] && set -ueox pipefail # to debug
@@ -544,8 +541,6 @@ function createDockerMachine() {
     --amazonec2-instance-type=$AWS_EC2_TYPE \
     --amazonec2-spot-price=$EC2_PRICE \
     $DOCKER_MACHINE &
-
-#    --block-device-mappings "[{\"DeviceName\": \"/dev/sda1\",\"Ebs\":{\"VolumeSize\":$EBS_SIZE}}]" \
 }
 
 if [[ "$RUN_ON" = "localhost" ]]; then
@@ -613,10 +608,47 @@ elif [[ "$RUN_ON" = "aws" ]]; then
 
   echo "Docker $DOCKER_MACHINE is running."
 
+  if [ ${AWS_EC2_TYPE:0:2} == 'i3' ]
+  then
+    # Init i3 storage, just mount existing volume
+    docker-machine ssh $DOCKER_MACHINE df -h
+    docker-machine ssh $DOCKER_MACHINE sudo add-apt-repository -y ppa:sbates
+    docker-machine ssh $DOCKER_MACHINE sudo apt-get update || :
+    docker-machine ssh $DOCKER_MACHINE sudo apt-get install -y nvme-cli
+
+    docker-machine ssh $DOCKER_MACHINE echo "# partition table of /dev/nvme0n1" > /tmp/nvme.part
+    docker-machine ssh $DOCKER_MACHINE echo "unit: sectors " >> /tmp/nvme.part
+    docker-machine ssh $DOCKER_MACHINE echo "/dev/nvme0n1p1 : start=     2048, size=1855466702, Id=83 " >> /tmp/nvme.part
+    docker-machine ssh $DOCKER_MACHINE echo "/dev/nvme0n1p2 : start=        0, size=        0, Id= 0 " >> /tmp/nvme.part
+    docker-machine ssh $DOCKER_MACHINE echo "/dev/nvme0n1p3 : start=        0, size=        0, Id= 0 " >> /tmp/nvme.part
+    docker-machine ssh $DOCKER_MACHINE echo "/dev/nvme0n1p4 : start=        0, size=        0, Id= 0 " >> /tmp/nvme.part
+
+    docker-machine ssh $DOCKER_MACHINE sudo sfdisk /dev/nvme0n1 < /tmp/nvme.part
+    docker-machine ssh $DOCKER_MACHINE sudo mkfs -t ext4 /dev/nvme0n1p1
+    docker-machine ssh $DOCKER_MACHINE "sudo sh -c \"mkdir /home/storage\""
+    docker-machine ssh $DOCKER_MACHINE sudo mount /dev/nvme0n1p1 /home/storage
+#    docker-machine ssh $DOCKER_MACHINE "sudo sh -c \"echo 'Check mount storage TEST' > /home/storage/nvme0n1p1-test.txt\""
+    docker-machine ssh $DOCKER_MACHINE df -h
+  else
+    # Create new volume and attach them for non i3 instances if need
+    [ $DEBUG -eq 1 ] && echo "Create volume with size: $EBS_SIZE Gb"
+    VOLUME_ID=$(aws ec2 create-volume --size 10 --region us-east-1 --availability-zone us-east-1a --volume-type gp2 | jq -r .VolumeId)
+    INSTANCE_ID=$(docker-machine ssh $DOCKER_MACHINE curl -s http://169.254.169.254/latest/meta-data/instance-id)
+    echo "Instance id: $INSTANCE_ID  Volume with size: $EBS_SIZE created. Volume id: $VOLUME_ID"
+    sleep 10 # wait to volume will ready
+    attachResult=$(aws ec2 attach-volume --device /dev/xvdf --volume-id $VOLUME_ID --instance-id $INSTANCE_ID --region us-east-1)
+    echo "ATTACH RESULT: $attachResult"
+    docker-machine ssh $DOCKER_MACHINE sudo mkfs.ext4 /dev/xvdf
+    docker-machine ssh $DOCKER_MACHINE "sudo sh -c \"mkdir /home/storage\""
+    docker-machine ssh $DOCKER_MACHINE sudo mount /dev/xvdf /home/storage
+#    docker-machine ssh $DOCKER_MACHINE "sudo sh -c \"echo 'Check mount storage TEST' > /home/storage/xvdf-test.txt\""
+  fi
+
   containerHash=$( \
     docker `docker-machine config $DOCKER_MACHINE` run \
       --name="pg_nancy_${CURRENT_TS}" \
       -v /home/ubuntu:/machine_home \
+      -v /home/storage:/storage \
       -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}"
   )
   dockerConfig=$(docker-machine config $DOCKER_MACHINE)
@@ -640,6 +672,12 @@ function cleanup {
   elif [ "$RUN_ON" = "aws" ]; then
     cmdout=$(docker-machine rm --force $DOCKER_MACHINE)
     echo "Finished working with machine $DOCKER_MACHINE, termination requested, current status: $cmdout"
+    if [ ! -z ${VOLUME_ID+x} ]; then
+        echo "Wait and delete volume $VOLUME_ID"
+        sleep 60 # wait to machine removed
+        delvolout=$(aws ec2 delete-volume --volume-id $VOLUME_ID)
+        echo "Volume $VOLUME_ID deleted"
+    fi
   else
     >&2 echo "ASSERT: must not reach this point"
     exit 1
@@ -647,10 +685,15 @@ function cleanup {
 }
 trap cleanup EXIT
 
+
 alias docker_exec='docker $dockerConfig exec -i ${containerHash} '
 
 MACHINE_HOME="/machine_home/nancy_${containerHash}"
 docker_exec sh -c "mkdir $MACHINE_HOME && chmod a+w $MACHINE_HOME"
+
+#docker_exec bash -c "ls -al /storage/"
+
+exit 1
 
 function copyFile() {
   if [ "$1" != '' ]; then
