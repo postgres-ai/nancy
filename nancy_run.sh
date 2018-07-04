@@ -5,7 +5,6 @@ CURRENT_TS=$(date +%Y%m%d_%H%M%S%N_%Z)
 DOCKER_MACHINE="${DOCKER_MACHINE:-nancy-$CURRENT_TS}"
 DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
 DEBUG_TIMEOUT=0
-EBS_SIZE=1 #GB
 EBS_SIZE_MULTIPLIER=15
 
 ## Get command line params
@@ -493,12 +492,11 @@ if [ ! -z ${DB_DUMP_PATH+x} ]; then
     ebsSize=$minSize # 300 GB
     if [ "$dumpFileSize" -gt "$minSize" ]; then
         let ebsSize=$dumpFileSize
+        let ebsSize=$ebsSize*$EBS_SIZE_MULTIPLIER
+        ebsSize=$(numfmt --to-unit=G $ebsSize)
+        EBS_SIZE=$ebsSize
+        [ $DEBUG -eq 1 ] && echo "EBS Size: $EBS_SIZE Gb"
     fi
-    ebsSize=$(numfmt --to-unit=G $ebsSize)
-    #[ $DEBUG -eq 1 ] && echo "EBS Size: $ebsSize Gb"
-    let ebsSize=$ebsSize*$EBS_SIZE_MULTIPLIER
-    EBS_SIZE=$ebsSize
-    [ $DEBUG -eq 1 ] && echo "EBS Size: $EBS_SIZE Gb"
 fi
 
 set -ueo pipefail
@@ -611,6 +609,7 @@ elif [[ "$RUN_ON" = "aws" ]]; then
   if [ ${AWS_EC2_TYPE:0:2} == 'i3' ]
   then
     # Init i3 storage, just mount existing volume
+    echo "Attach i3 nvme volume"
     docker-machine ssh $DOCKER_MACHINE df -h
     docker-machine ssh $DOCKER_MACHINE sudo add-apt-repository -y ppa:sbates
     docker-machine ssh $DOCKER_MACHINE sudo apt-get update || :
@@ -631,17 +630,18 @@ elif [[ "$RUN_ON" = "aws" ]]; then
     docker-machine ssh $DOCKER_MACHINE df -h
   else
     # Create new volume and attach them for non i3 instances if need
-    [ $DEBUG -eq 1 ] && echo "Create volume with size: $EBS_SIZE Gb"
-    VOLUME_ID=$(aws ec2 create-volume --size 10 --region us-east-1 --availability-zone us-east-1a --volume-type gp2 | jq -r .VolumeId)
-    INSTANCE_ID=$(docker-machine ssh $DOCKER_MACHINE curl -s http://169.254.169.254/latest/meta-data/instance-id)
-    echo "Instance id: $INSTANCE_ID  Volume with size: $EBS_SIZE created. Volume id: $VOLUME_ID"
-    sleep 10 # wait to volume will ready
-    attachResult=$(aws ec2 attach-volume --device /dev/xvdf --volume-id $VOLUME_ID --instance-id $INSTANCE_ID --region us-east-1)
-    echo "ATTACH RESULT: $attachResult"
-    docker-machine ssh $DOCKER_MACHINE sudo mkfs.ext4 /dev/xvdf
-    docker-machine ssh $DOCKER_MACHINE "sudo sh -c \"mkdir /home/storage\""
-    docker-machine ssh $DOCKER_MACHINE sudo mount /dev/xvdf /home/storage
-#    docker-machine ssh $DOCKER_MACHINE "sudo sh -c \"echo 'Check mount storage TEST' > /home/storage/xvdf-test.txt\""
+    if [ ! -z ${EBS_SIZE+x} ]; then
+      echo "Create and attach EBS volume"
+      [ $DEBUG -eq 1 ] && echo "Create volume with size: $EBS_SIZE Gb"
+      VOLUME_ID=$(aws ec2 create-volume --size 10 --region us-east-1 --availability-zone us-east-1a --volume-type gp2 | jq -r .VolumeId)
+      INSTANCE_ID=$(docker-machine ssh $DOCKER_MACHINE curl -s http://169.254.169.254/latest/meta-data/instance-id)
+      sleep 10 # wait to volume will ready
+      attachResult=$(aws ec2 attach-volume --device /dev/xvdf --volume-id $VOLUME_ID --instance-id $INSTANCE_ID --region us-east-1)
+      docker-machine ssh $DOCKER_MACHINE sudo mkfs.ext4 /dev/xvdf
+      docker-machine ssh $DOCKER_MACHINE "sudo sh -c \"mkdir /home/storage\""
+      docker-machine ssh $DOCKER_MACHINE sudo mount /dev/xvdf /home/storage
+      #    docker-machine ssh $DOCKER_MACHINE "sudo sh -c \"echo 'Check mount storage TEST' > /home/storage/xvdf-test.txt\""
+    fi
   fi
 
   containerHash=$( \
