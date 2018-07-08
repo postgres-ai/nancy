@@ -383,8 +383,8 @@ function checkParams() {
     checkPath PG_CONFIG
     if [ "$?" -ne "0" ]; then
       #>&2 echo "WARNING: Value given as pg_config: '$PG_CONFIG' not found as file will use as content"
-      echo "$PG_CONFIG" > $TMP_PATH/pg_congif_tmp.sql
-      WORKLOAD_CUSTOM_SQL="$TMP_PATH/pg_congif_tmp.sql"
+      echo "$PG_CONFIG" > $TMP_PATH/pg_config_tmp.sql
+      WORKLOAD_CUSTOM_SQL="$TMP_PATH/pg_config_tmp.sql"
     fi
   fi
 
@@ -661,7 +661,7 @@ then
   if [[ $AFTER_DB_INIT_CODE =~ "s3://" ]]; then
     docker_exec s3cmd sync $AFTER_DB_INIT_CODE $MACHINE_HOME/
   else
-    docker-machine scp $AFTER_DB_INIT_CODE $DOCKER_MACHINE:/home/ubuntu
+    docker-machine scp $AFTER_DB_INIT_CODE $DOCKER_MACHINE:/home/ubuntu/nancy_$containerHash
   fi
   docker_exec bash -c "psql -U postgres test -E -f $MACHINE_HOME/$AFTER_DB_INIT_CODE_FILENAME"
 fi
@@ -747,7 +747,8 @@ if ([ ! -z ${TARGET_DDL_UNDO+x} ] && [ "$TARGET_DDL_UNDO" != "" ]); then
 fi
 
 echo -e "Run done!"
-echo -e "Result log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json"
+echo -e "Report: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json"
+echo -e "Query log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.log.gz"
 echo -e "-------------------------------------------"
 echo -e "Summary:"
 echo -e "  Queries number:\t\t" $(cat $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_number')
