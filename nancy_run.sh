@@ -383,8 +383,8 @@ function checkParams() {
     checkPath PG_CONFIG
     if [ "$?" -ne "0" ]; then
       #>&2 echo "WARNING: Value given as pg_config: '$PG_CONFIG' not found as file will use as content"
-      echo "$PG_CONFIG" > $TMP_PATH/pg_congif_tmp.sql
-      WORKLOAD_CUSTOM_SQL="$TMP_PATH/pg_congif_tmp.sql"
+      echo "$PG_CONFIG" > $TMP_PATH/pg_config_tmp.sql
+      WORKLOAD_CUSTOM_SQL="$TMP_PATH/pg_config_tmp.sql"
     fi
   fi
 
