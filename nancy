@@ -52,8 +52,6 @@ do
 done
 
 echo "CMD: $cmd"
-echo "ORIG: $@"
 
-set -xeio pipefail
 eval $cmd
 
