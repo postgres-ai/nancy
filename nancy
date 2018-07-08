@@ -43,11 +43,15 @@ esac
 
 while [ -n "$1" ]
 do
+  if [ ${1%"${1#??}"} = '--' ]; then
     cmd="$cmd $1"
-    shift
+  else
+    cmd="$cmd \"$1\""
+  fi
+  shift
 done
 
 echo "CMD: $cmd"
 
-${cmd}
+eval $cmd
 
