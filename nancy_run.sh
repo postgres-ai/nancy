@@ -598,7 +598,7 @@ elif [[ "$RUN_ON" = "aws" ]]; then
       --filters 'Name=status-code,Values=price-too-low' \
     | grep SpotInstanceRequestId | awk '{gsub(/[,"]/, "", $2); print $2}' \
     | xargs --no-run-if-empty aws ec2 cancel-spot-instance-requests \
-      --spot-instance-request-ids 
+      --spot-instance-request-ids
 
     corrrectPriceForLastFailedRequest=$( \
       aws ec2 describe-spot-instance-requests \
