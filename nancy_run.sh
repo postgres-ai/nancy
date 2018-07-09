@@ -503,17 +503,58 @@ function waitEC2Ready() {
   done
 }
 
+# Params:
+#  1) machine name
+#  2) AWS EC2 instance type
+#  3) price
+#  4) duration (minutes)
+#  5) key pair name
+#  6) key path
 function createDockerMachine() {
   echo "Attempt to create a docker machine..."
   docker-machine create --driver=amazonec2 \
     --amazonec2-request-spot-instance \
-    --amazonec2-keypair-name="$AWS_KEY_PAIR" \
-    --amazonec2-ssh-keypath="$AWS_KEY_PATH" \
-    --amazonec2-block-duration-minutes=60 \
-    --amazonec2-instance-type=$AWS_EC2_TYPE \
-    --amazonec2-spot-price=$EC2_PRICE \
-    $DOCKER_MACHINE &
+    --amazonec2-keypair-name="$5" \
+    --amazonec2-ssh-keypath="$6" \
+    --amazonec2-block-duration-minutes=$4 \
+    --amazonec2-instance-type=$2 \
+    --amazonec2-spot-price=$3 \
+    $1 2> >(grep -v "failed waiting for successful resource state" >&2) &
 }
+
+function destroyDockerMachine() {
+  # If spot request wasn't fulfilled, there is no associated instance,
+  # so "docker-machine rm" will show an error, which is safe to ignore.
+  # We better filter it out to avoid any confusions.
+  # What is used here is called "process substitution",
+  # see https://www.gnu.org/software/bash/manual/bash.html#Process-Substitution
+  # The same trick is used in createDockerMachine to filter out errors
+  # when we have "price-too-low" attempts, such errors come in few minutes
+  # after an attempt and are generally unexpected by user.
+  cmdout=$(docker-machine rm --force $1 2> >(grep -v "unknown instance" >&2) )
+  echo "Termination requested for machine '$1', current status: $cmdout"
+}
+
+function cleanupAndExit {
+  echo "Remove temp files..." # if exists
+  rm -f "$TMP_PATH/after_db_init_code_tmp.sql"
+  rm -f "$TMP_PATH/workload_custom_sql_tmp.sql"
+  rm -f "$TMP_PATH/target_ddl_do_tmp.sql"
+  rm -f "$TMP_PATH/target_ddl_undo_tmp.sql"
+  rm -f "$TMP_PATH/target_config_tmp.conf"
+  rm -f "$TMP_PATH/pg_config_tmp.conf"
+  if [ "$RUN_ON" = "localhost" ]; then
+    rm -rf "$TMP_PATH/nancy_${containerHash}"
+    echo "Remove docker container"
+    docker container rm -f $containerHash
+  elif [ "$RUN_ON" = "aws" ]; then
+    destroyDockerMachine $DOCKER_MACHINE
+  else
+    >&2 echo "ASSERT: must not reach this point"
+    exit 1
+  fi
+}
+trap cleanupAndExit EXIT
 
 if [[ "$RUN_ON" = "localhost" ]]; then
   if [ -z ${CONTAINER_ID+x} ]; then
@@ -543,11 +584,22 @@ elif [[ "$RUN_ON" = "aws" ]]; then
   echo "Increased price: $price"
   EC2_PRICE=$price
 
-  createDockerMachine;
+  createDockerMachine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
+    60 $AWS_KEY_PAIR $AWS_KEY_PATH;
   status=$(waitEC2Ready "docker-machine create" "$DOCKER_MACHINE" 1)
   if [ "$status" == "price-too-low" ]
   then
-    echo "Price $price is too low for $AWS_EC2_TYPE instance. Try detect actual."
+    echo "Price $price is too low for $AWS_EC2_TYPE instance. Getting the up-to-date value from the error message..."
+
+    #destroyDockerMachine $DOCKER_MACHINE
+    # "docker-machine rm" doesn't work for "price-too-low" spot requests,
+    # so we need to clean up them via aws cli interface directly
+    aws ec2 describe-spot-instance-requests \
+      --filters 'Name=status-code,Values=price-too-low' \
+    | grep SpotInstanceRequestId | awk '{gsub(/[,"]/, "", $2); print $2}' \
+    | xargs --no-run-if-empty aws ec2 cancel-spot-instance-requests \
+      --spot-instance-request-ids
+
     corrrectPriceForLastFailedRequest=$( \
       aws ec2 describe-spot-instance-requests \
         --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" \
@@ -562,7 +614,8 @@ elif [[ "$RUN_ON" = "aws" ]]; then
       DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
       #try start docker machine name with new price
       echo "Attempt to create a new docker machine: $DOCKER_MACHINE with price: $EC2_PRICE."
-      createDockerMachine;
+      createDockerMachine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
+        60 $AWS_KEY_PAIR $AWS_KEY_PATH;
       waitEC2Ready "docker-machine create" "$DOCKER_MACHINE" 0;
     else
       >&2 echo "ERROR: Cannot determine actual price for the instance $AWS_EC2_TYPE."
@@ -591,28 +644,6 @@ else
   >&2 echo "ASSERT: must not reach this point"
   exit 1
 fi
-
-function cleanup {
-  echo "Remove temp files..." # if exists
-  rm -f "$TMP_PATH/after_db_init_code_tmp.sql"
-  rm -f "$TMP_PATH/workload_custom_sql_tmp.sql"
-  rm -f "$TMP_PATH/target_ddl_do_tmp.sql"
-  rm -f "$TMP_PATH/target_ddl_undo_tmp.sql"
-  rm -f "$TMP_PATH/target_config_tmp.conf"
-  rm -f "$TMP_PATH/pg_config_tmp.conf"
-  if [ "$RUN_ON" = "localhost" ]; then
-    rm -rf "$TMP_PATH/nancy_${containerHash}"
-    echo "Remove docker container"
-    docker container rm -f $containerHash
-  elif [ "$RUN_ON" = "aws" ]; then
-    cmdout=$(docker-machine rm --force $DOCKER_MACHINE)
-    echo "Finished working with machine $DOCKER_MACHINE, termination requested, current status: $cmdout"
-  else
-    >&2 echo "ASSERT: must not reach this point"
-    exit 1
-  fi
-}
-trap cleanup EXIT
 
 alias docker_exec='docker $dockerConfig exec -i ${containerHash} '
 
@@ -751,10 +782,10 @@ echo -e "Report: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json"
 echo -e "Query log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.log.gz"
 echo -e "-------------------------------------------"
 echo -e "Summary:"
-echo -e "  Normalized queries number:\t\t" $(cat $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json | jq '.normalyzed_info| length')
-echo -e "  Queries number:\t\t" $(cat $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_number')
 echo -e "  Queries duration:\t\t" $(cat $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_duration') " ms"
-echo -e "  Errors number:\t\t" $(cat $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json | jq '.overall_stat.errors_number')
+echo -e "  Queries count:\t\t" $(cat $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_number')
+echo -e "  Normalized queries count:\t" $(cat $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json | jq '.normalyzed_info| length')
+echo -e "  Errors count:\t\t\t" $(cat $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json | jq '.overall_stat.errors_number')
 echo -e "-------------------------------------------"
 
 sleep $DEBUG_TIMEOUT
