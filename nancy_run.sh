@@ -320,6 +320,8 @@ function checkParams() {
     then
       >&2 echo "ERROR: AWS keys not given."
       exit 1
+    else
+      checkPath AWS_KEY_PATH
     fi
 
     if [ -z ${AWS_EC2_TYPE+x} ]
