@@ -12,8 +12,8 @@ output=$(
   $nancyRun --workload-custom-sql "file://$srcDir/custom.sql" \
     --tmp-path ${srcDir}/tmp \
     --db-dump-path "file://$srcDir/test.dump.bz2" \
-    --target-ddl-do "file://$srcDir/ddl_create_index.sql" \
-    --target-ddl-undo "file://$srcDir/ddl_drop_index.sql" 2>&1
+    --target-ddl-do "create index i_speedup on t1 using btree(val);" \
+    --target-ddl-undo "drop index i_speedup;" 2>&1
 )
 
 if [[ $output =~ "Queries duration:" ]]; then
