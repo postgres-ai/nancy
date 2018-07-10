@@ -7,29 +7,77 @@ Nancy helps to conduct automated database experiments.
 The Nancy Command Line Interface is a unified way to manage automated
 database experiments either in clouds or on-premise.
 
-Experiments are needed every time you:
+What is a Database Experiment?
+===
+Database experiment is a set of actions performed to test
+ * (a) specified SQL queries ("workload")
+ * (b) on specified machine / OS / Postgres version ("environment")
+ * (c) against specified database ("object")
+ * (d) with an optional change – some DDL or config change ("target" or "delta").
+
+Two main goals for any database experiment:
+ * (1) validation – check that the specified workload is valid,
+ * (2) benchmark – perform deep SQL query analysis.
+
+Database experiments are needed when you:
  - add or remove indexes;
- - want to verify query optimization ideas;
- - need to tune database parameters;
- - want to perform performance/stress test for your DB;
- - are preparing to upgrade your DBMS to the new major version;
+ - for a new DB schema change, want to validate it and estimate migration time;
+ - want to verify some query optimization ideas;
+ - tune database configuration parameters;
+ - do capacity planning and want to stress-test your DB in some environment;
+ - plan to upgrade your DBMS to a new major version;
  - want to train ML model related to DB optimization.
 
-Currently Nancy works only with PostgreSQL versions 9.6 and 10.
+Currently Supported Features
+===
+* Experiments are conducted in a Docker container with extended Postgres setup
+* Supported Postgres versions: 9.6, 10
+* Supported locations for experimental runs:
+  * Any machine with Docker installed
+  * AWS EC2:
+    * Run on AWS EC2 Spot Instances (using Docker Machine)
+    * Allow to specify EC2 instance type
+    * Auto-detect and use current lowest EC2 Spot Instance prices
+* Support local or remote (S3) files – config, dump, etc
+* What to test (a.k.a. "target" or "delta"):
+  * Test Postgres parameters change
+  * Test DDL change (specified as "do" and "undo" SQL to return state)
+* Supported types of workload:
+  * Use custom SQL as workload
+  * Use "real workload" prepared using Postgres logs
+* For "real workload", allow replaying it with increased speed
+* Allow to keep container alive for specified time after all steps are done
+* Collected artifacts:
+  * Workload SQL logs
+  * Deep SQL query analysis report
 
 Requirements
 ===
-To use Nancy CLI you need Linux or MacOS with installed Docker. If you plan 
-to run experiments in AWS EC2 instances, you also need Docker Machine
-(https://docs.docker.com/machine/).
+1) To use Nancy CLI you need Linux or MacOS with installed Docker.
+
+2) To run on AWS EC2 instances, you also need:
+  * AWS CLI https://aws.amazon.com/en/cli/
+  * Docker Machine https://docs.docker.com/machine/
+  * jq https://stedolan.github.io/jq/
+
 
 Installation
 ===
+
+In the minimal configuration, only two steps are needed:
+
+1) Install Docker (for Ubuntu/Debian: `sudo apt-get install docker`)
+2) Clone this repo and adjust `$PATH`:
 ```bash
 git clone https://github.com/startupturbo/nancy
 echo "export PATH=\$PATH:"$(pwd)"/nancy" >> ~/.bashrc
 source ~/.bashrc
 ```
+
+Additionally, to allow use of AWS EC2 instances:
+3) Follow instructions https://docs.aws.amazon.com/cli/latest/userguide/installing.html
+4) Follow instructions https://docs.docker.com/machine/install-machine/
+5) install jq (for Ubuntu/Debian: `sudo apt-get install jq`)
 
 Getting started
 ===
@@ -39,3 +87,25 @@ nancy help
 nancy run help
 ```
 
+"Hello World!"
+===
+```bash
+echo "create table hello_world as select i::int4 from generate_series(1, 1000000) _(i);" > ./sample.dump
+bzip2 ./sample.dump
+
+# "Clean run": w/o index
+# (seqscan is expected, total time ~150ms, depending on resources)
+nancy run \
+  --run-on localhost \
+  --workload-custom-sql "select count(1) from hello_world where i between 100000 and 100010;" \
+  --db-dump-path file://$(pwd)/sample.dump.bz2 --tmp-path /tmp
+
+# Now check how a regular btree index affects performance
+# (expected total time: ~0.05ms)
+nancy run \
+  --run-on localhost \
+  --workload-custom-sql "select count(1) from hello_world where i between 100000 and 100010;" \
+  --db-dump-path file://$(pwd)/sample.dump.bz2 --tmp-path /tmp \
+  --target-ddl-do "create index i_hello_world_i on hello_world(i);" \
+  --target-ddl-undo "drop index i_hello_world_i;"
+```
