@@ -280,7 +280,6 @@ function checkPath() {
   if [[ $path =~ "file:///" ]]
   then
     path=${path/file:\/\//}
-    echo "CHECK $path"
     if [ -f $path ]
     then
       eval "$1=\"$path\"" # update original variable
@@ -707,8 +706,6 @@ case "$DB_DUMP_EXT" in
     docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test"
     ;;
 esac
-
-exit 1;
 
 # After init database sql code apply
 echo "Apply sql code after db init"
