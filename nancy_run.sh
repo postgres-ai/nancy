@@ -714,22 +714,30 @@ fi
 
 alias docker_exec='docker $dockerConfig exec -i ${containerHash} '
 
-MACHINE_HOME="/machine_home/nancy_${containerHash}"
-docker_exec sh -c "mkdir $MACHINE_HOME && chmod a+w $MACHINE_HOME"
-docker_exec bash -c "ln -s /storage/ $MACHINE_HOME/storage"
-MACHINE_HOME="/machine_home/nancy_${containerHash}/storage"
-docker_exec sh -c "chmod a+w $MACHINE_HOME"
-docker_exec sh -c "chmod a+w /storage"
+if [[ "$RUN_ON" = "localhost" ]]; then
+  MACHINE_HOME="/machine_home/nancy_${containerHash}"
+  docker_exec sh -c "mkdir $MACHINE_HOME && chmod a+w $MACHINE_HOME"
+elif [[ "$RUN_ON" = "aws" ]]; then
+  MACHINE_HOME="/machine_home/nancy_${containerHash}"
+  docker_exec sh -c "mkdir $MACHINE_HOME && chmod a+w $MACHINE_HOME"
+  docker_exec bash -c "ln -s /storage/ $MACHINE_HOME/storage"
+  MACHINE_HOME="/machine_home/nancy_${containerHash}/storage"
+  docker_exec sh -c "chmod a+w $MACHINE_HOME"
+  docker_exec sh -c "chmod a+w /storage"
 
-echo "Move posgresql to high speed disk"
-docker_exec bash -c "sudo /etc/init.d/postgresql stop"
-sleep 2 # wait for postgres stopped
-docker_exec bash -c "sudo mkdir /storage/postgresql"
-docker_exec bash -c "sudo mv /var/lib/postgresql/* /storage/postgresql"
-docker_exec bash -c "rm -R /var/lib/postgresql"
-docker_exec bash -c "ln -s /storage/postgresql /var/lib/postgresql"
-docker_exec bash -c "sudo /etc/init.d/postgresql start"
-sleep 2 # wait for postgres started
+  echo "Move posgresql to high speed disk"
+  docker_exec bash -c "sudo /etc/init.d/postgresql stop"
+  sleep 2 # wait for postgres stopped
+  docker_exec bash -c "sudo mkdir /storage/postgresql"
+  docker_exec bash -c "sudo mv /var/lib/postgresql/* /storage/postgresql"
+  docker_exec bash -c "rm -R /var/lib/postgresql"
+  docker_exec bash -c "ln -s /storage/postgresql /var/lib/postgresql"
+  docker_exec bash -c "sudo /etc/init.d/postgresql start"
+  sleep 2 # wait for postgres started
+else
+  >&2 echo "ASSERT: must not reach this point"
+  exit 1
+fi
 
 function copyFile() {
   if [ "$1" != '' ]; then
