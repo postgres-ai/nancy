@@ -10,14 +10,14 @@ database experiments either in clouds or on-premise.
 What is a Database Experiment?
 ===
 Database experiment is a set of actions performed to test
- (a) specified SQL queries ("workload")
- (b) on specified machine / OS / Postgres version ("environment")
- (c) against specified database ("object")
- (d) with an optional change – some DDL or config change ("target" or "delta").
+ * (a) specified SQL queries ("workload")
+ * (b) on specified machine / OS / Postgres version ("environment")
+ * (c) against specified database ("object")
+ * (d) with an optional change – some DDL or config change ("target" or "delta").
 
 Two main goals for any database experiment:
- (1) validation – check that the specified workload is valid,
- (2) benchmark – perform deep SQL query analysis.
+ * (1) validation – check that the specified workload is valid,
+ * (2) benchmark – perform deep SQL query analysis.
 
 Database experiments are needed when you:
  - add or remove indexes;
