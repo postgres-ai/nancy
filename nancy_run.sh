@@ -564,6 +564,7 @@ function destroyDockerMachine() {
 
 function cleanupAndExit {
   echo "Remove temp files..." # if exists
+  docker $dockerConfig exec -i ${containerHash} sh -c "sudo rm -rf $MACHINE_HOME"
   rm -f "$TMP_PATH/after_db_init_code_tmp.sql"
   rm -f "$TMP_PATH/workload_custom_sql_tmp.sql"
   rm -f "$TMP_PATH/target_ddl_do_tmp.sql"
@@ -571,7 +572,6 @@ function cleanupAndExit {
   rm -f "$TMP_PATH/target_config_tmp.conf"
   rm -f "$TMP_PATH/pg_config_tmp.conf"
   if [ "$RUN_ON" = "localhost" ]; then
-    rm -rf "$TMP_PATH/nancy_${containerHash}"
     echo "Remove docker container"
     docker container rm -f $containerHash
   elif [ "$RUN_ON" = "aws" ]; then
@@ -830,6 +830,7 @@ docker_exec bash -c "/root/pgbadger/pgbadger \
   -j $(cat /proc/cpuinfo | grep processor | wc -l) \
   --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr \
   -o $MACHINE_HOME/$ARTIFACTS_FILENAME.json"
+  #2> >(grep -v "install the Text::CSV_XS" >&2)
 
 logpath=$( \
   docker_exec bash -c "psql -XtU postgres \
