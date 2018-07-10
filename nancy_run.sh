@@ -675,12 +675,12 @@ elif [[ "$RUN_ON" = "aws" ]]; then
     docker-machine ssh $DOCKER_MACHINE sudo apt-get update || :
     docker-machine ssh $DOCKER_MACHINE sudo apt-get install -y nvme-cli
 
-    docker-machine ssh $DOCKER_MACHINE echo "# partition table of /dev/nvme0n1" > /tmp/nvme.part
-    docker-machine ssh $DOCKER_MACHINE echo "unit: sectors " >> /tmp/nvme.part
-    docker-machine ssh $DOCKER_MACHINE echo "/dev/nvme0n1p1 : start=     2048, size=1855466702, Id=83 " >> /tmp/nvme.part
-    docker-machine ssh $DOCKER_MACHINE echo "/dev/nvme0n1p2 : start=        0, size=        0, Id= 0 " >> /tmp/nvme.part
-    docker-machine ssh $DOCKER_MACHINE echo "/dev/nvme0n1p3 : start=        0, size=        0, Id= 0 " >> /tmp/nvme.part
-    docker-machine ssh $DOCKER_MACHINE echo "/dev/nvme0n1p4 : start=        0, size=        0, Id= 0 " >> /tmp/nvme.part
+    docker-machine ssh $DOCKER_MACHINE sh -c "echo \"# partition table of /dev/nvme0n1\" > /tmp/nvme.part"
+    docker-machine ssh $DOCKER_MACHINE sh -c "echo \"unit: sectors \" >> /tmp/nvme.part"
+    docker-machine ssh $DOCKER_MACHINE sh -c "echo \"/dev/nvme0n1p1 : start=     2048, size=1855466702, Id=83 \" >> /tmp/nvme.part"
+    docker-machine ssh $DOCKER_MACHINE sh -c "echo \"/dev/nvme0n1p2 : start=        0, size=        0, Id= 0 \" >> /tmp/nvme.part"
+    docker-machine ssh $DOCKER_MACHINE sh -c "echo \"/dev/nvme0n1p3 : start=        0, size=        0, Id= 0 \" >> /tmp/nvme.part"
+    docker-machine ssh $DOCKER_MACHINE sh -c "echo \"/dev/nvme0n1p4 : start=        0, size=        0, Id= 0 \" >> /tmp/nvme.part"
 
     docker-machine ssh $DOCKER_MACHINE sudo sfdisk /dev/nvme0n1 < /tmp/nvme.part
     docker-machine ssh $DOCKER_MACHINE sudo mkfs -t ext4 /dev/nvme0n1p1
