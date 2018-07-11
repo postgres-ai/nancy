@@ -67,6 +67,7 @@ Installation
 In the minimal configuration, only two steps are needed:
 
 1) Install Docker (for Ubuntu/Debian: `sudo apt-get install docker`)
+
 2) Clone this repo and adjust `$PATH`:
 ```bash
 git clone https://github.com/startupturbo/nancy
@@ -75,8 +76,11 @@ source ~/.bashrc
 ```
 
 Additionally, to allow use of AWS EC2 instances:
+
 3) Follow instructions https://docs.aws.amazon.com/cli/latest/userguide/installing.html
+
 4) Follow instructions https://docs.docker.com/machine/install-machine/
+
 5) install jq (for Ubuntu/Debian: `sudo apt-get install jq`)
 
 Getting started
