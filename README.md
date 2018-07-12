@@ -32,6 +32,7 @@ Currently Supported Features
 ===
 * Experiments are conducted in a Docker container with extended Postgres setup
 * Supported Postgres versions: 9.6, 10
+* Postgres config specified via options, may be partial
 * Supported locations for experimental runs:
   * Any machine with Docker installed
   * AWS EC2:
@@ -98,23 +99,36 @@ nancy run help
 
 "Hello World!"
 ===
+Locally:
 ```bash
-echo "create table hello_world as select i::int4 from generate_series(1, 1000000) _(i);" > ./sample.dump
-bzip2 ./sample.dump
+echo "create table hello_world as select i::int4 from generate_series(1, (10^6)::int) _(i);" > ./sample.dump
 
 # "Clean run": w/o index
 # (seqscan is expected, total time ~150ms, depending on resources)
 nancy run \
   --run-on localhost \
-  --workload-custom-sql "select count(1) from hello_world where i between 100000 and 100010;" \
-  --db-dump-path file://$(pwd)/sample.dump.bz2 --tmp-path /tmp
+  --db-dump-path file://$(pwd)/sample.dump.bz2 \
+  --tmp-path /tmp \
+  --workload-custom-sql "select count(1) from hello_world where i between 100000 and 100010;"
 
 # Now check how a regular btree index affects performance
 # (expected total time: ~0.05ms)
 nancy run \
   --run-on localhost \
+  --db-dump-path file://$(pwd)/sample.dump.bz2 \
+  --tmp-path /tmp \
   --workload-custom-sql "select count(1) from hello_world where i between 100000 and 100010;" \
-  --db-dump-path file://$(pwd)/sample.dump.bz2 --tmp-path /tmp \
   --target-ddl-do "create index i_hello_world_i on hello_world(i);" \
   --target-ddl-undo "drop index i_hello_world_i;"
 ```
+
+On AWS EC2:
+```bash
+nancy run \
+  --run-on aws \
+  --aws-ec2-type "i3.large" \
+  --aws-keypair-name awskey --aws-ssh-key-path file://$(echo ~)/.ssh/awskey.pem  \
+  --db-dump-path "create table a as select i::int4 from generate_series(1, (10^9)::int) _(i);" \
+  --workload-custom-sql "select count(1) from a where i between 10 and 20;"
+```
+
