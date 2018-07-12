@@ -31,13 +31,14 @@ case "$1" in
         exit 1;
         ;;
     * )
-        if [ ! -f "${BASH_SOURCE%/*}/nancy_$1.sh" ]
+        word="${1/-/_}"
+        if [ ! -f "${BASH_SOURCE%/*}/nancy_$word.sh" ]
         then
             >&2 echo "ERROR: Unknown command."
             >&2 echo "Try 'nancy help'"
             exit 1;
         fi
-        cmd="${BASH_SOURCE%/*}/nancy_$1.sh"
+        cmd="${BASH_SOURCE%/*}/nancy_$word.sh"
         shift;
     ;;
 esac
