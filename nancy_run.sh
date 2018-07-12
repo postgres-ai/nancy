@@ -5,6 +5,7 @@ CURRENT_TS=$(date +%Y%m%d_%H%M%S%N_%Z)
 DOCKER_MACHINE="${DOCKER_MACHINE:-nancy-$CURRENT_TS}"
 DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
 DEBUG_TIMEOUT=0
+EBS_SIZE_MULTIPLIER=15
 
 ## Get command line params
 while true; do
@@ -280,7 +281,6 @@ function checkPath() {
   if [[ $path =~ "file:///" ]]
   then
     path=${path/file:\/\//}
-    echo "CHECK $path"
     if [ -f $path ]
     then
       eval "$1=\"$path\"" # update original variable
@@ -475,6 +475,31 @@ function checkParams() {
 
 checkParams;
 
+# Determine dump file size
+if [ ! -z ${DB_DUMP_PATH+x} ]; then
+    dumpFileSize=0
+    if [[ $DB_DUMP_PATH =~ "s3://" ]]; then
+      dumpFileSize=$(s3cmd info $DB_DUMP_PATH | grep "File size:" )
+      dumpFileSize=${dumpFileSize/File size:/}
+      dumpFileSize=${dumpFileSize/\t/}
+      dumpFileSize=${dumpFileSize// /}
+      #echo "S3 FILESIZE: $dumpFileSize"
+    else
+      dumpFileSize=$(stat -c%s "$DB_DUMP_PATH")
+    fi
+    [ $DEBUG -eq 1 ] && echo "Dump filesize: $dumpFileSize bytes"
+    KB=1024
+    let minSize=300*$KB*$KB*$KB
+    ebsSize=$minSize # 300 GB
+    if [ "$dumpFileSize" -gt "$minSize" ]; then
+        let ebsSize=$dumpFileSize
+        let ebsSize=$ebsSize*$EBS_SIZE_MULTIPLIER
+        ebsSize=$(numfmt --to-unit=G $ebsSize)
+        EBS_SIZE=$ebsSize
+        [ $DEBUG -eq 1 ] && echo "EBS Size: $EBS_SIZE Gb"
+    fi
+fi
+
 set -ueo pipefail
 [ $DEBUG -eq 1 ] && set -ueox pipefail # to debug
 shopt -s expand_aliases
@@ -551,6 +576,12 @@ function cleanupAndExit {
     docker container rm -f $containerHash
   elif [ "$RUN_ON" = "aws" ]; then
     destroyDockerMachine $DOCKER_MACHINE
+    if [ ! -z ${VOLUME_ID+x} ]; then
+        echo "Wait and delete volume $VOLUME_ID"
+        sleep 60 # wait to machine removed
+        delvolout=$(aws ec2 delete-volume --volume-id $VOLUME_ID)
+        echo "Volume $VOLUME_ID deleted"
+    fi    
   else
     >&2 echo "ASSERT: must not reach this point"
     exit 1
@@ -632,13 +663,48 @@ elif [[ "$RUN_ON" = "aws" ]]; then
     >&2 echo "Failed: Docker $DOCKER_MACHINE is NOT running."
     exit 1;
   fi
-
   echo "Docker $DOCKER_MACHINE is running."
+
+  docker-machine ssh $DOCKER_MACHINE "sudo sh -c \"mkdir /home/storage\""
+  if [ ${AWS_EC2_TYPE:0:2} == 'i3' ]
+  then
+    echo "Attempt use high speed disk"
+    # Init i3 storage, just mount existing volume
+    echo "Attach i3 nvme volume"
+    docker-machine ssh $DOCKER_MACHINE sudo add-apt-repository -y ppa:sbates
+    docker-machine ssh $DOCKER_MACHINE sudo apt-get update || :
+    docker-machine ssh $DOCKER_MACHINE sudo apt-get install -y nvme-cli
+
+    docker-machine ssh $DOCKER_MACHINE sh -c "echo \"# partition table of /dev/nvme0n1\" > /tmp/nvme.part"
+    docker-machine ssh $DOCKER_MACHINE sh -c "echo \"unit: sectors \" >> /tmp/nvme.part"
+    docker-machine ssh $DOCKER_MACHINE sh -c "echo \"/dev/nvme0n1p1 : start=     2048, size=1855466702, Id=83 \" >> /tmp/nvme.part"
+    docker-machine ssh $DOCKER_MACHINE sh -c "echo \"/dev/nvme0n1p2 : start=        0, size=        0, Id= 0 \" >> /tmp/nvme.part"
+    docker-machine ssh $DOCKER_MACHINE sh -c "echo \"/dev/nvme0n1p3 : start=        0, size=        0, Id= 0 \" >> /tmp/nvme.part"
+    docker-machine ssh $DOCKER_MACHINE sh -c "echo \"/dev/nvme0n1p4 : start=        0, size=        0, Id= 0 \" >> /tmp/nvme.part"
+
+    docker-machine ssh $DOCKER_MACHINE sudo sfdisk /dev/nvme0n1 < /tmp/nvme.part
+    docker-machine ssh $DOCKER_MACHINE sudo mkfs -t ext4 /dev/nvme0n1p1
+    docker-machine ssh $DOCKER_MACHINE sudo mount /dev/nvme0n1p1 /home/storage
+  else
+    echo "Attempt use external disk"
+    # Create new volume and attach them for non i3 instances if needed
+    if [ ! -z ${EBS_SIZE+x} ]; then
+      echo "Create and attach EBS volume"
+      [ $DEBUG -eq 1 ] && echo "Create volume with size: $EBS_SIZE Gb"
+      VOLUME_ID=$(aws ec2 create-volume --size $EBS_SIZE --region us-east-1 --availability-zone us-east-1a --volume-type gp2 | jq -r .VolumeId)
+      INSTANCE_ID=$(docker-machine ssh $DOCKER_MACHINE curl -s http://169.254.169.254/latest/meta-data/instance-id)
+      sleep 10 # wait to volume will ready
+      attachResult=$(aws ec2 attach-volume --device /dev/xvdf --volume-id $VOLUME_ID --instance-id $INSTANCE_ID --region us-east-1)
+      docker-machine ssh $DOCKER_MACHINE sudo mkfs.ext4 /dev/xvdf
+      docker-machine ssh $DOCKER_MACHINE sudo mount /dev/xvdf /home/storage
+    fi
+  fi
 
   containerHash=$( \
     docker `docker-machine config $DOCKER_MACHINE` run \
       --name="pg_nancy_${CURRENT_TS}" \
       -v /home/ubuntu:/machine_home \
+      -v /home/storage:/storage \
       -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}"
   )
   dockerConfig=$(docker-machine config $DOCKER_MACHINE)
@@ -651,6 +717,19 @@ alias docker_exec='docker $dockerConfig exec -i ${containerHash} '
 
 MACHINE_HOME="/machine_home/nancy_${containerHash}"
 docker_exec sh -c "mkdir $MACHINE_HOME && chmod a+w $MACHINE_HOME"
+if [[ "$RUN_ON" = "aws" ]]; then
+  docker_exec bash -c "ln -s /storage/ $MACHINE_HOME/storage"
+  MACHINE_HOME="$MACHINE_HOME/storage"
+  docker_exec sh -c "chmod a+w /storage"
+
+  echo "Move posgresql to separated disk"
+  docker_exec bash -c "sudo /etc/init.d/postgresql stop"
+  sleep 2 # wait for postgres stopped
+  docker_exec bash -c "sudo mv /var/lib/postgresql /storage/"
+  docker_exec bash -c "ln -s /storage/postgresql /var/lib/postgresql"
+  docker_exec bash -c "sudo /etc/init.d/postgresql start"
+  sleep 2 # wait for postgres started
+fi
 
 function copyFile() {
   if [ "$1" != '' ]; then
@@ -662,7 +741,7 @@ function copyFile() {
         # TODO: option – hard links OR regular `cp`
         docker cp ${1/file:\/\//} $containerHash:$MACHINE_HOME/
       elif [ "$RUN_ON" = "aws" ]; then
-        docker-machine scp $1 $DOCKER_MACHINE:/home/ubuntu/nancy_${containerHash}
+        docker-machine scp $1 $DOCKER_MACHINE:/home/storage
       else
         >&2 echo "ASSERT: must not reach this point"
         exit 1
@@ -685,24 +764,21 @@ function copyFile() {
 # Dump
 sleep 2 # wait for postgres up&running
 DB_DUMP_FILENAME=$(basename $DB_DUMP_PATH)
-docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test"
+echo "Restore database dump"
+docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql -E --set ON_ERROR_STOP=on -U postgres test > /dev/null"
 # After init database sql code apply
 echo "Apply sql code after db init"
 if ([ ! -z ${AFTER_DB_INIT_CODE+x} ] && [ "$AFTER_DB_INIT_CODE" != "" ])
 then
   AFTER_DB_INIT_CODE_FILENAME=$(basename $AFTER_DB_INIT_CODE)
-  if [[ $AFTER_DB_INIT_CODE =~ "s3://" ]]; then
-    docker_exec s3cmd sync $AFTER_DB_INIT_CODE $MACHINE_HOME/
-  else
-    docker-machine scp $AFTER_DB_INIT_CODE $DOCKER_MACHINE:/home/ubuntu/nancy_$containerHash
-  fi
-  docker_exec bash -c "psql -U postgres test -E -f $MACHINE_HOME/$AFTER_DB_INIT_CODE_FILENAME"
+  copyFile $AFTER_DB_INIT_CODE
+  docker_exec bash -c "psql -U postgres test -b -f $MACHINE_HOME/$AFTER_DB_INIT_CODE_FILENAME"
 fi
 # Apply DDL code
 echo "Apply DDL SQL code"
 if ([ ! -z ${TARGET_DDL_DO+x} ] && [ "$TARGET_DDL_DO" != "" ]); then
   TARGET_DDL_DO_FILENAME=$(basename $TARGET_DDL_DO)
-  docker_exec bash -c "psql -U postgres test -E -f $MACHINE_HOME/$TARGET_DDL_DO_FILENAME"
+  docker_exec bash -c "psql -U postgres test -b -f $MACHINE_HOME/$TARGET_DDL_DO_FILENAME"
 fi
 # Apply initial postgres configuration
 echo "Apply initial postgres configuration"
@@ -748,17 +824,17 @@ docker_exec bash -c "/root/pgbadger/pgbadger \
   -o $MACHINE_HOME/$ARTIFACTS_FILENAME.json"
   #2> >(grep -v "install the Text::CSV_XS" >&2)
 
-echo "Save JSON log..."
+logpath=$( \
+  docker_exec bash -c "psql -XtU postgres \
+    -c \"select string_agg(setting, '/' order by name) from pg_settings where name in ('log_directory', 'log_filename');\" \
+    | grep / | sed -e 's/^[ \t]*//'"
+)
+docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz"
+echo "Save artifcats..."
 if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
-    docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.json \
-      $ARTIFACTS_DESTINATION/
+    docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
+    docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
 else
-    logpath=$( \
-      docker_exec bash -c "psql -XtU postgres \
-        -c \"select string_agg(setting, '/' order by name) from pg_settings where name in ('log_directory', 'log_filename');\" \
-        | grep / | sed -e 's/^[ \t]*//'"
-    )
-    docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz"
     if [ "$RUN_ON" = "localhost" ]; then
       docker cp $containerHash:$MACHINE_HOME/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
       docker cp $containerHash:$MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
@@ -766,8 +842,8 @@ else
       #cp "$TMP_PATH/nancy_$containerHash/"$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
       #cp "$TMP_PATH/nancy_$containerHash/"$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
     elif [ "$RUN_ON" = "aws" ]; then
-      docker-machine scp $DOCKER_MACHINE:/home/ubuntu/nancy_$containerHash/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
-      docker-machine scp $DOCKER_MACHINE:/home/ubuntu/nancy_$containerHash/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
+      docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
+      docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
     else
       >&2 echo "ASSERT: must not reach this point"
       exit 1
@@ -777,7 +853,7 @@ fi
 echo "Apply DDL undo SQL code"
 if ([ ! -z ${TARGET_DDL_UNDO+x} ] && [ "$TARGET_DDL_UNDO" != "" ]); then
     TARGET_DDL_UNDO_FILENAME=$(basename $TARGET_DDL_UNDO)
-    docker_exec bash -c "psql -U postgres test -E -f $MACHINE_HOME/$TARGET_DDL_UNDO_FILENAME"
+    docker_exec bash -c "psql -U postgres test -b -f $MACHINE_HOME/$TARGET_DDL_UNDO_FILENAME"
 fi
 
 echo -e "Run done!"
@@ -785,10 +861,10 @@ echo -e "Report: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json"
 echo -e "Query log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.log.gz"
 echo -e "-------------------------------------------"
 echo -e "Summary:"
-echo -e "  Queries duration:\t\t" $(cat $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_duration') " ms"
-echo -e "  Queries count:\t\t" $(cat $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_number')
-echo -e "  Normalized queries count:\t" $(cat $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json | jq '.normalyzed_info| length')
-echo -e "  Errors count:\t\t\t" $(cat $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json | jq '.overall_stat.errors_number')
+echo -e "  Queries duration:\t\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_duration') " ms"
+echo -e "  Queries count:\t\t" $( docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_number')
+echo -e "  Normalized queries count:\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.normalyzed_info| length')
+echo -e "  Errors count:\t\t\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.errors_number')
 echo -e "-------------------------------------------"
 
 sleep $DEBUG_TIMEOUT
