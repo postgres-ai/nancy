@@ -198,8 +198,8 @@ while true; do
     --after-db-init-code )
       #s3 url|filename|content
       AFTER_DB_INIT_CODE="$2"; shift 2 ;;
-      --workload-full-path )
-        #s3 url
+    --workload-full-path )
+      #s3 url
       WORKLOAD_FULL_PATH="$2"; shift 2 ;;
     --workload-basis-path )
       #Still unsupported
