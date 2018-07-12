@@ -244,8 +244,8 @@ while true; do
       if [ "${1:0:2}" == "--" ]; then
         >&2 echo "ERROR: Invalid option '$1'. Please double-check options."
         exit 1
-      else
-        >&2 echo "ERROR: \"nancy run\" does not support payload (except \"help\"). Use options, see \"nancy run help\"."
+      elif [ "${1:0:2}" != "" ]; then
+        >&2 echo "ERROR: \"nancy run\" does not support payload (except \"help\"). Use options, see \"nancy run help\")"
         exit 1
       fi
     break ;;
