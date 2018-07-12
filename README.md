@@ -38,7 +38,12 @@ Currently Supported Features
     * Run on AWS EC2 Spot Instances (using Docker Machine)
     * Allow to specify EC2 instance type
     * Auto-detect and use current lowest EC2 Spot Instance prices
+    * Support i3 instances (with NVMe SSD drives)
+    * Support arbitrary-size EBS volumes
 * Support local or remote (S3) files – config, dump, etc
+* The object (database) can be specified in various ways:
+  * Plain text
+  * Dump file (.sql, .gz, .bz2) – :warning: only plain, single-file dumps are currently supported
 * What to test (a.k.a. "target" or "delta"):
   * Test Postgres parameters change
   * Test DDL change (specified as "do" and "undo" SQL to return state)
