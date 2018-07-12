@@ -665,10 +665,10 @@ elif [[ "$RUN_ON" = "aws" ]]; then
   fi
   echo "Docker $DOCKER_MACHINE is running."
 
-  echo "Attempt use high speed disk"
   docker-machine ssh $DOCKER_MACHINE "sudo sh -c \"mkdir /home/storage\""
   if [ ${AWS_EC2_TYPE:0:2} == 'i3' ]
   then
+    echo "Attempt use high speed disk"
     # Init i3 storage, just mount existing volume
     echo "Attach i3 nvme volume"
     docker-machine ssh $DOCKER_MACHINE sudo add-apt-repository -y ppa:sbates
@@ -686,7 +686,8 @@ elif [[ "$RUN_ON" = "aws" ]]; then
     docker-machine ssh $DOCKER_MACHINE sudo mkfs -t ext4 /dev/nvme0n1p1
     docker-machine ssh $DOCKER_MACHINE sudo mount /dev/nvme0n1p1 /home/storage
   else
-    # Create new volume and attach them for non i3 instances if need
+    echo "Attempt use external disk"
+    # Create new volume and attach them for non i3 instances if needed
     if [ ! -z ${EBS_SIZE+x} ]; then
       echo "Create and attach EBS volume"
       [ $DEBUG -eq 1 ] && echo "Create volume with size: $EBS_SIZE Gb"
@@ -714,29 +715,20 @@ fi
 
 alias docker_exec='docker $dockerConfig exec -i ${containerHash} '
 
-if [[ "$RUN_ON" = "localhost" ]]; then
-  MACHINE_HOME="/machine_home/nancy_${containerHash}"
-  docker_exec sh -c "mkdir $MACHINE_HOME && chmod a+w $MACHINE_HOME"
-elif [[ "$RUN_ON" = "aws" ]]; then
-  MACHINE_HOME="/machine_home/nancy_${containerHash}"
-  docker_exec sh -c "mkdir $MACHINE_HOME && chmod a+w $MACHINE_HOME"
+MACHINE_HOME="/machine_home/nancy_${containerHash}"
+docker_exec sh -c "mkdir $MACHINE_HOME && chmod a+w $MACHINE_HOME"
+if [[ "$RUN_ON" = "aws" ]]; then
   docker_exec bash -c "ln -s /storage/ $MACHINE_HOME/storage"
-  MACHINE_HOME="/machine_home/nancy_${containerHash}/storage"
-  docker_exec sh -c "chmod a+w $MACHINE_HOME"
+  MACHINE_HOME="$MACHINE_HOME/storage"
   docker_exec sh -c "chmod a+w /storage"
 
-  echo "Move posgresql to high speed disk"
+  echo "Move posgresql to separated disk"
   docker_exec bash -c "sudo /etc/init.d/postgresql stop"
   sleep 2 # wait for postgres stopped
-  docker_exec bash -c "sudo mkdir /storage/postgresql"
-  docker_exec bash -c "sudo mv /var/lib/postgresql/* /storage/postgresql"
-  docker_exec bash -c "rm -R /var/lib/postgresql"
+  docker_exec bash -c "sudo mv /var/lib/postgresql /storage/"
   docker_exec bash -c "ln -s /storage/postgresql /var/lib/postgresql"
   docker_exec bash -c "sudo /etc/init.d/postgresql start"
   sleep 2 # wait for postgres started
-else
-  >&2 echo "ASSERT: must not reach this point"
-  exit 1
 fi
 
 function copyFile() {
