@@ -387,9 +387,20 @@ function checkParams() {
     exit 1
   fi
 
-  [ ! -z ${DB_DUMP_PATH+x} ] && ! checkPath DB_DUMP_PATH \
-    && >&2 echo "ERROR: file $DB_DUMP_PATH given by db_dump_path not found" \
-    && exit 1
+  if [ ! -z ${DB_DUMP_PATH+x} ]; then
+    checkPath DB_DUMP_PATH
+    if [ "$?" -ne "0" ]; then
+      echo "$DB_DUMP_PATH" > $TMP_PATH/db_dump_tmp.sql
+      DB_DUMP_PATH="$TMP_PATH/db_dump_tmp.sql"
+    else
+      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as db-dump-path will use as filename"
+    fi
+    DB_DUMP_FILENAME=$(basename $DB_DUMP_PATH)
+    DB_DUMP_EXT=${DB_DUMP_FILENAME##*.}
+  else
+    echo "ERROR: file $DB_DUMP_PATH given by db_dump_path not found"
+    exit 1
+  fi
 
   if [ -z ${PG_CONFIG+x} ]; then
     >&2 echo "WARNING: No DB config provided. Using default one."
@@ -775,9 +786,19 @@ function copyFile() {
 ## Apply machine features
 # Dump
 sleep 2 # wait for postgres up&running
-DB_DUMP_FILENAME=$(basename $DB_DUMP_PATH)
+
 echo "Restore database dump"
-docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql -E --set ON_ERROR_STOP=on -U postgres test > /dev/null"
+case "$DB_DUMP_EXT" in
+  sql)
+    docker_exec bash -c "cat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test"
+    ;;
+  bz2)
+    docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test"
+    ;;
+  gz)
+    docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test"
+    ;;
+esac
 # After init database sql code apply
 echo "Apply sql code after db init"
 if ([ ! -z ${AFTER_DB_INIT_CODE+x} ] && [ "$AFTER_DB_INIT_CODE" != "" ])
