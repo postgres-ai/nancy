@@ -248,29 +248,28 @@ done
 
 RUN_ON=${RUN_ON:-localhost}
 
-if [ $DEBUG -eq 1 ]
-then
-    echo "debug: ${DEBUG}"
-    echo "run_on: ${RUN_ON}"
-    echo "container_id: ${CONTAINER_ID}"
-    echo "aws_ec2_type: ${AWS_EC2_TYPE}"
-    echo "aws-key-pair: $AWS_KEY_PAIR"
-    echo "aws-key-path: $AWS_KEY_PATH"
-    echo "pg_version: ${PG_VERSION}"
-    echo "pg_config: ${PG_CONFIG}"
-    echo "db_prepared_snapshot: ${DB_PREPARED_SNAPSHOT}"
-    echo "db_dump_path: $DB_DUMP_PATH"
-    echo "workload_full_path: $WORKLOAD_FULL_PATH"
-    echo "workload_basis_path: $WORKLOAD_BASIS_PATH"
-    echo "workload_custom_sql: $WORKLOAD_CUSTOM_SQL"
-    echo "workload_replay_speed: $WORKLOAD_REPLAY_SPEED"
-    echo "target_ddl_do: $TARGET_DDL_DO"
-    echo "target_ddl_undo: $TARGET_DDL_UNDO"
-    echo "target_config: $TARGET_CONFIG"
-    echo "artifacts_destination: $ARTIFACTS_DESTINATION"
-    echo "s3-cfg-path: $S3_CFG_PATH"
-    echo "tmp-path: $TMP_PATH"
-    echo "after-db-init-code: $AFTER_DB_INIT_CODE"
+if [ $DEBUG -eq 1 ]; then
+  echo "debug: ${DEBUG}"
+  echo "run_on: ${RUN_ON}"
+  echo "container_id: ${CONTAINER_ID}"
+  echo "aws_ec2_type: ${AWS_EC2_TYPE}"
+  echo "aws-key-pair: $AWS_KEY_PAIR"
+  echo "aws-key-path: $AWS_KEY_PATH"
+  echo "pg_version: ${PG_VERSION}"
+  echo "pg_config: ${PG_CONFIG}"
+  echo "db_prepared_snapshot: ${DB_PREPARED_SNAPSHOT}"
+  echo "db_dump_path: $DB_DUMP_PATH"
+  echo "workload_full_path: $WORKLOAD_FULL_PATH"
+  echo "workload_basis_path: $WORKLOAD_BASIS_PATH"
+  echo "workload_custom_sql: $WORKLOAD_CUSTOM_SQL"
+  echo "workload_replay_speed: $WORKLOAD_REPLAY_SPEED"
+  echo "target_ddl_do: $TARGET_DDL_DO"
+  echo "target_ddl_undo: $TARGET_DDL_UNDO"
+  echo "target_config: $TARGET_CONFIG"
+  echo "artifacts_destination: $ARTIFACTS_DESTINATION"
+  echo "s3-cfg-path: $S3_CFG_PATH"
+  echo "tmp-path: $TMP_PATH"
+  echo "after-db-init-code: $AFTER_DB_INIT_CODE"
 fi
 
 function checkPath() {
