@@ -8,7 +8,7 @@ read -r -d '' params <<PARAMS
   --workload-full-path "s3://somebucket/db.sql.30min.pgreplay" \
   --tmp-path tmp \
   --db-dump-path "s3://somebucket/dump.sql.bz2" \
-  --target-ddl-do "create index i_zzz on sometable(col1);"
+  --target-ddl-do "create\tindex\ti_zzz\ton\tsometable(col1);"
 PARAMS
 
 output=$(${BASH_SOURCE%/*}/../nancy_run.sh $params 2>&1)
