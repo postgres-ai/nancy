@@ -2,9 +2,11 @@
 далее awk скрипт режет по этому сепаратору (RS) и разбивает на поля по формату (FPAT)
 
 ```bash
-$ cat example.log \
+cat example.log \
   | sed -r 's/^([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3} .*)$/\nseparator_by_yorick\n\1/' \
-  | awk -f prog.awk >/dev/null
+  | sed "s/\"\"/NNCS2DBLQ/g" \
+  | awk -f prog.awk \
+  | sed "s/NNCS2DBLQ/\"\"/g"
 ```
 
 Вычисления времени из полей строки:

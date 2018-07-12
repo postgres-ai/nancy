@@ -1,6 +1,6 @@
 BEGIN {
   RS="\nseparator_by_yorick\n";
-  FPAT="([^,]*)|(\"([^\"]|(\"\")+)\")"
+  FPAT = "([^,]+)|(\"[^\"]+\")"
   OFS=","
 }
 {
