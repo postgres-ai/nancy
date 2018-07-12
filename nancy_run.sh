@@ -179,69 +179,69 @@ while true; do
   nancy help
 
     " | less -RFX
-        exit ;;
+    exit ;;
     -d | --debug ) DEBUG=1; shift ;;
     --run-on )
-        RUN_ON="$2"; shift 2 ;;
+      RUN_ON="$2"; shift 2 ;;
     --container-id )
-        CONTAINER_ID="$2"; shift 2 ;;
+      CONTAINER_ID="$2"; shift 2 ;;
     --pg-version )
-        PG_VERSION="$2"; shift 2 ;;
+      PG_VERSION="$2"; shift 2 ;;
     --pg-config )
-        #Still unsupported
-        PG_CONFIG="$2"; shift 2;;
+      #Still unsupported
+      PG_CONFIG="$2"; shift 2;;
     --db-prepared-snapshot )
-        #Still unsupported
-        DB_PREPARED_SNAPSHOT="$2"; shift 2 ;;
+      #Still unsupported
+      DB_PREPARED_SNAPSHOT="$2"; shift 2 ;;
     --db-dump-path )
-        DB_DUMP_PATH="$2"; shift 2 ;;
+      DB_DUMP_PATH="$2"; shift 2 ;;
     --after-db-init-code )
-        #s3 url|filename|content
-        AFTER_DB_INIT_CODE="$2"; shift 2 ;;
-    --workload-full-path )
+      #s3 url|filename|content
+      AFTER_DB_INIT_CODE="$2"; shift 2 ;;
+      --workload-full-path )
         #s3 url
-        WORKLOAD_FULL_PATH="$2"; shift 2 ;;
+      WORKLOAD_FULL_PATH="$2"; shift 2 ;;
     --workload-basis-path )
-        #Still unsuported
-        WORKLOAD_BASIS_PATH="$2"; shift 2 ;;
+      #Still unsupported
+      WORKLOAD_BASIS_PATH="$2"; shift 2 ;;
     --workload-custom-sql )
-        #s3 url|filename|content
-        WORKLOAD_CUSTOM_SQL="$2"; shift 2 ;;
+      #s3 url|filename|content
+      WORKLOAD_CUSTOM_SQL="$2"; shift 2 ;;
     --workload-replay-speed )
-        WORKLOAD_REPLAY_SPEED="$2"; shift 2 ;;
+      WORKLOAD_REPLAY_SPEED="$2"; shift 2 ;;
     --target-ddl-do )
-        #s3 url|filename|content
-        TARGET_DDL_DO="$2"; shift 2 ;;
+      #s3 url|filename|content
+      TARGET_DDL_DO="$2"; shift 2 ;;
     --target-ddl-undo )
-        #s3 url|filename|content
-        TARGET_DDL_UNDO="$2"; shift 2 ;;
+      #s3 url|filename|content
+      TARGET_DDL_UNDO="$2"; shift 2 ;;
     --target-config )
-        #s3 url|filename|content
-        TARGET_CONFIG="$2"; shift 2 ;;
+      #s3 url|filename|content
+      TARGET_CONFIG="$2"; shift 2 ;;
     --artifacts-destination )
-        ARTIFACTS_DESTINATION="$2"; shift 2 ;;
+      ARTIFACTS_DESTINATION="$2"; shift 2 ;;
     --artifacts-filename )
-        ARTIFACTS_FILENAME="$2"; shift 2 ;;
+      ARTIFACTS_FILENAME="$2"; shift 2 ;;
 
     --aws-ec2-type )
-        AWS_EC2_TYPE="$2"; shift 2 ;;
+      AWS_EC2_TYPE="$2"; shift 2 ;;
     --aws-keypair-name )
-        AWS_KEY_PAIR="$2"; shift 2 ;;
+      AWS_KEY_PAIR="$2"; shift 2 ;;
     --aws-ssh-key-path )
-        AWS_KEY_PATH="$2"; shift 2 ;;
+      AWS_KEY_PATH="$2"; shift 2 ;;
 
     --s3cfg-path )
-        S3_CFG_PATH="$2"; shift 2 ;;
+      S3_CFG_PATH="$2"; shift 2 ;;
     --tmp-path )
-        TMP_PATH="$2"; shift 2 ;;
+      TMP_PATH="$2"; shift 2 ;;
     --debug-timeout )
-        DEBUG_TIMEOUT="$2"; shift 2 ;;
+      DEBUG_TIMEOUT="$2"; shift 2 ;;
     -- )
-        >&2 echo "ERROR: Invalid option '$1'"
-        exit 1;
-        break ;;
+      >&2 echo "ERROR: Invalid option '$1'"
+      exit 1;
+      break ;;
     * )
-        [ "$1" != "" ] && >&2 echo "ERROR: Invalid option '$1'. Please verify command options." && exit 1;
+      [ "$1" != "" ] && >&2 echo "ERROR: Invalid option '$1'. Please double-check options." && exit 1;
     break ;;
   esac
 done
