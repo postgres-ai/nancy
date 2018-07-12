@@ -6,7 +6,7 @@ read -r -d '' params <<PARAMS
   --aws-ec2-type "r4.large" \
   --s3cfg-path "/home/someuser/.s3cfg" \
   --workload-full-path "s3://somebucket/db.sql.30min.pgreplay" \
-  --workload-custom-sql "select now();" \
+  --workload-custom-sql "select\tnow();" \
   --tmp-path tmp \
   --db-dump-path "s3://somebucket/dump.sql.bz2"
 PARAMS
