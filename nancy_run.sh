@@ -235,8 +235,13 @@ while true; do
         TMP_PATH="$2"; shift 2 ;;
     --debug-timeout )
         DEBUG_TIMEOUT="$2"; shift 2 ;;
-    -- ) shift; break ;;
-    * ) break ;;
+    -- )
+        >&2 echo "ERROR: Invalid option '$1'"
+        exit 1;
+        break ;;
+    * )
+        [ "$1" != "" ] && >&2 echo "ERROR: Invalid option '$1'. Please verify command options." && exit 1;
+    break ;;
   esac
 done
 
@@ -280,7 +285,6 @@ function checkPath() {
   if [[ $path =~ "file:///" ]]
   then
     path=${path/file:\/\//}
-    echo "CHECK $path"
     if [ -f $path ]
     then
       eval "$1=\"$path\"" # update original variable
@@ -328,6 +332,13 @@ function checkParams() {
     then
       >&2 echo "ERROR: AWS EC2 Instance type not given."
       exit 1
+    fi
+  elif [ "$RUN_ON" = "localhost" ]; then
+    if [ ! -z ${AWS_KEY_PAIR+x} ] || [ ! -z ${AWS_KEY_PATH+x} ] ; then
+      >&2 echo "WARNING: AWS keys given but run-on option has value 'localhost'."
+    fi
+    if [ ! -z ${AWS_EC2_TYPE+x} ]; then
+      >&2 echo "WARNING: AWS instance type given but run-on option has value 'localhost'."
     fi
   fi
 
