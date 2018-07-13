@@ -60,6 +60,18 @@ if [ -z ${OUTPUT+x} ]; then
   exit 1;
 fi
 
+awk_version=$((awk -Wversion 2>/dev/null || awk --version) | head -n1)
+if [ "${awk_version:0:3}" != "GNU" ]; then
+  >&2 echo "ERROR: GNU awk is required. Your awk version is: ${awk_version}. Try to install gawk."
+  exit 1;
+fi
+
+pgreplay_version=$(pgreplay -v 2>/dev/null)
+if [ "${pgreplay_version:0:8}" != "pgreplay" ]; then
+  >&2 echo "ERROR: pgreplay is not installed."
+  exit 1;
+fi
+
 cat $INPUT \
   | sed -r 's/^([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3} .*)$/\nNANCY_NEW_LINE_SEPARATOR\n\1/' \
   | sed "s/\"\"/NANCY_TWO_DOUBLE_QUOTES_SEPARATOR/g" \
