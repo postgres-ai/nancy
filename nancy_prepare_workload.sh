@@ -73,7 +73,7 @@ if [ "${pgreplay_version:0:8}" != "pgreplay" ]; then
 fi
 
 bc_version=$(bc -v 2>/dev/null)
-if [ "${pgreplay_version:0:2}" != "bc" ]; then
+if [ "${bc_version:0:2}" != "bc" ]; then
   >&2 echo "ERROR: bc is not installed."
   exit 1;
 fi
