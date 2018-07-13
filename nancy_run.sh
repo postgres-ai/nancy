@@ -99,11 +99,11 @@ while true; do
   Specify additional commands to be executed after database is initiated (dump
   loaded or snapshot attached).
 
-  \033[1m--workload-full-path\033[22m (string)
+  \033[1m--workload-real\033[22m (string)
 
   Path to 'real' workload prepared by using 'nancy prepare-workload'.
 
-  \033[1m--workload-basis-path\033[22m (string)
+  \033[1m--workload-basis\033[22m (string)
 
   Reserved / Not yet implemented.
 
@@ -111,7 +111,7 @@ while true; do
 
   Specify custom SQL queries to be used as an input.
 
-  \033[1m--workload-replay-speed\033[22m (string)
+  \033[1m--workload-real-replay-speed\033[22m (string)
 
   Reserved / Not yet implemented.
 
@@ -198,17 +198,17 @@ while true; do
     --after-db-init-code )
       #s3 url|filename|content
       AFTER_DB_INIT_CODE="$2"; shift 2 ;;
-    --workload-full-path )
+    --workload-real )
       #s3 url
-      WORKLOAD_FULL_PATH="$2"; shift 2 ;;
-    --workload-basis-path )
+      WORKLOAD_REAL="$2"; shift 2 ;;
+    --workload-basis )
       #Still unsupported
-      WORKLOAD_BASIS_PATH="$2"; shift 2 ;;
+      WORKLOAD_BASIS="$2"; shift 2 ;;
     --workload-custom-sql )
       #s3 url|filename|content
       WORKLOAD_CUSTOM_SQL="$2"; shift 2 ;;
-    --workload-replay-speed )
-      WORKLOAD_REPLAY_SPEED="$2"; shift 2 ;;
+    --workload-real-replay-speed )
+      WORKLOAD_REAL_REPLAY_SPEED="$2"; shift 2 ;;
     --target-ddl-do )
       #s3 url|filename|content
       TARGET_DDL_DO="$2"; shift 2 ;;
@@ -265,10 +265,10 @@ if [ $DEBUG -eq 1 ]; then
   echo "pg_config: ${PG_CONFIG}"
   echo "db_prepared_snapshot: ${DB_PREPARED_SNAPSHOT}"
   echo "db_dump_path: $DB_DUMP_PATH"
-  echo "workload_full_path: $WORKLOAD_FULL_PATH"
-  echo "workload_basis_path: $WORKLOAD_BASIS_PATH"
+  echo "workload_real: $WORKLOAD_REAL"
+  echo "workload_basis: $WORKLOAD_BASIS"
   echo "workload_custom_sql: $WORKLOAD_CUSTOM_SQL"
-  echo "workload_replay_speed: $WORKLOAD_REPLAY_SPEED"
+  echo "workload_real_replay_speed: $WORKLOAD_REAL_REPLAY_SPEED"
   echo "target_ddl_do: $TARGET_DDL_DO"
   echo "target_ddl_undo: $TARGET_DDL_UNDO"
   echo "target_config: $TARGET_CONFIG"
@@ -363,8 +363,8 @@ function checkParams() {
   [ ! -d $TMP_PATH ] && mkdir $TMP_PATH
 
   workloads_count=0
-  [ ! -z ${WORKLOAD_BASIS_PATH+x} ] && let workloads_count=$workloads_count+1
-  [ ! -z ${WORKLOAD_FULL_PATH+x} ] && let workloads_count=$workloads_count+1
+  [ ! -z ${WORKLOAD_BASIS+x} ] && let workloads_count=$workloads_count+1
+  [ ! -z ${WORKLOAD_REAL+x} ] && let workloads_count=$workloads_count+1
   [ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && let workloads_count=$workloads_count+1
 
   # --workload-full-path or --workload-basis-path or --workload-custom-sql
@@ -437,12 +437,12 @@ function checkParams() {
     ARTIFACTS_FILENAME=$DOCKER_MACHINE
   fi
 
-  [ ! -z ${WORKLOAD_FULL_PATH+x} ] && ! checkPath WORKLOAD_FULL_PATH \
-    && >&2 echo "ERROR: workload file $WORKLOAD_FULL_PATH not found" \
+  [ ! -z ${WORKLOAD_REAL+x} ] && ! checkPath WORKLOAD_REAL \
+    && >&2 echo "ERROR: workload file $WORKLOAD_REAL not found" \
     && exit 1
 
-  [ ! -z ${WORKLOAD_BASIS_PATH+x} ] && ! checkPath WORKLOAD_BASIS_PATH \
-    && >&2 echo "ERROR: workload file $WORKLOAD_BASIS_PATH not found" \
+  [ ! -z ${WORKLOAD_BASIS+x} ] && ! checkPath WORKLOAD_BASIS \
+    && >&2 echo "ERROR: workload file $WORKLOAD_BASIS not found" \
     && exit 1
 
   if [ ! -z ${WORKLOAD_CUSTOM_SQL+x} ]; then
@@ -786,7 +786,7 @@ function copyFile() {
 [ ! -z ${TARGET_DDL_DO+x} ] && copyFile $TARGET_DDL_DO
 [ ! -z ${TARGET_DDL_UNDO+x} ] && copyFile $TARGET_DDL_UNDO
 [ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && copyFile $WORKLOAD_CUSTOM_SQL
-[ ! -z ${WORKLOAD_FULL_PATH+x} ] && copyFile $WORKLOAD_FULL_PATH
+[ ! -z ${WORKLOAD_REAL+x} ] && copyFile $WORKLOAD_REAL
 
 ## Apply machine features
 # Dump
@@ -841,10 +841,10 @@ docker_exec vacuumdb -U postgres test -j $(cat /proc/cpuinfo | grep processor | 
 docker_exec bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
 # Execute workload
 echo "Execute workload..."
-if [ ! -z ${WORKLOAD_FULL_PATH+x} ] && [ "$WORKLOAD_FULL_PATH" != '' ];then
+if [ ! -z ${WORKLOAD_REAL+x} ] && [ "$WORKLOAD_REAL" != '' ];then
   echo "Execute pgreplay queries..."
   docker_exec psql -U postgres test -c 'create role testuser superuser login;'
-  WORKLOAD_FILE_NAME=$(basename $WORKLOAD_FULL_PATH)
+  WORKLOAD_FILE_NAME=$(basename $WORKLOAD_REAL)
   docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
 else
   if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
