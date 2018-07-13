@@ -72,6 +72,12 @@ if [ "${pgreplay_version:0:8}" != "pgreplay" ]; then
   exit 1;
 fi
 
+bc_version=$(bc -v 2>/dev/null)
+if [ "${pgreplay_version:0:2}" != "bc" ]; then
+  >&2 echo "ERROR: bc is not installed."
+  exit 1;
+fi
+
 cat $INPUT \
   | sed -r 's/^([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3} .*)$/\nNANCY_NEW_LINE_SEPARATOR\n\1/' \
   | sed "s/\"\"/NANCY_TWO_DOUBLE_QUOTES_SEPARATOR/g" \
