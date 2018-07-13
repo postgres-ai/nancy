@@ -7,7 +7,7 @@ read -r -d '' params <<PARAMS
   --s3cfg-path "/home/someuser/.s3cfg" \
   --workload-real "s3://somebucket/db.sql.30min.pgreplay" \
   --tmp-path tmp \
-  --db-dump-path "s3://somebucket/dump.sql.bz2" \
+  --db-dump "s3://somebucket/dump.sql.bz2" \
   --db-prepared-snapshot "s3://somebucket/snapshot"
 PARAMS
 

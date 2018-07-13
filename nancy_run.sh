@@ -90,7 +90,7 @@ while true; do
 
   Reserved / Not yet implemented.
 
-  \033[1m--db-dump-path\033[22m (string)
+  \033[1m--db-dump\033[22m (string)
 
   Specify the path to database dump (created by pg_dump) to be used as an input.
 
@@ -193,7 +193,7 @@ while true; do
     --db-prepared-snapshot )
       #Still unsupported
       DB_PREPARED_SNAPSHOT="$2"; shift 2 ;;
-    --db-dump-path )
+    --db-dump )
       DB_DUMP_PATH="$2"; shift 2 ;;
     --after-db-init-code )
       #s3 url|filename|content
@@ -380,7 +380,7 @@ function checkParams() {
     exit 1
   fi
 
-  #--db-prepared-snapshot or --db-dump-path
+  #--db-prepared-snapshot or --db-dump
   if ([ -z ${DB_PREPARED_SNAPSHOT+x} ]  &&  [ -z ${DB_DUMP_PATH+x} ]); then
     >&2 echo "ERROR: Snapshot or dump not given."
     exit 1;
@@ -398,7 +398,7 @@ function checkParams() {
       echo "$DB_DUMP_PATH" > $TMP_PATH/db_dump_tmp.sql
       DB_DUMP_PATH="$TMP_PATH/db_dump_tmp.sql"
     else
-      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as db-dump-path will use as filename"
+      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as db-dump will use as filename"
     fi
     DB_DUMP_FILENAME=$(basename $DB_DUMP_PATH)
     DB_DUMP_EXT=${DB_DUMP_FILENAME##*.}
