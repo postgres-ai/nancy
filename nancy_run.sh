@@ -569,7 +569,7 @@ function createDockerMachine() {
     --amazonec2-block-duration-minutes=$4 \
     --amazonec2-instance-type=$2 \
     --amazonec2-spot-price=$3 \
-    $1 2> >(grep -v "failed waiting for successful resource state" >&2) &
+    $1 2> >(grep -v "failed waiting for successful resource state" >&2) > /dev/null &
 }
 
 function destroyDockerMachine() {
@@ -654,7 +654,7 @@ elif [[ "$RUN_ON" = "aws" ]]; then
       --filters 'Name=status-code,Values=price-too-low' \
     | grep SpotInstanceRequestId | awk '{gsub(/[,"]/, "", $2); print $2}' \
     | xargs --no-run-if-empty aws ec2 cancel-spot-instance-requests \
-      --spot-instance-request-ids
+      --spot-instance-request-ids > /dev/null
 
     corrrectPriceForLastFailedRequest=$( \
       aws ec2 describe-spot-instance-requests \
@@ -790,13 +790,13 @@ sleep 2 # wait for postgres up&running
 echo "Restore database dump"
 case "$DB_DUMP_EXT" in
   sql)
-    docker_exec bash -c "cat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test"
+    docker_exec bash -c "cat $MACHINE_HOME/$DB_DUMP_FILENAME | psql -E --set ON_ERROR_STOP=on -U postgres test > /dev/null"
     ;;
   bz2)
-    docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test"
+    docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql -E --set ON_ERROR_STOP=on -U postgres test > /dev/null"
     ;;
   gz)
-    docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test"
+    docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql -E  --set ON_ERROR_STOP=on -U postgres test > /dev/null"
     ;;
 esac
 # After init database sql code apply
@@ -805,13 +805,13 @@ if ([ ! -z ${AFTER_DB_INIT_CODE+x} ] && [ "$AFTER_DB_INIT_CODE" != "" ])
 then
   AFTER_DB_INIT_CODE_FILENAME=$(basename $AFTER_DB_INIT_CODE)
   copyFile $AFTER_DB_INIT_CODE
-  docker_exec bash -c "psql -U postgres test -b -f $MACHINE_HOME/$AFTER_DB_INIT_CODE_FILENAME"
+  docker_exec bash -c "psql --set ON_ERROR_STOP=on -b -U postgres test -b -f $MACHINE_HOME/$AFTER_DB_INIT_CODE_FILENAME > /dev/null"
 fi
 # Apply DDL code
 echo "Apply DDL SQL code"
 if ([ ! -z ${TARGET_DDL_DO+x} ] && [ "$TARGET_DDL_DO" != "" ]); then
   TARGET_DDL_DO_FILENAME=$(basename $TARGET_DDL_DO)
-  docker_exec bash -c "psql -U postgres test -b -f $MACHINE_HOME/$TARGET_DDL_DO_FILENAME"
+  docker_exec bash -c "psql --set ON_ERROR_STOP=on -b -U postgres test -b -f $MACHINE_HOME/$TARGET_DDL_DO_FILENAME > /dev/null"
 fi
 # Apply initial postgres configuration
 echo "Apply initial postgres configuration"
@@ -838,14 +838,14 @@ docker_exec bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.l
 echo "Execute workload..."
 if [ ! -z ${WORKLOAD_FULL_PATH+x} ] && [ "$WORKLOAD_FULL_PATH" != '' ];then
   echo "Execute pgreplay queries..."
-  docker_exec psql -U postgres test -c 'create role testuser superuser login;'
+  docker_exec psql -E -U postgres test -c 'create role testuser superuser login;'
   WORKLOAD_FILE_NAME=$(basename $WORKLOAD_FULL_PATH)
   docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
 else
   if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
     WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
     echo "Execute custom sql queries..."
-    docker_exec bash -c "psql -U postgres test -E -f $MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME"
+    docker_exec bash -c "psql --set -b -U postgres test -f $MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME > /dev/null"
   fi
 fi
 
@@ -886,7 +886,7 @@ fi
 echo "Apply DDL undo SQL code"
 if ([ ! -z ${TARGET_DDL_UNDO+x} ] && [ "$TARGET_DDL_UNDO" != "" ]); then
     TARGET_DDL_UNDO_FILENAME=$(basename $TARGET_DDL_UNDO)
-    docker_exec bash -c "psql -U postgres test -b -f $MACHINE_HOME/$TARGET_DDL_UNDO_FILENAME"
+    docker_exec bash -c "psql --set ON_ERROR_STOP=on -b -U postgres test -b -f $MACHINE_HOME/$TARGET_DDL_UNDO_FILENAME > /dev/null"
 fi
 
 echo -e "Run done!"
