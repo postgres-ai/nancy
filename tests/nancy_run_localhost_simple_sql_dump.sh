@@ -10,7 +10,7 @@ nancyRun="$parentDir/nancy_run.sh"
 
 output=$(
   $nancyRun --workload-custom-sql "file://$srcDir/custom.sql" \
-    --db-dump-path "file://$srcDir/test.dump.sql" \
+    --db-dump "file://$srcDir/test.dump.sql" \
     --tmp-path $srcDir/tmp 2>&1
 )
 

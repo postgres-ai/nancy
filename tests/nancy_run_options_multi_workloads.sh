@@ -8,7 +8,7 @@ read -r -d '' params <<PARAMS
   --workload-real "s3://somebucket/db.sql.30min.pgreplay" \
   --workload-custom-sql "select\tnow();" \
   --tmp-path tmp \
-  --db-dump-path "s3://somebucket/dump.sql.bz2"
+  --db-dump "s3://somebucket/dump.sql.bz2"
 PARAMS
 
 output=$(${BASH_SOURCE%/*}/../nancy_run.sh $params 2>&1)
