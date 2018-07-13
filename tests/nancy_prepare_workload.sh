@@ -14,7 +14,7 @@ if [ "${output:0:27}" != "ERROR: GNU awk is required." ]; then
   failures=$((failures+1))
 fi
 
-sudo apt-get install gawk # only Ubuntu/Debian! TODO
+sudo apt-get install -y gawk # only Ubuntu/Debian! TODO
 
 output=$( \
   nancy prepare-workload --db-name testci \
@@ -26,7 +26,7 @@ if [ "${output:0:33}" != "ERROR: pgreplay is not installed." ]; then
   echo "out: $output"
 fi
 
-sudo apt-get install pgreplay # only Ubuntu/Debian! TODO
+sudo apt-get install -y pgreplay # only Ubuntu/Debian! TODO
 
 output=$( \
   nancy prepare-workload --db-name testci \
