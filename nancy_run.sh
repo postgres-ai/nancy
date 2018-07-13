@@ -367,7 +367,7 @@ function checkParams() {
   [ ! -z ${WORKLOAD_REAL+x} ] && let workloads_count=$workloads_count+1
   [ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && let workloads_count=$workloads_count+1
 
-  # --workload-full-path or --workload-basis-path or --workload-custom-sql
+  # --workload-real or --workload-basis-path or --workload-custom-sql
   if [ "$workloads_count" -eq "0" ]
   then
     >&2 echo "ERROR: Workload not given."
