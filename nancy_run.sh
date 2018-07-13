@@ -2,7 +2,7 @@
 
 DEBUG=0
 CURRENT_TS=$(date +%Y%m%d_%H%M%S%N_%Z)
-DOCKER_MACHINE="${DOCKER_MACHINE:-nancy-$CURRENT_TS}"
+DOCKER_MACHINE="nancy-$CURRENT_TS"
 DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
 DEBUG_TIMEOUT=0
 EBS_SIZE_MULTIPLIER=15
@@ -198,6 +198,9 @@ while true; do
     --after-db-init-code )
         #s3 url|filename|content
         AFTER_DB_INIT_CODE="$2"; shift 2 ;;
+    --before-db-init-code )
+        #s3 url|filename|content
+        BEFORE_DB_INIT_CODE="$2"; shift 2 ;;
     --workload-full-path )
         #s3 url
         WORKLOAD_FULL_PATH="$2"; shift 2 ;;
@@ -236,6 +239,8 @@ while true; do
         TMP_PATH="$2"; shift 2 ;;
     --debug-timeout )
         DEBUG_TIMEOUT="$2"; shift 2 ;;
+    --ebs-volume-size )
+        EBS_VOLUME_SIZE="$2"; shift 2 ;;
     -- )
         >&2 echo "ERROR: Invalid option '$1'"
         exit 1;
@@ -271,6 +276,8 @@ then
     echo "s3-cfg-path: $S3_CFG_PATH"
     echo "tmp-path: $TMP_PATH"
     echo "after-db-init-code: $AFTER_DB_INIT_CODE"
+    echo "before-db-init-code: $BEFORE_DB_INIT_CODE"
+    echo "ebs-volume-size: $EBS_VOLUME_SIZE"
 fi
 
 function checkPath() {
@@ -462,6 +469,17 @@ function checkParams() {
     fi
   fi
 
+  if [ ! -z ${BEFORE_DB_INIT_CODE+x} ]; then
+    checkPath BEFORE_DB_INIT_CODE
+    if [ "$?" -ne "0" ]; then
+      #>&2 echo "WARNING: Value given as after_db_init_code: '$AFTER_DB_INIT_CODE' not found as file will use as content"
+      echo "$BEFORE_DB_INIT_CODE" > $TMP_PATH/before_db_init_code_tmp.sql
+      BEFORE_DB_INIT_CODE="$TMP_PATH/before_db_init_code_tmp.sql"
+    else
+      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as before_db_init_code will use as filename"
+    fi
+  fi
+
   if [ ! -z ${TARGET_DDL_DO+x} ]; then
     checkPath TARGET_DDL_DO
     if [ "$?" -ne "0" ]; then
@@ -494,12 +512,28 @@ function checkParams() {
       [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as target_config will use as filename"
     fi
   fi
+
+  if [ ! -z ${EBS_VOLUME_SIZE+x} ]; then
+    if [ "$RUN_ON" == "localhost" ] || [ ${AWS_EC2_TYPE:0:2} == 'i3' ]; then
+      >&2 echo "WARNING: ebs-volume-size is not required for aws i3 aws instances and local execution."
+    fi;
+    re='^[0-9]+$'
+    if ! [[ $EBS_VOLUME_SIZE =~ $re ]] ; then
+      >&2 echo "ERROR: ebs-volume-size must be numeric integer value."
+      exit 1;
+    fi
+  else
+    if [ ! ${AWS_EC2_TYPE:0:2} == 'i3' ]; then
+      >&2 echo "WARNING: ebs-volume-size is not given, will be calculate on base of dump size."
+    fi
+  fi
 }
 
 checkParams;
 
 # Determine dump file size
-if [ ! -z ${DB_DUMP_PATH+x} ]; then
+if ([ "$RUN_ON" == "aws" ] && [ ! ${AWS_EC2_TYPE:0:2} == "i3" ] && [ -z ${EBS_VOLUME_SIZE+x} ] && [ ! -z ${DB_DUMP_PATH+x} ]); then
+    echo "Calculate EBS volume size."
     dumpFileSize=0
     if [[ $DB_DUMP_PATH =~ "s3://" ]]; then
       dumpFileSize=$(s3cmd info $DB_DUMP_PATH | grep "File size:" )
@@ -510,7 +544,6 @@ if [ ! -z ${DB_DUMP_PATH+x} ]; then
     else
       dumpFileSize=$(stat -c%s "$DB_DUMP_PATH")
     fi
-    [ $DEBUG -eq 1 ] && echo "Dump filesize: $dumpFileSize bytes"
     KB=1024
     let minSize=300*$KB*$KB*$KB
     ebsSize=$minSize # 300 GB
@@ -518,8 +551,10 @@ if [ ! -z ${DB_DUMP_PATH+x} ]; then
         let ebsSize=$dumpFileSize
         let ebsSize=$ebsSize*$EBS_SIZE_MULTIPLIER
         ebsSize=$(numfmt --to-unit=G $ebsSize)
-        EBS_SIZE=$ebsSize
-        [ $DEBUG -eq 1 ] && echo "EBS Size: $EBS_SIZE Gb"
+        EBS_VOLUME_SIZE=$ebsSize
+        [ $DEBUG -eq 1 ] && echo "EBS volume size: $EBS_VOLUME_SIZE Gb"
+    else
+      echo "EBS volume is not require."
     fi
 fi
 
@@ -589,6 +624,7 @@ function cleanupAndExit {
   echo "Remove temp files..." # if exists
   docker $dockerConfig exec -i ${containerHash} sh -c "sudo rm -rf $MACHINE_HOME"
   rm -f "$TMP_PATH/after_db_init_code_tmp.sql"
+  rm -f "$TMP_PATH/before_db_init_code_tmp.sql"
   rm -f "$TMP_PATH/workload_custom_sql_tmp.sql"
   rm -f "$TMP_PATH/target_ddl_do_tmp.sql"
   rm -f "$TMP_PATH/target_ddl_undo_tmp.sql"
@@ -711,10 +747,10 @@ elif [[ "$RUN_ON" = "aws" ]]; then
   else
     echo "Attempt use external disk"
     # Create new volume and attach them for non i3 instances if needed
-    if [ ! -z ${EBS_SIZE+x} ]; then
+    if [ ! -z ${EBS_VOLUME_SIZE+x} ]; then
       echo "Create and attach EBS volume"
-      [ $DEBUG -eq 1 ] && echo "Create volume with size: $EBS_SIZE Gb"
-      VOLUME_ID=$(aws ec2 create-volume --size $EBS_SIZE --region us-east-1 --availability-zone us-east-1a --volume-type gp2 | jq -r .VolumeId)
+      [ $DEBUG -eq 1 ] && echo "Create volume with size: $EBS_VOLUME_SIZE Gb"
+      VOLUME_ID=$(aws ec2 create-volume --size $EBS_VOLUME_SIZE --region us-east-1 --availability-zone us-east-1a --volume-type gp2 | jq -r .VolumeId)
       INSTANCE_ID=$(docker-machine ssh $DOCKER_MACHINE curl -s http://169.254.169.254/latest/meta-data/instance-id)
       sleep 10 # wait to volume will ready
       attachResult=$(aws ec2 attach-volume --device /dev/xvdf --volume-id $VOLUME_ID --instance-id $INSTANCE_ID --region us-east-1)
@@ -787,6 +823,13 @@ function copyFile() {
 # Dump
 sleep 2 # wait for postgres up&running
 
+echo "Apply sql code before db init"
+if ([ ! -z ${BEFORE_DB_INIT_CODE+x} ] && [ "$BEFORE_DB_INIT_CODE" != "" ])
+then
+  BEFORE_DB_INIT_CODE_FILENAME=$(basename $BEFORE_DB_INIT_CODE)
+  copyFile $BEFORE_DB_INIT_CODE
+  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres test -b -f $MACHINE_HOME/$BEFORE_DB_INIT_CODE_FILENAME"
+fi
 echo "Restore database dump"
 case "$DB_DUMP_EXT" in
   sql)
