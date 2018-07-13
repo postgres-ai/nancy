@@ -6,7 +6,7 @@
 failures=0
 
 output=$( \
-  nancy prepare-workload --db-name testci \
+  ${BASH_SOURCE%/*}/../nancy prepare-workload --db-name testci \
     --output ./test.replay ./.circleci/sample.log \
     2>&1
 )
@@ -17,7 +17,7 @@ fi
 sudo apt-get install -y gawk # only Ubuntu/Debian! TODO
 
 output=$( \
-  nancy prepare-workload --db-name testci \
+  ${BASH_SOURCE%/*}/../nancy prepare-workload --db-name testci \
     --output ./test.replay ./.circleci/sample.log \
     2>&1
 )
@@ -29,7 +29,7 @@ fi
 sudo apt-get install -y pgreplay # only Ubuntu/Debian! TODO
 
 output=$( \
-  nancy prepare-workload --db-name testci \
+  ${BASH_SOURCE%/*}/../nancy prepare-workload --db-name testci \
     --output ./test.replay ./.circleci/sample.log \
     2>&1
 )
