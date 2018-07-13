@@ -26,6 +26,8 @@ while true; do
     -d | --debug ) DEBUG=1; shift ;;
     --db-name )
       DB_NAME="$2"; shift 2 ;;
+    --output )
+      OUTPUT="$2"; shift 2 ;;
     -- )
       >&2 echo "ERROR: Invalid option '$1'"
       exit 1
@@ -47,3 +49,37 @@ if [ $DEBUG -eq 1 ]; then
   echo "output: ${OUTPUT}"
   echo "db_name: ${DB_NAME}"
 fi
+
+if [ -z ${INPUT+x} ]; then
+  >&2 echo "ERROR: the input (path to Postgres log file) is not specified."
+  exit 1;
+fi
+
+if [ -z ${OUTPUT+x} ]; then
+  >&2 echo "ERROR: the output path is not specified."
+  exit 1;
+fi
+
+cat $INPUT \
+  | sed -r 's/^([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3} .*)$/\nNANCY_NEW_LINE_SEPARATOR\n\1/' \
+  | sed "s/\"\"/NANCY_TWO_DOUBLE_QUOTES_SEPARATOR/g" \
+  | awk -v dbname="\"$DB_NAME\"" '
+BEGIN {
+  RS="\nNANCY_NEW_LINE_SEPARATOR\n";
+  FPAT = "([^,]+)|(\"[^\"]+\")"
+  OFS=","
+}
+{
+  if ($3 == dbname && substr($14, 0, 11) == "\"duration: ") {
+    duration_ms = substr($14, 0, 30)
+    if (match($14, /^"duration: ([^ ]+) ms  statement: (.*)$/, match_arr)) {
+      duration = match_arr[1] * 1000
+      statement = "\"statement: " match_arr[2]
+    }
+    "date -u -d @$(echo \"scale=6; ($(date -u --date=\"" $1 "\" +'%s%6N') - " duration \
+      ") / 1000000\" | bc) +\"%Y-%m-%d %H:%M:%S.%6N%:::z\" | tr -d \"\\n\"" | getline res_ts
+    print res_ts,"\"postgres\"","\"test\"",$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,statement ",,,,,,,,"
+  }
+}' \
+  | sed "s/NANCY_TWO_DOUBLE_QUOTES_SEPARATOR/\"\"/g" \
+  | pgreplay -f -c -o "$OUTPUT"

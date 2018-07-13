@@ -59,4 +59,3 @@ done
 [ "$DEBUG" -eq "1" ] &&  echo "CMD: $cmd"
 
 eval $cmd
-
