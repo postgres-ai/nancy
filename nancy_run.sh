@@ -241,15 +241,14 @@ while true; do
       DEBUG_TIMEOUT="$2"; shift 2 ;;
     --ebs-volume-size )
         EBS_VOLUME_SIZE="$2"; shift 2 ;;
-    -- )
-      >&2 echo "ERROR: Invalid option '$1'"
-      exit 1;
-      break ;;
     * )
-      if [ "${1:0:2}" == "--" ]; then
+      option=$1
+      option="${option##*( )}"
+      option="${option%%*( )}"
+      if [ "${option:0:2}" == "--" ]; then
         >&2 echo "ERROR: Invalid option '$1'. Please double-check options."
         exit 1
-      elif [ "${1:0:2}" != "" ]; then
+      elif [ "$option" != "" ]; then
         >&2 echo "ERROR: \"nancy run\" does not support payload (except \"help\"). Use options, see \"nancy run help\")"
         exit 1
       fi
