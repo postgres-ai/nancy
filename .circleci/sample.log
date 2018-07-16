@@ -1,0 +1,15 @@
+2018-07-12 22:47:06.085 UTC,"testci","testci",2460,"127.0.0.1:53862",5b47da68.99c,6,"idle",2018-07-12 22:47:04 UTC,,0,LOG,00000,"disconnection: session time: 0:00:01.185 user=testci database=testci host=127.0.0.1 port=53862",,,,,,,,,""
+2018-07-12 22:47:06.302 UTC,,,2473,"127.0.0.1:53865",5b47da6a.9a9,1,"",2018-07-12 22:47:06 UTC,,0,LOG,00000,"connection received: host=127.0.0.1 port=53865",,,,,,,,,""
+2018-07-12 22:47:07.394 UTC,"testci","testci",28569,"127.0.0.1:53615",5b47d84e.6f99,15,"idle",2018-07-12 22:38:06 UTC,,0,LOG,00000,"disconnection: session time: 0:09:00.762 user=testci database=testci host=127.0.0.1 port=53615",,,,,,,,,""
+2018-07-12 22:47:07.838 UTC,"testci","testci",2473,"127.0.0.1:53865",5b47da6a.9a9,4,"SELECT",2018-07-12 22:47:06 UTC,12/0,0,LOG,00000,"duration: 14.564 ms  statement: select count(*)
+    from ""hello_world"" as t
+    order by t.id desc limit 26",,,,,,,,,""
+2018-07-12 22:47:08.053 UTC,"testci","testci",2473,"127.0.0.1:53865",5b47da6a.9a9,5,"SELECT",2018-07-12 22:47:06 UTC,12/0,0,LOG,00000,"duration: 43.544 ms  statement: SELECT * FROM ""hello_world"" ""t"" WHERE i > 0  ORDER BY random()",,,,,,,,,""
+2018-07-12 22:47:08.547 UTC,"testci","testci",2473,"127.0.0.1:53865",5b47da6a.9a9,6,"idle",2018-07-12 22:47:06 UTC,,0,LOG,00000,"disconnection: session time: 0:00:02.245 user=testci database=testci host=127.0.0.1 port=53865",,,,,,,,,""
+2018-07-12 22:47:19.218 UTC,,,2642,"127.0.0.1:54013",5b47da77.a52,1,"",2018-07-12 22:47:19 UTC,,0,LOG,00000,"connection received: host=127.0.0.1 port=54013",,,,,,,,,""
+2018-07-12 22:47:19.218 UTC,,,2643,"127.0.0.1:54014",5b47da77.a53,1,"",2018-07-12 22:47:19 UTC,,0,LOG,00000,"connection received: host=127.0.0.1 port=54014",,,,,,,,,""
+2018-07-12 22:47:19.218 UTC,,,2644,"127.0.0.1:54015",5b47da77.a54,1,"",2018-07-12 22:47:19 UTC,,0,LOG,00000,"connection received: host=127.0.0.1 port=54015",,,,,,,,,""
+2018-07-12 22:47:19.226 UTC,"testci","testci",2644,"127.0.0.1:54015",5b47da77.a54,2,"authentication",2018-07-12 22:47:19 UTC,11/77223,0,LOG,00000,"connection authorized: user=testci database=testci SSL enabled (protocol=TLSv1.2, cipher=ECDHE-RSA-AES256-GCM-SHA384, compression=off)",,,,,,,,,""
+2018-07-12 22:47:19.227 UTC,"testci","testci",2642,"127.0.0.1:54013",5b47da77.a52,2,"authentication",2018-07-12 22:47:19 UTC,12/323914,0,LOG,00000,"connection authorized: user=testci database=testci SSL enabled (protocol=TLSv1.2, cipher=ECDHE-RSA-AES256-GCM-SHA384, compression=off)",,,,,,,,,""
+2018-07-12 22:47:19.227 UTC,"testci","testci",2643,"127.0.0.1:54014",5b47da77.a53,2,"authentication",2018-07-12 22:47:19 UTC,13/6385,0,LOG,00000,"connection authorized: user=testci database=testci SSL enabled (protocol=TLSv1.2, cipher=ECDHE-RSA-AES256-GCM-SHA384, compression=off)",,,,,,,,,""
+2018-07-12 22:47:25.491 UTC,"testci","testci",2687,"127.0.0.1:54016",5b47da7a.a7f,3,"idle",2018-07-12 22:47:22 UTC,,0,LOG,00000,"disconnection: session time: 0:00:02.680 user=testci database=testci host=127.0.0.1 port=54016",,,,,,,,,""
