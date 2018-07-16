@@ -367,10 +367,16 @@ function checkParams() {
   [ ! -z ${WORKLOAD_REAL+x} ] && let workloads_count=$workloads_count+1
   [ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && let workloads_count=$workloads_count+1
 
+  #--db-prepared-snapshot or --db-dump
+  if ([ -z ${DB_PREPARED_SNAPSHOT+x} ]  &&  [ -z ${DB_DUMP_PATH+x} ]); then
+    >&2 echo "ERROR: The object (database) is not defined."
+    exit 1;
+  fi
+
   # --workload-real or --workload-basis-path or --workload-custom-sql
   if [ "$workloads_count" -eq "0" ]
   then
-    >&2 echo "ERROR: Workload not given."
+    >&2 echo "ERROR: The workload is not defined."
     exit 1;
   fi
 
@@ -378,12 +384,6 @@ function checkParams() {
   then
     >&2 echo "ERROR: 2 or more workload sources are given."
     exit 1
-  fi
-
-  #--db-prepared-snapshot or --db-dump
-  if ([ -z ${DB_PREPARED_SNAPSHOT+x} ]  &&  [ -z ${DB_DUMP_PATH+x} ]); then
-    >&2 echo "ERROR: Snapshot or dump not given."
-    exit 1;
   fi
 
   if ([ ! -z ${DB_PREPARED_SNAPSHOT+x} ]  &&  [ ! -z ${DB_DUMP_PATH+x} ])
