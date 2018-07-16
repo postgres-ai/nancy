@@ -532,7 +532,8 @@ function checkParams() {
 checkParams;
 
 # Determine dump file size
-if ([ "$RUN_ON" == "aws" ] && [ ! ${AWS_EC2_TYPE:0:2} == "i3" ] && [ -z ${EBS_VOLUME_SIZE+x} ] && [ ! -z ${DB_DUMP_PATH+x} ]); then
+if ([ "$RUN_ON" == "aws" ] && [ ! ${AWS_EC2_TYPE:0:2} == "i3" ] && \
+   [ -z ${EBS_VOLUME_SIZE+x} ] && [ ! -z ${DB_DUMP_PATH+x} ]); then
     echo "Calculate EBS volume size."
     dumpFileSize=0
     if [[ $DB_DUMP_PATH =~ "s3://" ]]; then
@@ -540,16 +541,16 @@ if ([ "$RUN_ON" == "aws" ] && [ ! ${AWS_EC2_TYPE:0:2} == "i3" ] && [ -z ${EBS_VO
       dumpFileSize=${dumpFileSize/File size:/}
       dumpFileSize=${dumpFileSize/\t/}
       dumpFileSize=${dumpFileSize// /}
-      #echo "S3 FILESIZE: $dumpFileSize"
+      [ $DEBUG -eq 1 ] && echo "S3 FILESIZE: $dumpFileSize"
     else
       dumpFileSize=$(stat -c%s "$DB_DUMP_PATH")
     fi
+    let dumpFileSize=dumpFileSize*$EBS_SIZE_MULTIPLIER
     KB=1024
     let minSize=300*$KB*$KB*$KB
     ebsSize=$minSize # 300 GB
     if [ "$dumpFileSize" -gt "$minSize" ]; then
         let ebsSize=$dumpFileSize
-        let ebsSize=$ebsSize*$EBS_SIZE_MULTIPLIER
         ebsSize=$(numfmt --to-unit=G $ebsSize)
         EBS_VOLUME_SIZE=$ebsSize
         [ $DEBUG -eq 1 ] && echo "EBS volume size: $EBS_VOLUME_SIZE Gb"
