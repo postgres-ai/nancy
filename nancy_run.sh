@@ -99,11 +99,11 @@ while true; do
   Specify additional commands to be executed after database is initiated (dump
   loaded or snapshot attached).
 
-  \033[1m--workload-full-path\033[22m (string)
+  \033[1m--workload-real\033[22m (string)
 
   Path to 'real' workload prepared by using 'nancy prepare-workload'.
 
-  \033[1m--workload-basis-path\033[22m (string)
+  \033[1m--workload-basis\033[22m (string)
 
   Reserved / Not yet implemented.
 
@@ -111,7 +111,7 @@ while true; do
 
   Specify custom SQL queries to be used as an input.
 
-  \033[1m--workload-replay-speed\033[22m (string)
+  \033[1m--workload-real-replay-speed\033[22m (string)
 
   Reserved / Not yet implemented.
 
@@ -179,98 +179,103 @@ while true; do
   nancy help
 
     " | less -RFX
-        exit ;;
+    exit ;;
     -d | --debug ) DEBUG=1; shift ;;
     --run-on )
-        RUN_ON="$2"; shift 2 ;;
+      RUN_ON="$2"; shift 2 ;;
     --container-id )
-        CONTAINER_ID="$2"; shift 2 ;;
+      CONTAINER_ID="$2"; shift 2 ;;
     --pg-version )
-        PG_VERSION="$2"; shift 2 ;;
+      PG_VERSION="$2"; shift 2 ;;
     --pg-config )
-        #Still unsupported
-        PG_CONFIG="$2"; shift 2;;
+      #Still unsupported
+      PG_CONFIG="$2"; shift 2;;
     --db-prepared-snapshot )
-        #Still unsupported
-        DB_PREPARED_SNAPSHOT="$2"; shift 2 ;;
+      #Still unsupported
+      DB_PREPARED_SNAPSHOT="$2"; shift 2 ;;
     --db-dump-path )
-        DB_DUMP_PATH="$2"; shift 2 ;;
+      DB_DUMP_PATH="$2"; shift 2 ;;
     --after-db-init-code )
-        #s3 url|filename|content
-        AFTER_DB_INIT_CODE="$2"; shift 2 ;;
-    --workload-full-path )
-        #s3 url
-        WORKLOAD_FULL_PATH="$2"; shift 2 ;;
-    --workload-basis-path )
-        #Still unsuported
-        WORKLOAD_BASIS_PATH="$2"; shift 2 ;;
+      #s3 url|filename|content
+      AFTER_DB_INIT_CODE="$2"; shift 2 ;;
+    --workload-real )
+      #s3 url
+      WORKLOAD_REAL="$2"; shift 2 ;;
+    --workload-basis )
+      #Still unsupported
+      WORKLOAD_BASIS="$2"; shift 2 ;;
     --workload-custom-sql )
-        #s3 url|filename|content
-        WORKLOAD_CUSTOM_SQL="$2"; shift 2 ;;
-    --workload-replay-speed )
-        WORKLOAD_REPLAY_SPEED="$2"; shift 2 ;;
+      #s3 url|filename|content
+      WORKLOAD_CUSTOM_SQL="$2"; shift 2 ;;
+    --workload-real-replay-speed )
+      WORKLOAD_REAL_REPLAY_SPEED="$2"; shift 2 ;;
     --target-ddl-do )
-        #s3 url|filename|content
-        TARGET_DDL_DO="$2"; shift 2 ;;
+      #s3 url|filename|content
+      TARGET_DDL_DO="$2"; shift 2 ;;
     --target-ddl-undo )
-        #s3 url|filename|content
-        TARGET_DDL_UNDO="$2"; shift 2 ;;
+      #s3 url|filename|content
+      TARGET_DDL_UNDO="$2"; shift 2 ;;
     --target-config )
-        #s3 url|filename|content
-        TARGET_CONFIG="$2"; shift 2 ;;
+      #s3 url|filename|content
+      TARGET_CONFIG="$2"; shift 2 ;;
     --artifacts-destination )
-        ARTIFACTS_DESTINATION="$2"; shift 2 ;;
+      ARTIFACTS_DESTINATION="$2"; shift 2 ;;
     --artifacts-filename )
-        ARTIFACTS_FILENAME="$2"; shift 2 ;;
+      ARTIFACTS_FILENAME="$2"; shift 2 ;;
 
     --aws-ec2-type )
-        AWS_EC2_TYPE="$2"; shift 2 ;;
+      AWS_EC2_TYPE="$2"; shift 2 ;;
     --aws-keypair-name )
-        AWS_KEY_PAIR="$2"; shift 2 ;;
+      AWS_KEY_PAIR="$2"; shift 2 ;;
     --aws-ssh-key-path )
-        AWS_KEY_PATH="$2"; shift 2 ;;
+      AWS_KEY_PATH="$2"; shift 2 ;;
 
     --s3cfg-path )
-        S3_CFG_PATH="$2"; shift 2 ;;
+      S3_CFG_PATH="$2"; shift 2 ;;
     --tmp-path )
-        TMP_PATH="$2"; shift 2 ;;
+      TMP_PATH="$2"; shift 2 ;;
     --debug-timeout )
-        DEBUG_TIMEOUT="$2"; shift 2 ;;
+      DEBUG_TIMEOUT="$2"; shift 2 ;;
     -- )
-        >&2 echo "ERROR: Invalid option '$1'"
-        exit 1;
-        break ;;
+      >&2 echo "ERROR: Invalid option '$1'"
+      exit 1;
+      break ;;
     * )
-        [ "$1" != "" ] && >&2 echo "ERROR: Invalid option '$1'. Please verify command options." && exit 1;
+      if [ "${1:0:2}" == "--" ]; then
+        >&2 echo "ERROR: Invalid option '$1'. Please double-check options."
+        exit 1
+      elif [ "${1:0:2}" != "" ]; then
+        >&2 echo "ERROR: \"nancy run\" does not support payload (except \"help\"). Use options, see \"nancy run help\")"
+        exit 1
+      fi
     break ;;
   esac
 done
 
 RUN_ON=${RUN_ON:-localhost}
 
-if [ $DEBUG -eq 1 ]
-then
-    echo "debug: ${DEBUG}"
-    echo "run_on: ${RUN_ON}"
-    echo "container_id: ${CONTAINER_ID}"
-    echo "aws_ec2_type: ${AWS_EC2_TYPE}"
-    echo "aws-key-pair: $AWS_KEY_PAIR"
-    echo "aws-key-path: $AWS_KEY_PATH"
-    echo "pg_version: ${PG_VERSION}"
-    echo "pg_config: ${PG_CONFIG}"
-    echo "db_prepared_snapshot: ${DB_PREPARED_SNAPSHOT}"
-    echo "db_dump_path: $DB_DUMP_PATH"
-    echo "workload_full_path: $WORKLOAD_FULL_PATH"
-    echo "workload_basis_path: $WORKLOAD_BASIS_PATH"
-    echo "workload_custom_sql: $WORKLOAD_CUSTOM_SQL"
-    echo "workload_replay_speed: $WORKLOAD_REPLAY_SPEED"
-    echo "target_ddl_do: $TARGET_DDL_DO"
-    echo "target_ddl_undo: $TARGET_DDL_UNDO"
-    echo "target_config: $TARGET_CONFIG"
-    echo "artifacts_destination: $ARTIFACTS_DESTINATION"
-    echo "s3-cfg-path: $S3_CFG_PATH"
-    echo "tmp-path: $TMP_PATH"
-    echo "after-db-init-code: $AFTER_DB_INIT_CODE"
+if [ $DEBUG -eq 1 ]; then
+  echo "debug: ${DEBUG}"
+  echo "run_on: ${RUN_ON}"
+  echo "container_id: ${CONTAINER_ID}"
+  echo "aws_ec2_type: ${AWS_EC2_TYPE}"
+  echo "aws-key-pair: $AWS_KEY_PAIR"
+  echo "aws-key-path: $AWS_KEY_PATH"
+  echo "pg_version: ${PG_VERSION}"
+  echo "pg_config: ${PG_CONFIG}"
+  echo "db_prepared_snapshot: ${DB_PREPARED_SNAPSHOT}"
+  echo "db_dump_path: $DB_DUMP_PATH"
+  echo "workload_real: $WORKLOAD_REAL"
+  echo "workload_basis: $WORKLOAD_BASIS"
+  echo "workload_custom_sql: $WORKLOAD_CUSTOM_SQL"
+  echo "workload_real_replay_speed: $WORKLOAD_REAL_REPLAY_SPEED"
+  echo "target_ddl_do: $TARGET_DDL_DO"
+  echo "target_ddl_undo: $TARGET_DDL_UNDO"
+  echo "target_config: $TARGET_CONFIG"
+  echo "artifacts_destination: $ARTIFACTS_DESTINATION"
+  echo "s3-cfg-path: $S3_CFG_PATH"
+  echo "tmp-path: $TMP_PATH"
+  echo "after-db-init-code: $AFTER_DB_INIT_CODE"
 fi
 
 function checkPath() {
@@ -358,11 +363,11 @@ function checkParams() {
   [ ! -d $TMP_PATH ] && mkdir $TMP_PATH
 
   workloads_count=0
-  [ ! -z ${WORKLOAD_BASIS_PATH+x} ] && let workloads_count=$workloads_count+1
-  [ ! -z ${WORKLOAD_FULL_PATH+x} ] && let workloads_count=$workloads_count+1
+  [ ! -z ${WORKLOAD_BASIS+x} ] && let workloads_count=$workloads_count+1
+  [ ! -z ${WORKLOAD_REAL+x} ] && let workloads_count=$workloads_count+1
   [ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && let workloads_count=$workloads_count+1
 
-  # --workload-full-path or --workload-basis-path or --workload-custom-sql
+  # --workload-real or --workload-basis-path or --workload-custom-sql
   if [ "$workloads_count" -eq "0" ]
   then
     >&2 echo "ERROR: Workload not given."
@@ -432,12 +437,12 @@ function checkParams() {
     ARTIFACTS_FILENAME=$DOCKER_MACHINE
   fi
 
-  [ ! -z ${WORKLOAD_FULL_PATH+x} ] && ! checkPath WORKLOAD_FULL_PATH \
-    && >&2 echo "ERROR: workload file $WORKLOAD_FULL_PATH not found" \
+  [ ! -z ${WORKLOAD_REAL+x} ] && ! checkPath WORKLOAD_REAL \
+    && >&2 echo "ERROR: workload file $WORKLOAD_REAL not found" \
     && exit 1
 
-  [ ! -z ${WORKLOAD_BASIS_PATH+x} ] && ! checkPath WORKLOAD_BASIS_PATH \
-    && >&2 echo "ERROR: workload file $WORKLOAD_BASIS_PATH not found" \
+  [ ! -z ${WORKLOAD_BASIS+x} ] && ! checkPath WORKLOAD_BASIS \
+    && >&2 echo "ERROR: workload file $WORKLOAD_BASIS not found" \
     && exit 1
 
   if [ ! -z ${WORKLOAD_CUSTOM_SQL+x} ]; then
@@ -781,7 +786,7 @@ function copyFile() {
 [ ! -z ${TARGET_DDL_DO+x} ] && copyFile $TARGET_DDL_DO
 [ ! -z ${TARGET_DDL_UNDO+x} ] && copyFile $TARGET_DDL_UNDO
 [ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && copyFile $WORKLOAD_CUSTOM_SQL
-[ ! -z ${WORKLOAD_FULL_PATH+x} ] && copyFile $WORKLOAD_FULL_PATH
+[ ! -z ${WORKLOAD_REAL+x} ] && copyFile $WORKLOAD_REAL
 
 ## Apply machine features
 # Dump
@@ -836,10 +841,10 @@ docker_exec vacuumdb -U postgres test -j $(cat /proc/cpuinfo | grep processor | 
 docker_exec bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
 # Execute workload
 echo "Execute workload..."
-if [ ! -z ${WORKLOAD_FULL_PATH+x} ] && [ "$WORKLOAD_FULL_PATH" != '' ];then
+if [ ! -z ${WORKLOAD_REAL+x} ] && [ "$WORKLOAD_REAL" != '' ];then
   echo "Execute pgreplay queries..."
   docker_exec psql -E -U postgres test -c 'create role testuser superuser login;'
-  WORKLOAD_FILE_NAME=$(basename $WORKLOAD_FULL_PATH)
+  WORKLOAD_FILE_NAME=$(basename $WORKLOAD_REAL)
   docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
 else
   if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then

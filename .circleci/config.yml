@@ -8,7 +8,7 @@ jobs:
       - run:
           name: Install software
           command: |
-            apt-get update && apt-get install -y sudo wget jq \
+            apt-get update && apt-get install -y sudo wget jq gawk pgreplay bc \
             && wget get.docker.com -q -S -O - | sudo sh
       - checkout
       - setup_remote_docker
@@ -29,11 +29,11 @@ jobs:
               printf "$f${printTail:0:-${#f}}"
               bash "$f" -H
               status=$?
-              if [ $status -ne 0 ]; then
+              if [ "$status" -ne 0 ]; then
                 errcount="$(($errcount+1))"
               fi
             done
-            if [ $errcount -ne 0 ]; then
+            if [ "$errcount" -ne 0 ]; then
               >&2 echo "Oh no! $errcount tests failed"
               exit 1
             fi
