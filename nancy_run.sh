@@ -539,6 +539,8 @@ function checkParams() {
 
 checkParams;
 
+START_TIME=$(date +%s);
+
 # Determine dump file size
 if ([ "$RUN_ON" == "aws" ] && [ ! ${AWS_EC2_TYPE:0:2} == "i3" ] && \
    [ -z ${EBS_VOLUME_SIZE+x} ] && [ ! -z ${DB_DUMP_PATH+x} ]); then
@@ -838,14 +840,19 @@ function copyFile() {
 # Dump
 sleep 2 # wait for postgres up&running
 
-echo "$(date "+%Y-%m-%d %H:%M:%S"): Apply sql code before db init"
+OP_START_TIME=$(date +%s);
 if ([ ! -z ${BEFORE_DB_INIT_CODE+x} ] && [ "$BEFORE_DB_INIT_CODE" != "" ])
 then
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Apply sql code before db init"
   BEFORE_DB_INIT_CODE_FILENAME=$(basename $BEFORE_DB_INIT_CODE)
   copyFile $BEFORE_DB_INIT_CODE
   # --set ON_ERROR_STOP=on
   docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres test -b -f $MACHINE_HOME/$BEFORE_DB_INIT_CODE_FILENAME $OUTPUT_REDIRECT"
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Before init SQL code applied for $DURATION."
 fi
+OP_START_TIME=$(date +%s);
 echo "$(date "+%Y-%m-%d %H:%M:%S"): Restore database dump"
 case "$DB_DUMP_EXT" in
   sql)
@@ -858,36 +865,55 @@ case "$DB_DUMP_EXT" in
     docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test $OUTPUT_REDIRECT"
     ;;
 esac
+END_TIME=$(date +%s);
+DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+echo "$(date "+%Y-%m-%d %H:%M:%S"): Database dump restored for $DURATION."
 # After init database sql code apply
-echo "$(date "+%Y-%m-%d %H:%M:%S"): Apply sql code after db init"
+OP_START_TIME=$(date +%s);
 if ([ ! -z ${AFTER_DB_INIT_CODE+x} ] && [ "$AFTER_DB_INIT_CODE" != "" ])
 then
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Apply sql code after db init"
   AFTER_DB_INIT_CODE_FILENAME=$(basename $AFTER_DB_INIT_CODE)
   copyFile $AFTER_DB_INIT_CODE
   docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres test -b -f $MACHINE_HOME/$AFTER_DB_INIT_CODE_FILENAME $OUTPUT_REDIRECT"
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): After init SQL code applied for $DURATION."
 fi
 # Apply DDL code
-echo "$(date "+%Y-%m-%d %H:%M:%S"): Apply DDL SQL code"
+OP_START_TIME=$(date +%s);
 if ([ ! -z ${TARGET_DDL_DO+x} ] && [ "$TARGET_DDL_DO" != "" ]); then
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Apply DDL SQL code"
   TARGET_DDL_DO_FILENAME=$(basename $TARGET_DDL_DO)
   docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres test -b -f $MACHINE_HOME/$TARGET_DDL_DO_FILENAME $OUTPUT_REDIRECT"
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Target DDL do code applied for $DURATION."
 fi
 # Apply initial postgres configuration
-echo "$(date "+%Y-%m-%d %H:%M:%S"): Apply initial postgres configuration"
+OP_START_TIME=$(date +%s);
 if ([ ! -z ${PG_CONFIG+x} ] && [ "$PG_CONFIG" != "" ]); then
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Apply initial postgres configuration"
   PG_CONFIG_FILENAME=$(basename $PG_CONFIG)
   docker_exec bash -c "cat $MACHINE_HOME/$PG_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
   if [ -z ${TARGET_CONFIG+x} ]
   then
     docker_exec bash -c "sudo /etc/init.d/postgresql restart"
   fi
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Initial configuration applied for $DURATION."
 fi
 # Apply postgres configuration
-echo "$(date "+%Y-%m-%d %H:%M:%S"): Apply postgres configuration"
+OP_START_TIME=$(date +%s);
 if ([ ! -z ${TARGET_CONFIG+x} ] && [ "$TARGET_CONFIG" != "" ]); then
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Apply postgres configuration"
   TARGET_CONFIG_FILENAME=$(basename $TARGET_CONFIG)
   docker_exec bash -c "cat $MACHINE_HOME/$TARGET_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
   docker_exec bash -c "sudo /etc/init.d/postgresql restart"
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Postgres configuration applied for $DURATION."
 fi
 #Save before workload log
 echo "$(date "+%Y-%m-%d %H:%M:%S"): Save prepaparation log"
@@ -915,6 +941,7 @@ echo "$(date "+%Y-%m-%d %H:%M:%S"): Execute vacuumdb..."
 docker_exec vacuumdb -U postgres test -j $(cat /proc/cpuinfo | grep processor | wc -l) --analyze
 docker_exec bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
 # Execute workload
+OP_START_TIME=$(date +%s);
 echo "$(date "+%Y-%m-%d %H:%M:%S"): Execute workload..."
 if [ ! -z ${WORKLOAD_REAL+x} ] && [ "$WORKLOAD_REAL" != '' ];then
   echo "$(date "+%Y-%m-%d %H:%M:%S"): Execute pgreplay queries..."
@@ -928,8 +955,12 @@ else
     docker_exec bash -c "psql -U postgres test -E -f $MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME $OUTPUT_REDIRECT"
   fi
 fi
+END_TIME=$(date +%s);
+DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+echo "$(date "+%Y-%m-%d %H:%M:%S"): Workload executed for $DURATION."
 
 ## Get statistics
+OP_START_TIME=$(date +%s);
 echo "$(date "+%Y-%m-%d %H:%M:%S"): Prepare JSON log..."
 docker_exec bash -c "/root/pgbadger/pgbadger \
   -j $(cat /proc/cpuinfo | grep processor | wc -l) \
@@ -957,14 +988,23 @@ else
       exit 1
     fi
 fi
+END_TIME=$(date +%s);
+DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+echo "$(date "+%Y-%m-%d %H:%M:%S"): Statistics got for $DURATION."
 
-echo "$(date "+%Y-%m-%d %H:%M:%S"): Apply DDL undo SQL code"
+OP_START_TIME=$(date +%s);
 if ([ ! -z ${TARGET_DDL_UNDO+x} ] && [ "$TARGET_DDL_UNDO" != "" ]); then
-    TARGET_DDL_UNDO_FILENAME=$(basename $TARGET_DDL_UNDO)
-    docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres test -b -f $MACHINE_HOME/$TARGET_DDL_UNDO_FILENAME $OUTPUT_REDIRECT"
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Apply DDL undo SQL code"
+  TARGET_DDL_UNDO_FILENAME=$(basename $TARGET_DDL_UNDO)
+  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres test -b -f $MACHINE_HOME/$TARGET_DDL_UNDO_FILENAME $OUTPUT_REDIRECT"
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Target DDL undo code applied for $DURATION."
 fi
 
-echo -e "$(date "+%Y-%m-%d %H:%M:%S"): Run done!"
+END_TIME=$(date +%s);
+DURATION=$(echo $((END_TIME-START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+echo -e "$(date "+%Y-%m-%d %H:%M:%S"): Run done for $DURATION"
 echo -e "  Report: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json"
 echo -e "  Query log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.log.gz"
 echo -e "  -------------------------------------------"
