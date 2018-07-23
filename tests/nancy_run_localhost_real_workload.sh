@@ -10,7 +10,7 @@ nancyRun="$parentDir/nancy_run.sh"
 
 output=$(
   $nancyRun \
-    --db-dump "create table hello_world as select i from generate_series(1, 1000)i _(i);" \
+    --db-dump "create table hello_world as select i from generate_series(1, 1000) _(i);" \
     --workload-real "file://$srcDir/sample.replay" \
     --tmp-path $srcDir/tmp 2>&1
 )
