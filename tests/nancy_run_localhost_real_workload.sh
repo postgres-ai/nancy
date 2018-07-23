@@ -10,12 +10,12 @@ nancyRun="$parentDir/nancy_run.sh"
 
 output=$(
   $nancyRun \
-    --db-dump "create table hello_world as select i from generate_series(1, 1000) _(i);" \
+    --db-dump "create table hello_world as select i, i as id from generate_series(1, 1000) _(i);" \
     --workload-real "file://$srcDir/sample.replay" \
     --tmp-path $srcDir/tmp 2>&1
 )
 
-if [[ $output =~ "Errors:            0:" ]]; then
+if [[ $output =~ "Queries:           1" ]]; then
   echo -e "\e[36mOK\e[39m"
 else
   >&2 echo -e "\e[31mFAILED\e[39m"
