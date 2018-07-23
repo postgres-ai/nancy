@@ -16,7 +16,7 @@ output=$(
     --target-ddl-undo "drop index i_speedup;" 2>&1
 )
 
-if [[ $output =~ "Sumarized query duration:" ]]; then
+if [[ $output =~ "Errors:            0:" ]]; then
   echo -e "\e[36mOK\e[39m"
 else
   >&2 echo -e "\e[31mFAILED\e[39m"
