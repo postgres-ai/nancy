@@ -22,4 +22,3 @@ else
   >&2 echo -e "Output: $output"
   exit 1
 fi
-
