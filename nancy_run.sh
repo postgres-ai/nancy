@@ -91,7 +91,7 @@ while true; do
 
   Reserved / Not yet implemented.
 
-  \033[1m--db-dump-path\033[22m (string)
+  \033[1m--db-dump\033[22m (string)
 
   Specify the path to database dump (created by pg_dump) to be used as an input.
 
@@ -197,7 +197,7 @@ while true; do
     --db-prepared-snapshot )
       #Still unsupported
       DB_PREPARED_SNAPSHOT="$2"; shift 2 ;;
-    --db-dump-path )
+    --db-dump )
       DB_DUMP_PATH="$2"; shift 2 ;;
     --after-db-init-code )
       #s3 url|filename|content
@@ -377,10 +377,16 @@ function checkParams() {
   [ ! -z ${WORKLOAD_REAL+x} ] && let workloads_count=$workloads_count+1
   [ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && let workloads_count=$workloads_count+1
 
+  #--db-prepared-snapshot or --db-dump
+  if ([ -z ${DB_PREPARED_SNAPSHOT+x} ]  &&  [ -z ${DB_DUMP_PATH+x} ]); then
+    >&2 echo "ERROR: The object (database) is not defined."
+    exit 1;
+  fi
+
   # --workload-real or --workload-basis-path or --workload-custom-sql
   if [ "$workloads_count" -eq "0" ]
   then
-    >&2 echo "ERROR: Workload not given."
+    >&2 echo "ERROR: The workload is not defined."
     exit 1;
   fi
 
@@ -388,12 +394,6 @@ function checkParams() {
   then
     >&2 echo "ERROR: 2 or more workload sources are given."
     exit 1
-  fi
-
-  #--db-prepared-snapshot or --db-dump-path
-  if ([ -z ${DB_PREPARED_SNAPSHOT+x} ]  &&  [ -z ${DB_DUMP_PATH+x} ]); then
-    >&2 echo "ERROR: Snapshot or dump not given."
-    exit 1;
   fi
 
   if ([ ! -z ${DB_PREPARED_SNAPSHOT+x} ]  &&  [ ! -z ${DB_DUMP_PATH+x} ])
@@ -408,7 +408,7 @@ function checkParams() {
       echo "$DB_DUMP_PATH" > $TMP_PATH/db_dump_tmp.sql
       DB_DUMP_PATH="$TMP_PATH/db_dump_tmp.sql"
     else
-      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as db-dump-path will use as filename"
+      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as db-dump will use as filename"
     fi
     DB_DUMP_FILENAME=$(basename $DB_DUMP_PATH)
     DB_DUMP_EXT=${DB_DUMP_FILENAME##*.}
@@ -1008,9 +1008,9 @@ echo -e "$(date "+%Y-%m-%d %H:%M:%S"): Run done for $DURATION"
 echo -e "  Report: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json"
 echo -e "  Query log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.log.gz"
 echo -e "  -------------------------------------------"
-echo -e "  Summary:"
-echo -e "    Queries duration:\t\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_duration') " ms"
-echo -e "    Queries count:\t\t" $( docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_number')
-echo -e "    Normalized queries count:\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.normalyzed_info| length')
-echo -e "    Errors count:\t\t\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.errors_number')
+echo -e "  Workload summary:"
+echo -e "    Summarized query duration:\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_duration') " ms"
+echo -e "    Queries:\t\t\t" $( docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_number')
+echo -e "    Query groups:\t\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.normalyzed_info| length')
+echo -e "    Errors:\t\t\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.errors_number')
 echo -e "-------------------------------------------"
