@@ -15,7 +15,8 @@ output=$(
     --tmp-path $srcDir/tmp 2>&1
 )
 
-if [[ $output =~ "Queries:[[:space:]]+1" ]]; then
+regex="Queries:[[:blank:]]*1"
+if [[ $output =~ $regex ]]; then
   echo -e "\e[36mOK\e[39m"
 else
   >&2 echo -e "\e[31mFAILED\e[39m"
