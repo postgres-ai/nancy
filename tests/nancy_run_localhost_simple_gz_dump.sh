@@ -10,11 +10,12 @@ nancyRun="$parentDir/nancy_run.sh"
 
 output=$(
   $nancyRun --workload-custom-sql "file://$srcDir/custom.sql" \
-    --db-dump-path "file://$srcDir/test.dump.gz" \
+    --db-dump "file://$srcDir/test.dump.gz" \
     --tmp-path $srcDir/tmp 2>&1
 )
 
-if [[ $output =~ "Queries duration:" ]]; then
+regex="Errors:[[:blank:]]*0"
+if [[ $output =~ $regex ]]; then
   echo -e "\e[36mOK\e[39m"
 else
   >&2 echo -e "\e[31mFAILED\e[39m"

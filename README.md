@@ -107,7 +107,7 @@ echo "create table hello_world as select i::int4 from generate_series(1, (10^6):
 # (seqscan is expected, total time ~150ms, depending on resources)
 nancy run \
   --run-on localhost \
-  --db-dump-path file://$(pwd)/sample.dump.bz2 \
+  --db-dump file://$(pwd)/sample.dump.bz2 \
   --tmp-path /tmp \
   --workload-custom-sql "select count(1) from hello_world where i between 100000 and 100010;"
 
@@ -115,7 +115,7 @@ nancy run \
 # (expected total time: ~0.05ms)
 nancy run \
   --run-on localhost \
-  --db-dump-path file://$(pwd)/sample.dump.bz2 \
+  --db-dump file://$(pwd)/sample.dump.bz2 \
   --tmp-path /tmp \
   --workload-custom-sql "select count(1) from hello_world where i between 100000 and 100010;" \
   --target-ddl-do "create index i_hello_world_i on hello_world(i);" \
@@ -128,7 +128,7 @@ nancy run \
   --run-on aws \
   --aws-ec2-type "i3.large" \
   --aws-keypair-name awskey --aws-ssh-key-path file://$(echo ~)/.ssh/awskey.pem  \
-  --db-dump-path "create table a as select i::int4 from generate_series(1, (10^9)::int) _(i);" \
+  --db-dump "create table a as select i::int4 from generate_series(1, (10^9)::int) _(i);" \
   --workload-custom-sql "select count(1) from a where i between 10 and 20;"
 ```
 
