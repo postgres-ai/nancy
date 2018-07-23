@@ -2,9 +2,10 @@
 
 DEBUG=0
 CURRENT_TS=$(date +%Y%m%d_%H%M%S%N_%Z)
-DOCKER_MACHINE="${DOCKER_MACHINE:-nancy-$CURRENT_TS}"
+DOCKER_MACHINE="nancy-$CURRENT_TS"
 DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
 DEBUG_TIMEOUT=0
+OUTPUT_REDIRECT=" > /dev/null"
 EBS_SIZE_MULTIPLIER=15
 
 ## Get command line params
@@ -180,7 +181,10 @@ while true; do
 
     " | less -RFX
     exit ;;
-    -d | --debug ) DEBUG=1; shift ;;
+    -d | --debug )
+      DEBUG=1;
+      OUTPUT_REDIRECT='';
+      shift ;;
     --run-on )
       RUN_ON="$2"; shift 2 ;;
     --container-id )
@@ -198,6 +202,9 @@ while true; do
     --after-db-init-code )
       #s3 url|filename|content
       AFTER_DB_INIT_CODE="$2"; shift 2 ;;
+    --before-db-init-code )
+      #s3 url|filename|content
+      BEFORE_DB_INIT_CODE="$2"; shift 2 ;;
     --workload-real )
       #s3 url
       WORKLOAD_REAL="$2"; shift 2 ;;
@@ -236,15 +243,16 @@ while true; do
       TMP_PATH="$2"; shift 2 ;;
     --debug-timeout )
       DEBUG_TIMEOUT="$2"; shift 2 ;;
-    -- )
-      >&2 echo "ERROR: Invalid option '$1'"
-      exit 1;
-      break ;;
+    --ebs-volume-size )
+        EBS_VOLUME_SIZE="$2"; shift 2 ;;
     * )
-      if [ "${1:0:2}" == "--" ]; then
+      option=$1
+      option="${option##*( )}"
+      option="${option%%*( )}"
+      if [ "${option:0:2}" == "--" ]; then
         >&2 echo "ERROR: Invalid option '$1'. Please double-check options."
         exit 1
-      elif [ "${1:0:2}" != "" ]; then
+      elif [ "$option" != "" ]; then
         >&2 echo "ERROR: \"nancy run\" does not support payload (except \"help\"). Use options, see \"nancy run help\")"
         exit 1
       fi
@@ -276,6 +284,8 @@ if [ $DEBUG -eq 1 ]; then
   echo "s3-cfg-path: $S3_CFG_PATH"
   echo "tmp-path: $TMP_PATH"
   echo "after-db-init-code: $AFTER_DB_INIT_CODE"
+  echo "before-db-init-code: $BEFORE_DB_INIT_CODE"
+  echo "ebs-volume-size: $EBS_VOLUME_SIZE"
 fi
 
 function checkPath() {
@@ -467,6 +477,17 @@ function checkParams() {
     fi
   fi
 
+  if [ ! -z ${BEFORE_DB_INIT_CODE+x} ]; then
+    checkPath BEFORE_DB_INIT_CODE
+    if [ "$?" -ne "0" ]; then
+      #>&2 echo "WARNING: Value given as after_db_init_code: '$AFTER_DB_INIT_CODE' not found as file will use as content"
+      echo "$BEFORE_DB_INIT_CODE" > $TMP_PATH/before_db_init_code_tmp.sql
+      BEFORE_DB_INIT_CODE="$TMP_PATH/before_db_init_code_tmp.sql"
+    else
+      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as before_db_init_code will use as filename"
+    fi
+  fi
+
   if [ ! -z ${TARGET_DDL_DO+x} ]; then
     checkPath TARGET_DDL_DO
     if [ "$?" -ne "0" ]; then
@@ -499,32 +520,52 @@ function checkParams() {
       [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as target_config will use as filename"
     fi
   fi
+
+  if [ ! -z ${EBS_VOLUME_SIZE+x} ]; then
+    if [ "$RUN_ON" == "localhost" ] || [ ${AWS_EC2_TYPE:0:2} == 'i3' ]; then
+      >&2 echo "WARNING: ebs-volume-size is not required for aws i3 aws instances and local execution."
+    fi;
+    re='^[0-9]+$'
+    if ! [[ $EBS_VOLUME_SIZE =~ $re ]] ; then
+      >&2 echo "ERROR: ebs-volume-size must be numeric integer value."
+      exit 1;
+    fi
+  else
+    if [ ! ${AWS_EC2_TYPE:0:2} == 'i3' ]; then
+      >&2 echo "WARNING: ebs-volume-size is not given, will be calculate on base of dump size."
+    fi
+  fi
 }
 
 checkParams;
 
+START_TIME=$(date +%s);
+
 # Determine dump file size
-if [ ! -z ${DB_DUMP_PATH+x} ]; then
+if ([ "$RUN_ON" == "aws" ] && [ ! ${AWS_EC2_TYPE:0:2} == "i3" ] && \
+   [ -z ${EBS_VOLUME_SIZE+x} ] && [ ! -z ${DB_DUMP_PATH+x} ]); then
+    echo "$(date "+%Y-%m-%d %H:%M:%S"): Calculate EBS volume size."
     dumpFileSize=0
     if [[ $DB_DUMP_PATH =~ "s3://" ]]; then
       dumpFileSize=$(s3cmd info $DB_DUMP_PATH | grep "File size:" )
       dumpFileSize=${dumpFileSize/File size:/}
       dumpFileSize=${dumpFileSize/\t/}
       dumpFileSize=${dumpFileSize// /}
-      #echo "S3 FILESIZE: $dumpFileSize"
+      [ $DEBUG -eq 1 ] && echo "S3 FILESIZE: $dumpFileSize"
     else
       dumpFileSize=$(stat -c%s "$DB_DUMP_PATH")
     fi
-    [ $DEBUG -eq 1 ] && echo "Dump filesize: $dumpFileSize bytes"
+    let dumpFileSize=dumpFileSize*$EBS_SIZE_MULTIPLIER
     KB=1024
     let minSize=300*$KB*$KB*$KB
     ebsSize=$minSize # 300 GB
     if [ "$dumpFileSize" -gt "$minSize" ]; then
         let ebsSize=$dumpFileSize
-        let ebsSize=$ebsSize*$EBS_SIZE_MULTIPLIER
         ebsSize=$(numfmt --to-unit=G $ebsSize)
-        EBS_SIZE=$ebsSize
-        [ $DEBUG -eq 1 ] && echo "EBS Size: $EBS_SIZE Gb"
+        EBS_VOLUME_SIZE=$ebsSize
+        [ $DEBUG -eq 1 ] && echo "$(date "+%Y-%m-%d %H:%M:%S"): EBS volume size: $EBS_VOLUME_SIZE Gb"
+    else
+      echo "$(date "+%Y-%m-%d %H:%M:%S"): EBS volume is not require."
     fi
 fi
 
@@ -566,15 +607,15 @@ function waitEC2Ready() {
 #  5) key pair name
 #  6) key path
 function createDockerMachine() {
-  echo "Attempt to create a docker machine..."
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Attempt to create a docker machine..."
   docker-machine create --driver=amazonec2 \
     --amazonec2-request-spot-instance \
     --amazonec2-keypair-name="$5" \
     --amazonec2-ssh-keypath="$6" \
-    --amazonec2-block-duration-minutes=$4 \
     --amazonec2-instance-type=$2 \
     --amazonec2-spot-price=$3 \
     $1 2> >(grep -v "failed waiting for successful resource state" >&2) &
+#    --amazonec2-block-duration-minutes=$4 \
 }
 
 function destroyDockerMachine() {
@@ -587,29 +628,36 @@ function destroyDockerMachine() {
   # when we have "price-too-low" attempts, such errors come in few minutes
   # after an attempt and are generally unexpected by user.
   cmdout=$(docker-machine rm --force $1 2> >(grep -v "unknown instance" >&2) )
-  echo "Termination requested for machine '$1', current status: $cmdout"
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Termination requested for machine, current status: $cmdout"
 }
 
 function cleanupAndExit {
-  echo "Remove temp files..." # if exists
+  if  [ "$DEBUG_TIMEOUT" -gt "0" ]; then
+    echo "$(date "+%Y-%m-%d %H:%M:%S"): Debug timeout is $DEBUG_TIMEOUT seconds - started."
+    echo "  To connect docker machine use:"
+    echo "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
+    sleep $DEBUG_TIMEOUT
+  fi
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Remove temp files..." # if exists
   docker $dockerConfig exec -i ${containerHash} sh -c "sudo rm -rf $MACHINE_HOME"
   rm -f "$TMP_PATH/after_db_init_code_tmp.sql"
+  rm -f "$TMP_PATH/before_db_init_code_tmp.sql"
   rm -f "$TMP_PATH/workload_custom_sql_tmp.sql"
   rm -f "$TMP_PATH/target_ddl_do_tmp.sql"
   rm -f "$TMP_PATH/target_ddl_undo_tmp.sql"
   rm -f "$TMP_PATH/target_config_tmp.conf"
   rm -f "$TMP_PATH/pg_config_tmp.conf"
   if [ "$RUN_ON" = "localhost" ]; then
-    echo "Remove docker container"
+    echo "$(date "+%Y-%m-%d %H:%M:%S"): Remove docker container"
     docker container rm -f $containerHash
   elif [ "$RUN_ON" = "aws" ]; then
     destroyDockerMachine $DOCKER_MACHINE
     if [ ! -z ${VOLUME_ID+x} ]; then
-        echo "Wait and delete volume $VOLUME_ID"
+        echo "$(date "+%Y-%m-%d %H:%M:%S"): Wait and delete volume $VOLUME_ID"
         sleep 60 # wait to machine removed
         delvolout=$(aws ec2 delete-volume --volume-id $VOLUME_ID)
-        echo "Volume $VOLUME_ID deleted"
-    fi    
+        echo "$(date "+%Y-%m-%d %H:%M:%S"): Volume $VOLUME_ID deleted"
+    fi
   else
     >&2 echo "ASSERT: must not reach this point"
     exit 1
@@ -639,10 +687,10 @@ elif [[ "$RUN_ON" = "aws" ]]; then
   maxprice=$(echo $prices | jq 'max_by(.price) | .price')
   maxprice="${maxprice/\"/}"
   maxprice="${maxprice/\"/}"
-  echo "Max price from history: $maxprice"
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Max price from history: $maxprice"
   multiplier="1.1"
   price=$(echo "$maxprice * $multiplier" | bc -l)
-  echo "Increased price: $price"
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Increased price: $price"
   EC2_PRICE=$price
 
   createDockerMachine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
@@ -650,7 +698,7 @@ elif [[ "$RUN_ON" = "aws" ]]; then
   status=$(waitEC2Ready "docker-machine create" "$DOCKER_MACHINE" 1)
   if [ "$status" == "price-too-low" ]
   then
-    echo "Price $price is too low for $AWS_EC2_TYPE instance. Getting the up-to-date value from the error message..."
+    echo "$(date "+%Y-%m-%d %H:%M:%S"): Price $price is too low for $AWS_EC2_TYPE instance. Getting the up-to-date value from the error message..."
 
     #destroyDockerMachine $DOCKER_MACHINE
     # "docker-machine rm" doesn't work for "price-too-low" spot requests,
@@ -674,31 +722,31 @@ elif [[ "$RUN_ON" = "aws" ]]; then
       DOCKER_MACHINE="nancy-$CURRENT_TS"
       DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
       #try start docker machine name with new price
-      echo "Attempt to create a new docker machine: $DOCKER_MACHINE with price: $EC2_PRICE."
+      echo "$(date "+%Y-%m-%d %H:%M:%S"): Attempt to create a new docker machine: $DOCKER_MACHINE with price: $EC2_PRICE."
       createDockerMachine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
         60 $AWS_KEY_PAIR $AWS_KEY_PATH;
       waitEC2Ready "docker-machine create" "$DOCKER_MACHINE" 0;
     else
-      >&2 echo "ERROR: Cannot determine actual price for the instance $AWS_EC2_TYPE."
+      >&2 echo "$(date "+%Y-%m-%d %H:%M:%S") ERROR: Cannot determine actual price for the instance $AWS_EC2_TYPE."
       exit 1;
     fi
   fi
 
-  echo "Check a docker machine status."
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Check a docker machine status."
   res=$(docker-machine status $DOCKER_MACHINE 2>&1 &)
   if [ "$res" != "Running" ]
   then
-    >&2 echo "Failed: Docker $DOCKER_MACHINE is NOT running."
+    >&2 echo "$(date "+%Y-%m-%d %H:%M:%S"): Failed: Docker $DOCKER_MACHINE is NOT running."
     exit 1;
   fi
-  echo "Docker $DOCKER_MACHINE is running."
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Docker $DOCKER_MACHINE is running."
 
   docker-machine ssh $DOCKER_MACHINE "sudo sh -c \"mkdir /home/storage\""
   if [ ${AWS_EC2_TYPE:0:2} == 'i3' ]
   then
-    echo "Attempt use high speed disk"
+    echo "$(date "+%Y-%m-%d %H:%M:%S"): Attempt use high speed disk"
     # Init i3 storage, just mount existing volume
-    echo "Attach i3 nvme volume"
+    echo "$(date "+%Y-%m-%d %H:%M:%S"): Attach i3 nvme volume"
     docker-machine ssh $DOCKER_MACHINE sudo add-apt-repository -y ppa:sbates
     docker-machine ssh $DOCKER_MACHINE sudo apt-get update || :
     docker-machine ssh $DOCKER_MACHINE sudo apt-get install -y nvme-cli
@@ -714,12 +762,12 @@ elif [[ "$RUN_ON" = "aws" ]]; then
     docker-machine ssh $DOCKER_MACHINE sudo mkfs -t ext4 /dev/nvme0n1p1
     docker-machine ssh $DOCKER_MACHINE sudo mount /dev/nvme0n1p1 /home/storage
   else
-    echo "Attempt use external disk"
+    echo "$(date "+%Y-%m-%d %H:%M:%S"): Attempt use external disk"
     # Create new volume and attach them for non i3 instances if needed
-    if [ ! -z ${EBS_SIZE+x} ]; then
-      echo "Create and attach EBS volume"
-      [ $DEBUG -eq 1 ] && echo "Create volume with size: $EBS_SIZE Gb"
-      VOLUME_ID=$(aws ec2 create-volume --size $EBS_SIZE --region us-east-1 --availability-zone us-east-1a --volume-type gp2 | jq -r .VolumeId)
+    if [ ! -z ${EBS_VOLUME_SIZE+x} ]; then
+      echo "$(date "+%Y-%m-%d %H:%M:%S"): Create and attach EBS volume"
+      [ $DEBUG -eq 1 ] && echo "$(date "+%Y-%m-%d %H:%M:%S"): Create volume with size: $EBS_VOLUME_SIZE Gb"
+      VOLUME_ID=$(aws ec2 create-volume --size $EBS_VOLUME_SIZE --region us-east-1 --availability-zone us-east-1a --volume-type gp2 | jq -r .VolumeId)
       INSTANCE_ID=$(docker-machine ssh $DOCKER_MACHINE curl -s http://169.254.169.254/latest/meta-data/instance-id)
       sleep 10 # wait to volume will ready
       attachResult=$(aws ec2 attach-volume --device /dev/xvdf --volume-id $VOLUME_ID --instance-id $INSTANCE_ID --region us-east-1)
@@ -750,7 +798,7 @@ if [[ "$RUN_ON" = "aws" ]]; then
   MACHINE_HOME="$MACHINE_HOME/storage"
   docker_exec sh -c "chmod a+w /storage"
 
-  echo "Move posgresql to separated disk"
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Move posgresql to separated disk"
   docker_exec bash -c "sudo /etc/init.d/postgresql stop"
   sleep 2 # wait for postgres stopped
   docker_exec bash -c "sudo mv /var/lib/postgresql /storage/"
@@ -792,83 +840,136 @@ function copyFile() {
 # Dump
 sleep 2 # wait for postgres up&running
 
-echo "Restore database dump"
+OP_START_TIME=$(date +%s);
+if ([ ! -z ${BEFORE_DB_INIT_CODE+x} ] && [ "$BEFORE_DB_INIT_CODE" != "" ])
+then
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Apply sql code before db init"
+  BEFORE_DB_INIT_CODE_FILENAME=$(basename $BEFORE_DB_INIT_CODE)
+  copyFile $BEFORE_DB_INIT_CODE
+  # --set ON_ERROR_STOP=on
+  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres test -b -f $MACHINE_HOME/$BEFORE_DB_INIT_CODE_FILENAME $OUTPUT_REDIRECT"
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Before init SQL code applied for $DURATION."
+fi
+OP_START_TIME=$(date +%s);
+echo "$(date "+%Y-%m-%d %H:%M:%S"): Restore database dump"
 case "$DB_DUMP_EXT" in
   sql)
-    docker_exec bash -c "cat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test"
+    docker_exec bash -c "cat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test $OUTPUT_REDIRECT"
     ;;
   bz2)
-    docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test"
+    docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test $OUTPUT_REDIRECT"
     ;;
   gz)
-    docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test"
+    docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test $OUTPUT_REDIRECT"
     ;;
 esac
+END_TIME=$(date +%s);
+DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+echo "$(date "+%Y-%m-%d %H:%M:%S"): Database dump restored for $DURATION."
 # After init database sql code apply
-echo "Apply sql code after db init"
+OP_START_TIME=$(date +%s);
 if ([ ! -z ${AFTER_DB_INIT_CODE+x} ] && [ "$AFTER_DB_INIT_CODE" != "" ])
 then
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Apply sql code after db init"
   AFTER_DB_INIT_CODE_FILENAME=$(basename $AFTER_DB_INIT_CODE)
   copyFile $AFTER_DB_INIT_CODE
-  docker_exec bash -c "psql -U postgres test -b -f $MACHINE_HOME/$AFTER_DB_INIT_CODE_FILENAME"
+  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres test -b -f $MACHINE_HOME/$AFTER_DB_INIT_CODE_FILENAME $OUTPUT_REDIRECT"
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): After init SQL code applied for $DURATION."
 fi
 # Apply DDL code
-echo "Apply DDL SQL code"
+OP_START_TIME=$(date +%s);
 if ([ ! -z ${TARGET_DDL_DO+x} ] && [ "$TARGET_DDL_DO" != "" ]); then
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Apply DDL SQL code"
   TARGET_DDL_DO_FILENAME=$(basename $TARGET_DDL_DO)
-  docker_exec bash -c "psql -U postgres test -b -f $MACHINE_HOME/$TARGET_DDL_DO_FILENAME"
+  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres test -b -f $MACHINE_HOME/$TARGET_DDL_DO_FILENAME $OUTPUT_REDIRECT"
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Target DDL do code applied for $DURATION."
 fi
 # Apply initial postgres configuration
-echo "Apply initial postgres configuration"
+OP_START_TIME=$(date +%s);
 if ([ ! -z ${PG_CONFIG+x} ] && [ "$PG_CONFIG" != "" ]); then
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Apply initial postgres configuration"
   PG_CONFIG_FILENAME=$(basename $PG_CONFIG)
   docker_exec bash -c "cat $MACHINE_HOME/$PG_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
   if [ -z ${TARGET_CONFIG+x} ]
   then
     docker_exec bash -c "sudo /etc/init.d/postgresql restart"
   fi
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Initial configuration applied for $DURATION."
 fi
 # Apply postgres configuration
-echo "Apply postgres configuration"
+OP_START_TIME=$(date +%s);
 if ([ ! -z ${TARGET_CONFIG+x} ] && [ "$TARGET_CONFIG" != "" ]); then
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Apply postgres configuration"
   TARGET_CONFIG_FILENAME=$(basename $TARGET_CONFIG)
   docker_exec bash -c "cat $MACHINE_HOME/$TARGET_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
   docker_exec bash -c "sudo /etc/init.d/postgresql restart"
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Postgres configuration applied for $DURATION."
 fi
+#Save before workload log
+echo "$(date "+%Y-%m-%d %H:%M:%S"): Save prepaparation log"
+logpath=$( \
+  docker_exec bash -c "psql -XtU postgres \
+    -c \"select string_agg(setting, '/' order by name) from pg_settings where name in ('log_directory', 'log_filename');\" \
+    | grep / | sed -e 's/^[ \t]*//'"
+)
+docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME.prepare.log.gz"
+if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
+    docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.prepare.log.gz $ARTIFACTS_DESTINATION/
+else
+    if [ "$RUN_ON" = "localhost" ]; then
+      docker cp $containerHash:$MACHINE_HOME/$ARTIFACTS_FILENAME.prepare.log.gz $ARTIFACTS_DESTINATION/
+    elif [ "$RUN_ON" = "aws" ]; then
+      docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME.prepare.log.gz $ARTIFACTS_DESTINATION/
+    else
+      >&2 echo "ASSERT: must not reach this point"
+      exit 1
+    fi
+fi
+
 # Clear statistics and log
-echo "Execute vacuumdb..."
+echo "$(date "+%Y-%m-%d %H:%M:%S"): Execute vacuumdb..."
 docker_exec vacuumdb -U postgres test -j $(cat /proc/cpuinfo | grep processor | wc -l) --analyze
 docker_exec bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
 # Execute workload
-echo "Execute workload..."
+OP_START_TIME=$(date +%s);
+echo "$(date "+%Y-%m-%d %H:%M:%S"): Execute workload..."
 if [ ! -z ${WORKLOAD_REAL+x} ] && [ "$WORKLOAD_REAL" != '' ];then
-  echo "Execute pgreplay queries..."
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Execute pgreplay queries..."
   docker_exec psql -U postgres test -c 'create role testuser superuser login;'
   WORKLOAD_FILE_NAME=$(basename $WORKLOAD_REAL)
   docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
 else
   if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
     WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
-    echo "Execute custom sql queries..."
-    docker_exec bash -c "psql -U postgres test -E -f $MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME"
+    echo "$(date "+%Y-%m-%d %H:%M:%S"): Execute custom sql queries..."
+    docker_exec bash -c "psql -U postgres test -E -f $MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME $OUTPUT_REDIRECT"
   fi
 fi
+END_TIME=$(date +%s);
+DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+echo "$(date "+%Y-%m-%d %H:%M:%S"): Workload executed for $DURATION."
 
 ## Get statistics
-echo "Prepare JSON log..."
+OP_START_TIME=$(date +%s);
+echo "$(date "+%Y-%m-%d %H:%M:%S"): Prepare JSON log..."
 docker_exec bash -c "/root/pgbadger/pgbadger \
   -j $(cat /proc/cpuinfo | grep processor | wc -l) \
   --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr \
   -o $MACHINE_HOME/$ARTIFACTS_FILENAME.json"
   #2> >(grep -v "install the Text::CSV_XS" >&2)
 
-logpath=$( \
-  docker_exec bash -c "psql -XtU postgres \
-    -c \"select string_agg(setting, '/' order by name) from pg_settings where name in ('log_directory', 'log_filename');\" \
-    | grep / | sed -e 's/^[ \t]*//'"
-)
 docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz"
-echo "Save artifcats..."
+echo "$(date "+%Y-%m-%d %H:%M:%S"): Save artifcats..."
 if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
     docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
     docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
@@ -887,24 +988,29 @@ else
       exit 1
     fi
 fi
+END_TIME=$(date +%s);
+DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+echo "$(date "+%Y-%m-%d %H:%M:%S"): Statistics got for $DURATION."
 
-echo "Apply DDL undo SQL code"
+OP_START_TIME=$(date +%s);
 if ([ ! -z ${TARGET_DDL_UNDO+x} ] && [ "$TARGET_DDL_UNDO" != "" ]); then
-    TARGET_DDL_UNDO_FILENAME=$(basename $TARGET_DDL_UNDO)
-    docker_exec bash -c "psql -U postgres test -b -f $MACHINE_HOME/$TARGET_DDL_UNDO_FILENAME"
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Apply DDL undo SQL code"
+  TARGET_DDL_UNDO_FILENAME=$(basename $TARGET_DDL_UNDO)
+  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres test -b -f $MACHINE_HOME/$TARGET_DDL_UNDO_FILENAME $OUTPUT_REDIRECT"
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Target DDL undo code applied for $DURATION."
 fi
 
-echo -e "Run done!"
-echo -e "Report: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json"
-echo -e "Query log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.log.gz"
+END_TIME=$(date +%s);
+DURATION=$(echo $((END_TIME-START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+echo -e "$(date "+%Y-%m-%d %H:%M:%S"): Run done for $DURATION"
+echo -e "  Report: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json"
+echo -e "  Query log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.log.gz"
+echo -e "  -------------------------------------------"
+echo -e "  Summary:"
+echo -e "    Queries duration:\t\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_duration') " ms"
+echo -e "    Queries count:\t\t" $( docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_number')
+echo -e "    Normalized queries count:\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.normalyzed_info| length')
+echo -e "    Errors count:\t\t\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.errors_number')
 echo -e "-------------------------------------------"
-echo -e "Summary:"
-echo -e "  Queries duration:\t\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_duration') " ms"
-echo -e "  Queries count:\t\t" $( docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_number')
-echo -e "  Normalized queries count:\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.normalyzed_info| length')
-echo -e "  Errors count:\t\t\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.errors_number')
-echo -e "-------------------------------------------"
-
-sleep $DEBUG_TIMEOUT
-
-echo Bye!
