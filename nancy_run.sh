@@ -301,7 +301,8 @@ function checkPath() {
   if [[ $path =~ "file:///" ]]
   then
     path=${path/file:\/\//}
-    if [ -f $path ] || [ -d $path ]; then
+    if [ -f $path ]
+    then
       eval "$1=\"$path\"" # update original variable
       return 0 # file found
     else
@@ -312,7 +313,8 @@ function checkPath() {
   then
     curdir=$(pwd)
     path=$curdir/${path/file:\/\//}
-    if [ -f $path ] || [ -d $path ]; then
+    if [ -f $path ]
+    then
       eval "$1=\"$path\"" # update original variable
       return 0 # file found
     else
@@ -406,7 +408,7 @@ function checkParams() {
       echo "$DB_DUMP_PATH" > $TMP_PATH/db_dump_tmp.sql
       DB_DUMP_PATH="$TMP_PATH/db_dump_tmp.sql"
     else
-      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as db-dump will use as path"
+      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as db-dump will use as filename"
     fi
     DB_DUMP_FILENAME=$(basename $DB_DUMP_PATH)
     DB_DUMP_EXT=${DB_DUMP_FILENAME##*.}
