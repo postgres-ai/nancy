@@ -301,8 +301,7 @@ function checkPath() {
   if [[ $path =~ "file:///" ]]
   then
     path=${path/file:\/\//}
-    if [ -f $path ]
-    then
+    if [ -f $path ] || [ -d $path ]; then
       eval "$1=\"$path\"" # update original variable
       return 0 # file found
     else
@@ -313,8 +312,7 @@ function checkPath() {
   then
     curdir=$(pwd)
     path=$curdir/${path/file:\/\//}
-    if [ -f $path ]
-    then
+    if [ -f $path ] || [ -d $path ]; then
       eval "$1=\"$path\"" # update original variable
       return 0 # file found
     else
@@ -408,7 +406,7 @@ function checkParams() {
       echo "$DB_DUMP_PATH" > $TMP_PATH/db_dump_tmp.sql
       DB_DUMP_PATH="$TMP_PATH/db_dump_tmp.sql"
     else
-      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as db-dump will use as filename"
+      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as db-dump will use as path"
     fi
     DB_DUMP_FILENAME=$(basename $DB_DUMP_PATH)
     DB_DUMP_EXT=${DB_DUMP_FILENAME##*.}
@@ -863,6 +861,9 @@ case "$DB_DUMP_EXT" in
     ;;
   gz)
     docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test $OUTPUT_REDIRECT"
+    ;;
+  pgdmp)
+    docker_exec bash -c "pg_restore -j $(cat /proc/cpuinfo | grep processor | wc -l) --no-owner --no-privileges -U postgres -d test $MACHINE_HOME/$DB_DUMP_FILENAME"
     ;;
 esac
 END_TIME=$(date +%s);
