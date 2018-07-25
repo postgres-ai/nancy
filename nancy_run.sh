@@ -884,7 +884,6 @@ OP_START_TIME=$(date +%s);
 echo "$(date "+%Y-%m-%d %H:%M:%S"): Restore database dump"
 #CPU_CNT=$(cat /proc/cpuinfo | grep processor | wc -l)
 CPU_CNT=$(docker_exec bash -c "cat /proc/cpuinfo | grep processor | wc -l") # for execute in docker
-let CPU_CNT=$CPU_CNT*2
 case "$DB_DUMP_EXT" in
   sql)
     docker_exec bash -c "cat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test $OUTPUT_REDIRECT"
