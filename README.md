@@ -1,4 +1,4 @@
-[![CircleCI](https://circleci.com/gh/startupturbo/nancy.svg?style=svg)](https://circleci.com/gh/startupturbo/nancy)
+[![CircleCI](https://circleci.com/gh/postgres-ai/nancy.svg?style=svg)](https://circleci.com/gh/postgres-ai/nancy)
 
 Description
 ===
