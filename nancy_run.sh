@@ -584,7 +584,7 @@ if ([ "$RUN_ON" == "aws" ] && [ ! ${AWS_EC2_TYPE:0:2} == "i3" ] && \
 fi
 
 set -ueo pipefail
-[ $DEBUG -eq 1 ] && set -ueox pipefail # to debug
+[ $DEBUG -eq 1 ] && set -uox pipefail # to debug
 shopt -s expand_aliases
 
 ## Docker tools
@@ -628,6 +628,7 @@ function createDockerMachine() {
     --amazonec2-ssh-keypath="$6" \
     --amazonec2-instance-type=$2 \
     --amazonec2-spot-price=$3 \
+    --amazonec2-zone $7 \
     $1 2> >(grep -v "failed waiting for successful resource state" >&2) &
 #    --amazonec2-block-duration-minutes=$4 \
 }
@@ -699,17 +700,24 @@ elif [[ "$RUN_ON" = "aws" ]]; then
     --start-time=$(date +%s) --product-descriptions="Linux/UNIX (Amazon VPC)" \
     --query 'SpotPriceHistory[*].{az:AvailabilityZone, price:SpotPrice}'
   )
-  maxprice=$(echo $prices | jq 'max_by(.price) | .price')
-  maxprice="${maxprice/\"/}"
-  maxprice="${maxprice/\"/}"
-  echo "$(date "+%Y-%m-%d %H:%M:%S"): Max price from history: $maxprice"
-  multiplier="1.1"
-  price=$(echo "$maxprice * $multiplier" | bc -l)
+  minprice=$(echo $prices | jq 'min_by(.price) | .price')
+  region=$(echo $prices | jq 'min_by(.price) | .az')
+  region="${region/\"/}"
+  region="${region/\"/}"
+  minprice="${minprice/\"/}"
+  minprice="${minprice/\"/}"
+  zone=${region: -1}
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Min price from history: $minprice in $region (zone: $zone)"
+  multiplier="1.01"
+  price=$(echo "$minprice * $multiplier" | bc -l)
   echo "$(date "+%Y-%m-%d %H:%M:%S"): Increased price: $price"
   EC2_PRICE=$price
+  if [ -z $zone ]; then
+    region='a' #default zone
+  fi
 
   createDockerMachine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
-    60 $AWS_KEY_PAIR $AWS_KEY_PATH;
+    60 $AWS_KEY_PAIR $AWS_KEY_PATH $zone;
   status=$(waitEC2Ready "docker-machine create" "$DOCKER_MACHINE" 1)
   if [ "$status" == "price-too-low" ]
   then
@@ -895,7 +903,7 @@ case "$DB_DUMP_EXT" in
     docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test $OUTPUT_REDIRECT"
     ;;
   pgdmp)
-    docker_exec bash -c "pg_restore -j $CPU_CNT --no-owner --no-privileges -U postgres -d test $MACHINE_HOME/$DB_DUMP_FILENAME"
+    docker_exec bash -c "pg_restore -j $CPU_CNT --no-owner --no-privileges -U postgres -d test $MACHINE_HOME/$DB_DUMP_FILENAME" || true
     ;;
 esac
 END_TIME=$(date +%s);
@@ -980,7 +988,11 @@ if [ ! -z ${WORKLOAD_REAL+x} ] && [ "$WORKLOAD_REAL" != '' ];then
   echo "$(date "+%Y-%m-%d %H:%M:%S"): Execute pgreplay queries..."
   docker_exec psql -U postgres test -c 'create role testuser superuser login;'
   WORKLOAD_FILE_NAME=$(basename $WORKLOAD_REAL)
-  docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
+  if [ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ] && [ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]; then
+    docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED  $MACHINE_HOME/$WORKLOAD_FILE_NAME"
+  else
+    docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
+  fi
 else
   if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
     WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
