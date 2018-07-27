@@ -763,6 +763,8 @@ elif [[ "$RUN_ON" = "aws" ]]; then
     exit 1;
   fi
   echo "$(date "+%Y-%m-%d %H:%M:%S"): Docker $DOCKER_MACHINE is running."
+  echo "  To connect docker machine use:"
+  echo "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
 
   docker-machine ssh $DOCKER_MACHINE "sudo sh -c \"mkdir /home/storage\""
   if [ ${AWS_EC2_TYPE:0:2} == 'i3' ]
