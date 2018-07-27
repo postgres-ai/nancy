@@ -266,6 +266,7 @@ RUN_ON=${RUN_ON:-localhost}
 
 if [ $DEBUG -eq 1 ]; then
   echo "debug: ${DEBUG}"
+  echo "debug timeout: ${DEBUG_TIMEOUT}"
   echo "run_on: ${RUN_ON}"
   echo "container_id: ${CONTAINER_ID}"
   echo "aws_ec2_type: ${AWS_EC2_TYPE}"
