@@ -95,7 +95,7 @@ while true; do
 
   Specify the path to database dump (created by pg_dump) to be used as an input.
 
-  \033[1m--after-db-init-code\033[22m (string)
+  \033[1m--sql-after-db-restore\033[22m (string)
 
   Specify additional commands to be executed after database is initiated (dump
   loaded or snapshot attached).
@@ -199,10 +199,12 @@ while true; do
       DB_PREPARED_SNAPSHOT="$2"; shift 2 ;;
     --db-dump )
       DB_DUMP_PATH="$2"; shift 2 ;;
-    --after-db-init-code )
+    --commands-after-docker-init )
+      AFTER_DOCKER_INIT_CODE="$2"; shift 2 ;;
+    --sql-after-db-restore )
       #s3 url|filename|content
       AFTER_DB_INIT_CODE="$2"; shift 2 ;;
-    --before-db-init-code )
+    --sql-before-db-restore )
       #s3 url|filename|content
       BEFORE_DB_INIT_CODE="$2"; shift 2 ;;
     --workload-real )
@@ -264,6 +266,7 @@ RUN_ON=${RUN_ON:-localhost}
 
 if [ $DEBUG -eq 1 ]; then
   echo "debug: ${DEBUG}"
+  echo "debug timeout: ${DEBUG_TIMEOUT}"
   echo "run_on: ${RUN_ON}"
   echo "container_id: ${CONTAINER_ID}"
   echo "aws_ec2_type: ${AWS_EC2_TYPE}"
@@ -284,6 +287,7 @@ if [ $DEBUG -eq 1 ]; then
   echo "s3-cfg-path: $S3_CFG_PATH"
   echo "tmp-path: $TMP_PATH"
   echo "after-db-init-code: $AFTER_DB_INIT_CODE"
+  echo "after_docker_init_code: $AFTER_DOCKER_INIT_CODE"
   echo "before-db-init-code: $BEFORE_DB_INIT_CODE"
   echo "ebs-volume-size: $EBS_VOLUME_SIZE"
 fi
@@ -466,6 +470,17 @@ function checkParams() {
     fi
   fi
 
+  if [ ! -z ${AFTER_DOCKER_INIT_CODE+x} ]; then
+    checkPath AFTER_DOCKER_INIT_CODE
+    if [ "$?" -ne "0" ]; then
+      #>&2 echo "WARNING: Value given as after_db_init_code: '$AFTER_DOCKER_INIT_CODE' not found as file will use as content"
+      echo "$AFTER_DOCKER_INIT_CODE" > $TMP_PATH/after_docker_init_code_tmp.sh
+      AFTER_DOCKER_INIT_CODE="$TMP_PATH/after_docker_init_code_tmp.sh"
+    else
+      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as commands-after-docker-init will use as filename"
+    fi
+  fi
+
   if [ ! -z ${AFTER_DB_INIT_CODE+x} ]; then
     checkPath AFTER_DB_INIT_CODE
     if [ "$?" -ne "0" ]; then
@@ -473,18 +488,18 @@ function checkParams() {
       echo "$AFTER_DB_INIT_CODE" > $TMP_PATH/after_db_init_code_tmp.sql
       AFTER_DB_INIT_CODE="$TMP_PATH/after_db_init_code_tmp.sql"
     else
-      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as after_db_init_code will use as filename"
+      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as sql-after-db-restore will use as filename"
     fi
   fi
 
   if [ ! -z ${BEFORE_DB_INIT_CODE+x} ]; then
     checkPath BEFORE_DB_INIT_CODE
     if [ "$?" -ne "0" ]; then
-      #>&2 echo "WARNING: Value given as after_db_init_code: '$AFTER_DB_INIT_CODE' not found as file will use as content"
+      #>&2 echo "WARNING: Value given as before_db_init_code: '$BEFORE_DB_INIT_CODE' not found as file will use as content"
       echo "$BEFORE_DB_INIT_CODE" > $TMP_PATH/before_db_init_code_tmp.sql
       BEFORE_DB_INIT_CODE="$TMP_PATH/before_db_init_code_tmp.sql"
     else
-      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as before_db_init_code will use as filename"
+      [ "$DEBUG" -eq "1" ] && echo "DEBUG: Value given as sql-before-db-restore will use as filename"
     fi
   fi
 
@@ -570,7 +585,7 @@ if ([ "$RUN_ON" == "aws" ] && [ ! ${AWS_EC2_TYPE:0:2} == "i3" ] && \
 fi
 
 set -ueo pipefail
-[ $DEBUG -eq 1 ] && set -ueox pipefail # to debug
+[ $DEBUG -eq 1 ] && set -uox pipefail # to debug
 shopt -s expand_aliases
 
 ## Docker tools
@@ -614,6 +629,7 @@ function createDockerMachine() {
     --amazonec2-ssh-keypath="$6" \
     --amazonec2-instance-type=$2 \
     --amazonec2-spot-price=$3 \
+    --amazonec2-zone $7 \
     $1 2> >(grep -v "failed waiting for successful resource state" >&2) &
 #    --amazonec2-block-duration-minutes=$4 \
 }
@@ -641,6 +657,7 @@ function cleanupAndExit {
   echo "$(date "+%Y-%m-%d %H:%M:%S"): Remove temp files..." # if exists
   docker $dockerConfig exec -i ${containerHash} sh -c "sudo rm -rf $MACHINE_HOME"
   rm -f "$TMP_PATH/after_db_init_code_tmp.sql"
+  rm -f "$TMP_PATH/after_docker_init_code_tmp.sh"
   rm -f "$TMP_PATH/before_db_init_code_tmp.sql"
   rm -f "$TMP_PATH/workload_custom_sql_tmp.sql"
   rm -f "$TMP_PATH/target_ddl_do_tmp.sql"
@@ -684,17 +701,24 @@ elif [[ "$RUN_ON" = "aws" ]]; then
     --start-time=$(date +%s) --product-descriptions="Linux/UNIX (Amazon VPC)" \
     --query 'SpotPriceHistory[*].{az:AvailabilityZone, price:SpotPrice}'
   )
-  maxprice=$(echo $prices | jq 'max_by(.price) | .price')
-  maxprice="${maxprice/\"/}"
-  maxprice="${maxprice/\"/}"
-  echo "$(date "+%Y-%m-%d %H:%M:%S"): Max price from history: $maxprice"
-  multiplier="1.1"
-  price=$(echo "$maxprice * $multiplier" | bc -l)
+  minprice=$(echo $prices | jq 'min_by(.price) | .price')
+  region=$(echo $prices | jq 'min_by(.price) | .az')
+  region="${region/\"/}"
+  region="${region/\"/}"
+  minprice="${minprice/\"/}"
+  minprice="${minprice/\"/}"
+  zone=${region: -1}
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Min price from history: $minprice in $region (zone: $zone)"
+  multiplier="1.01"
+  price=$(echo "$minprice * $multiplier" | bc -l)
   echo "$(date "+%Y-%m-%d %H:%M:%S"): Increased price: $price"
   EC2_PRICE=$price
+  if [ -z $zone ]; then
+    region='a' #default zone
+  fi
 
   createDockerMachine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
-    60 $AWS_KEY_PAIR $AWS_KEY_PATH;
+    60 $AWS_KEY_PAIR $AWS_KEY_PATH $zone;
   status=$(waitEC2Ready "docker-machine create" "$DOCKER_MACHINE" 1)
   if [ "$status" == "price-too-low" ]
   then
@@ -740,6 +764,8 @@ elif [[ "$RUN_ON" = "aws" ]]; then
     exit 1;
   fi
   echo "$(date "+%Y-%m-%d %H:%M:%S"): Docker $DOCKER_MACHINE is running."
+  echo "  To connect docker machine use:"
+  echo "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
 
   docker-machine ssh $DOCKER_MACHINE "sudo sh -c \"mkdir /home/storage\""
   if [ ${AWS_EC2_TYPE:0:2} == 'i3' ]
@@ -839,6 +865,19 @@ function copyFile() {
 ## Apply machine features
 # Dump
 sleep 2 # wait for postgres up&running
+OP_START_TIME=$(date +%s);
+if ([ ! -z ${AFTER_DOCKER_INIT_CODE+x} ] && [ "$AFTER_DOCKER_INIT_CODE" != "" ])
+then
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): Apply code after docker init"
+  AFTER_DOCKER_INIT_CODE_FILENAME=$(basename $AFTER_DOCKER_INIT_CODE)
+  copyFile $AFTER_DOCKER_INIT_CODE
+  # --set ON_ERROR_STOP=on
+  docker_exec bash -c "chmod +x $MACHINE_HOME/$AFTER_DOCKER_INIT_CODE_FILENAME"
+  docker_exec sh $MACHINE_HOME/$AFTER_DOCKER_INIT_CODE_FILENAME
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  echo "$(date "+%Y-%m-%d %H:%M:%S"): After docker init code applied for $DURATION."
+fi
 
 OP_START_TIME=$(date +%s);
 if ([ ! -z ${BEFORE_DB_INIT_CODE+x} ] && [ "$BEFORE_DB_INIT_CODE" != "" ])
@@ -854,6 +893,8 @@ then
 fi
 OP_START_TIME=$(date +%s);
 echo "$(date "+%Y-%m-%d %H:%M:%S"): Restore database dump"
+#CPU_CNT=$(cat /proc/cpuinfo | grep processor | wc -l)
+CPU_CNT=$(docker_exec bash -c "cat /proc/cpuinfo | grep processor | wc -l") # for execute in docker
 case "$DB_DUMP_EXT" in
   sql)
     docker_exec bash -c "cat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test $OUTPUT_REDIRECT"
@@ -863,6 +904,9 @@ case "$DB_DUMP_EXT" in
     ;;
   gz)
     docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test $OUTPUT_REDIRECT"
+    ;;
+  pgdmp)
+    docker_exec bash -c "pg_restore -j $CPU_CNT --no-owner --no-privileges -U postgres -d test $MACHINE_HOME/$DB_DUMP_FILENAME" || true
     ;;
 esac
 END_TIME=$(date +%s);
@@ -938,7 +982,7 @@ fi
 
 # Clear statistics and log
 echo "$(date "+%Y-%m-%d %H:%M:%S"): Execute vacuumdb..."
-docker_exec vacuumdb -U postgres test -j $(cat /proc/cpuinfo | grep processor | wc -l) --analyze
+docker_exec vacuumdb -U postgres test -j $CPU_CNT --analyze
 docker_exec bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
 # Execute workload
 OP_START_TIME=$(date +%s);
@@ -947,7 +991,11 @@ if [ ! -z ${WORKLOAD_REAL+x} ] && [ "$WORKLOAD_REAL" != '' ];then
   echo "$(date "+%Y-%m-%d %H:%M:%S"): Execute pgreplay queries..."
   docker_exec psql -U postgres test -c 'create role testuser superuser login;'
   WORKLOAD_FILE_NAME=$(basename $WORKLOAD_REAL)
-  docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
+  if [ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ] && [ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]; then
+    docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED  $MACHINE_HOME/$WORKLOAD_FILE_NAME"
+  else
+    docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
+  fi
 else
   if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
     WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
@@ -963,26 +1011,30 @@ echo "$(date "+%Y-%m-%d %H:%M:%S"): Workload executed for $DURATION."
 OP_START_TIME=$(date +%s);
 echo "$(date "+%Y-%m-%d %H:%M:%S"): Prepare JSON log..."
 docker_exec bash -c "/root/pgbadger/pgbadger \
-  -j $(cat /proc/cpuinfo | grep processor | wc -l) \
+  -j $CPU_CNT \
   --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr \
   -o $MACHINE_HOME/$ARTIFACTS_FILENAME.json"
   #2> >(grep -v "install the Text::CSV_XS" >&2)
 
 docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz"
+docker_exec bash -c "gzip -c /etc/postgresql/$PG_VERSION/main/postgresql.conf > $MACHINE_HOME/$ARTIFACTS_FILENAME.conf.gz"
 echo "$(date "+%Y-%m-%d %H:%M:%S"): Save artifcats..."
 if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
     docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
     docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
+    docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.conf.gz $ARTIFACTS_DESTINATION/
 else
     if [ "$RUN_ON" = "localhost" ]; then
       docker cp $containerHash:$MACHINE_HOME/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
       docker cp $containerHash:$MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
+      docker cp $containerHash:$MACHINE_HOME/$ARTIFACTS_FILENAME.conf.gz $ARTIFACTS_DESTINATION/
       # TODO option: ln / cp
       #cp "$TMP_PATH/nancy_$containerHash/"$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
       #cp "$TMP_PATH/nancy_$containerHash/"$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
     elif [ "$RUN_ON" = "aws" ]; then
       docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
       docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
+      docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME.conf.gz $ARTIFACTS_DESTINATION/
     else
       >&2 echo "ASSERT: must not reach this point"
       exit 1
