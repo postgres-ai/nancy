@@ -574,7 +574,7 @@ if ([ "$RUN_ON" == "aws" ] && [ ! ${AWS_EC2_TYPE:0:2} == "i3" ] && \
       dumpFileSize=${dumpFileSize// /}
       [ $DEBUG -eq 1 ] && msg "S3 file size: $dumpFileSize"
     else
-      dumpFileSize=$(stat -c%s "$DB_DUMP_PATH")
+      dumpFileSize=$(wc -c "$DB_DUMP_PATH" | awk '{print $1}')
     fi
     let dumpFileSize=dumpFileSize*$EBS_SIZE_MULTIPLIER
     let minSize=300*$KB*$KB*$KB
