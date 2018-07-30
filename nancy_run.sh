@@ -553,7 +553,7 @@ function checkParams() {
     fi
   else
     if [[ ! ${AWS_EC2_TYPE:0:2} == 'i3' ]]; then
-      err "WARNING: ebs-volume-size is not given, will be calculate on base of dump size."
+      err "WARNING: ebs-volume-size is not given, will be calculated based on the dump size."
     fi
   fi
 }
@@ -583,9 +583,9 @@ if ([ "$RUN_ON" == "aws" ] && [ ! ${AWS_EC2_TYPE:0:2} == "i3" ] && \
         let ebsSize=$dumpFileSize
         ebsSize=$(numfmt --to-unit=G $ebsSize)
         EBS_VOLUME_SIZE=$ebsSize
-        [ $DEBUG -eq 1 ] && msg "EBS volume size: $EBS_VOLUME_SIZE Gb"
+        [ $DEBUG -eq 1 ] && msg "EBS volume size: $EBS_VOLUME_SIZE GB"
     else
-      msg "EBS volume is not require."
+      msg "EBS volume is not required."
     fi
 fi
 
