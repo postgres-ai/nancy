@@ -577,7 +577,7 @@ if ([ "$RUN_ON" == "aws" ] && [ ! ${AWS_EC2_TYPE:0:2} == "i3" ] && \
       dumpFileSize=$(stat -c%s "$DB_DUMP_PATH")
     fi
     let dumpFileSize=dumpFileSize*$EBS_SIZE_MULTIPLIER
-    let minSize=300 * $KB * $KB * $KB
+    let minSize=300*$KB*$KB*$KB
     ebsSize=$minSize # 300 GB
     if [ "$dumpFileSize" -gt "$minSize" ]; then
         let ebsSize=$dumpFileSize
