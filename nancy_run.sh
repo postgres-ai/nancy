@@ -548,7 +548,7 @@ function checkParams() {
   if [ ! -z ${EBS_VOLUME_SIZE+x} ]; then
     re='^[0-9]+$'
     if ! [[ $EBS_VOLUME_SIZE =~ $re ]] ; then
-      err "ERROR: ebs-volume-size must be numeric integer value."
+      err "ERROR: ebs-volume-size must be integer."
       exit 1
     fi
   else

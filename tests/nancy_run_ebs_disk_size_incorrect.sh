@@ -7,7 +7,7 @@ output=$(${BASH_SOURCE%/*}/../nancy run \
   --tmp-path $srcDir/tmp \
   2>&1)
 
-if [[ $output =~ "WARNING: ebs-volume-size is not required for aws i3 aws instances and local execution." ]]; then
+if [[ $output =~ "ERROR: ebs-volume-size must be integer." ]]; then
   echo -e "\e[36mOK\e[39m"
 else
   >&2 echo -e "\e[31mFAILED\e[39m"
