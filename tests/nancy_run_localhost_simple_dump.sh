@@ -1,17 +1,16 @@
 #!/bin/bash
 
-thisDir="$(dirname "$(readlink -f "$BASH_SOURCE")")"
-parentDir="$(dirname "$thisDir")"
-srcDir="$parentDir/.circleci"
-if [ ! -d "$srcDir/tmp" ]; then
-  mkdir "$srcDir/tmp"
-fi
-nancyRun="$parentDir/nancy_run.sh"
+realpath() {
+  [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
+}
+
+src_dir=$(dirname $(dirname $(realpath "$0")))"/.circleci"
 
 output=$(
-  $nancyRun --workload-custom-sql "file://$srcDir/custom.sql" \
-    --db-dump "file://$srcDir/test.dump.bz2" \
-    --tmp-path $srcDir/tmp 2>&1
+  ${BASH_SOURCE%/*}/../nancy run \
+    --workload-custom-sql "file://$src_dir/custom.sql" \
+    --db-dump "file://$src_dir/test.dump.bz2" \
+    --tmp-path $src_dir/tmp 2>&1
 )
 
 regex="Errors:[[:blank:]]*0"
