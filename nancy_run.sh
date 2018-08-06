@@ -410,8 +410,7 @@ function checkPath() {
     return 0 # we do not actually check S3 paths at the moment
   elif [[ $path =~ "file://" ]]; then
     dbg "$1 looks like a local file path."
-    curdir=$(pwd)
-    path=$curdir/${path/file:\/\//}
+    path=${path/file:\/\//}
     if [[ -f $path ]]; then
       dbg "$path found."
       eval "$1=\"$path\"" # update original variable
@@ -729,7 +728,9 @@ function cleanupAndExit {
     sleep $KEEP_ALIVE
   fi
   msg "Remove temp files..." # if exists
-  docker $dockerConfig exec -i ${containerHash} bash -c "sudo rm -rf $MACHINE_HOME"
+  if [[ ! -z "${dockerConfig+x}" ]]; then
+    docker $dockerConfig exec -i ${containerHash} bash -c "sudo rm -rf $MACHINE_HOME"
+  fi
   rm -rf "$TMP_PATH"
   if [[ "$RUN_ON" == "localhost" ]]; then
     msg "Remove docker container"
@@ -750,7 +751,7 @@ function cleanupAndExit {
 trap cleanupAndExit EXIT
 
 if [[ "$RUN_ON" == "localhost" ]]; then
-  if [ -z ${CONTAINER_ID+x} ]; then
+  if [[ -z ${CONTAINER_ID+x} ]]; then
     containerHash=$(docker run --name="pg_nancy_${CURRENT_TS}" \
       -v $TMP_PATH:/machine_home \
       -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}" \
