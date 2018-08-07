@@ -30,6 +30,7 @@ Database experiments are needed when you:
 
 Currently Supported Features
 ===
+* Works anywhere where Docker can run (checked: Linux Ubuntu/Debian, macOS)
 * Experiments are conducted in a Docker container with extended Postgres setup
 * Supported Postgres versions: 9.6, 10
 * Postgres config specified via options, may be partial
@@ -77,8 +78,8 @@ In the minimal configuration, only two steps are needed:
 2) Clone this repo and adjust `$PATH`:
 ```bash
 git clone https://github.com/startupturbo/nancy
-echo "export PATH=\$PATH:"$(pwd)"/nancy" >> ~/.bashrc
-source ~/.bashrc
+echo "export PATH=\$PATH:"$(pwd)"/nancy" >> ~/.bash_profile
+source ~/.bash_profile
 ```
 
 Additionally, to allow use of AWS EC2 instances:
@@ -99,36 +100,48 @@ nancy run help
 
 "Hello World!"
 ===
-Locally:
+Locally, on any Linux or macOS machine:
 ```bash
-echo "create table hello_world as select i::int4 from generate_series(1, (10^6)::int) _(i);" > ./sample.dump
+echo "create table hello_world as select i from generate_series(1, (10^6)::int) _(i);" \
+  | bzip2 > ./sample.dump.bz2
 
 # "Clean run": w/o index
 # (seqscan is expected, total time ~150ms, depending on resources)
 nancy run \
-  --run-on localhost \
   --db-dump file://$(pwd)/sample.dump.bz2 \
-  --tmp-path /tmp \
-  --workload-custom-sql "select count(1) from hello_world where i between 100000 and 100010;"
+  --workload-custom-sql "select i from hello_world where i between 10 and 20;"
 
 # Now check how a regular btree index affects performance
 # (expected total time: ~0.05ms)
 nancy run \
-  --run-on localhost \
   --db-dump file://$(pwd)/sample.dump.bz2 \
-  --tmp-path /tmp \
-  --workload-custom-sql "select count(1) from hello_world where i between 100000 and 100010;" \
+  --workload-custom-sql "select i from hello_world where i between 10 and 20;" \
   --target-ddl-do "create index i_hello_world_i on hello_world(i);" \
   --target-ddl-undo "drop index i_hello_world_i;"
 ```
 
-On AWS EC2:
+AWS EC2:
 ```bash
 nancy run \
   --run-on aws \
   --aws-ec2-type "i3.large" \
-  --aws-keypair-name awskey --aws-ssh-key-path file://$(echo ~)/.ssh/awskey.pem  \
-  --db-dump "create table a as select i::int4 from generate_series(1, (10^9)::int) _(i);" \
-  --workload-custom-sql "select count(1) from a where i between 10 and 20;"
+  --aws-keypair-name awskey \
+  --aws-ssh-key-path file://$(echo ~)/.ssh/awskey.pem  \
+  --db-dump "create table hello_world as select i from generate_series(1, (10^6)::int) _(i);" \
+  --workload-custom-sql "select i from hello_world where i between 10 and 20;"
 ```
 
+Additional notes
+===
+If you experience issues with running (locally) `nancy run` inside `screen` or
+`tmux`, double-check that Docker is running and add your user to the `docker`
+group:
+```bash
+usermod -aG docker ${USER}
+```
+
+On MacOS, it is recommended to specify `--tmp-path` explicitly, similar to this:
+```
+mkdir ./tmp
+nancy run ... --tmp-path "$(pwd)/tmp"
+```
