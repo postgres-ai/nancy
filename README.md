@@ -116,8 +116,8 @@ nancy run \
 nancy run \
   --db-dump file://$(pwd)/sample.dump.bz2 \
   --workload-custom-sql "select i from hello_world where i between 10 and 20;" \
-  --target-ddl-do "create index i_hello_world_i on hello_world(i);" \
-  --target-ddl-undo "drop index i_hello_world_i;"
+  --delta-sql-do "create index i_hello_world_i on hello_world(i);" \
+  --delta-sql-undo "drop index i_hello_world_i;"
 ```
 
 AWS EC2:
