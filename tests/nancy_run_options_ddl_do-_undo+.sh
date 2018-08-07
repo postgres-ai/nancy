@@ -8,12 +8,12 @@ read -r -d '' params <<PARAMS
   --workload-real "s3://somebucket/db.sql.30min.pgreplay" \
   --tmp-path tmp \
   --db-dump "s3://somebucket/dump.sql.bz2" \
-  --target-ddl-undo "drop\tindex\ti_zzz;"
+  --delta-sql-undo "drop\tindex\ti_zzz;"
 PARAMS
 
 output=$(${BASH_SOURCE%/*}/../nancy_run.sh $params 2>&1)
 
-if [[ $output =~ "ERROR: DDL code must have do and undo part." ]]; then
+if [[ $output =~ "must be also specified" ]]; then
   echo -e "\e[36mOK\e[39m"
 else
   >&2 echo -e "\e[31mFAILED\e[39m"
