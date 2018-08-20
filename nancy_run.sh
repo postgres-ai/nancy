@@ -16,6 +16,7 @@ KEEP_ALIVE=0
 VERBOSE_OUTPUT_REDIRECT=" > /dev/null"
 EBS_SIZE_MULTIPLIER=15
 POSTGRES_VERSION_DEFAULT=10
+AWS_BLOCK_DURATION=0 # by default no time limit
 
 #######################################
 # Print an error/warning/notice message to STDERR
@@ -339,6 +340,8 @@ while true; do
       AWS_SSH_KEY_PATH="$2"; shift 2 ;;
     --aws-ebs-volume-size )
         AWS_EBS_VOLUME_SIZE="$2"; shift 2 ;;
+    --aws-block-duration )
+        AWS_BLOCK_DURATION=$2; shift 2 ;;
 
     --s3cfg-path )
       S3_CFG_PATH="$2"; shift 2 ;;
@@ -405,6 +408,7 @@ function checkPath() {
     return 1
   fi
   eval path=\$$1
+
   if [[ $path =~ "s3://" ]]; then
     dbg "$1 looks like a S3 file path. Warning: Its presence will not be checked!"
     return 0 # we do not actually check S3 paths at the moment
@@ -420,7 +424,7 @@ function checkPath() {
       exit 1
     fi
   else
-    dbg "Value of $2 is not a file path. Use its value as a content."
+    dbg "Value of $1 is not a file path. Use its value as a content."
     return -1 #
   fi
 }
@@ -441,6 +445,19 @@ if [[ "$RUN_ON" == "aws" ]]; then
     err "ERROR: AWS EC2 Instance type not given."
     exit 1
   fi
+  if [[ -z ${AWS_BLOCK_DURATION+x} ]]; then
+    err "NOTICE: Container live time duration is not given."
+  else
+    case $AWS_BLOCK_DURATION in
+      0|60|120|240|300|360)
+        dbg "Container live time duration is $AWS_BLOCK_DURATION. "
+      ;;
+      *)
+        err "Container live time duration (--aws-block-duration) has wrong value: $AWS_BLOCK_DURATION. Available values of AWS spot instance duration in minutes is 60, 120, 180, 240, 300, or 360)."
+        exit 1
+      ;;
+    esac
+  fi
 elif [[ "$RUN_ON" == "localhost" ]]; then
   if [[ ! -z ${AWS_KEYPAIR_NAME+x} ]] || [[ ! -z ${AWS_SSH_KEY_PATH+x} ]] ; then
     err "ERROR: options '--aws-keypair-name' and '--aws-ssh-key-path' must be used with '--run on aws'."
@@ -452,6 +469,10 @@ elif [[ "$RUN_ON" == "localhost" ]]; then
   fi
   if [[ ! -z ${AWS_EBS_VOLUME_SIZE+x} ]]; then
     err "ERROR: option '--aws-ebs-volume-size' must be used with '--run on aws'."
+    exit 1
+  fi
+  if [[ "$AWS_BLOCK_DURATION" != "0" ]]; then
+    err "ERROR: option '--aws-block-duration' must be used with '--run on aws'."
     exit 1
   fi
 else
@@ -522,7 +543,7 @@ else
   if [[ "$?" -ne "0" ]]; then # TODO(NikolayS) support file:// and s3://
     #err "WARNING: Value given as pg_config: '$PG_CONFIG' not found as file will use as content"
     echo "$PG_CONFIG" > $TMP_PATH/pg_config_tmp.sql
-    WORKLOAD_CUSTOM_SQL="$TMP_PATH/pg_config_tmp.sql" ## TODO(NikolayS) <<< bug/typo?
+    PG_CONFIG="$TMP_PATH/pg_config_tmp.sql"
   fi
 fi
 
@@ -694,6 +715,7 @@ function waitEC2Ready() {
 #  4) duration (minutes)
 #  5) key pair name
 #  6) key path
+#  7) zone
 function createDockerMachine() {
   msg "Attempt to create a docker machine..."
   docker-machine create --driver=amazonec2 \
@@ -702,9 +724,9 @@ function createDockerMachine() {
     --amazonec2-ssh-keypath="$6" \
     --amazonec2-instance-type=$2 \
     --amazonec2-spot-price=$3 \
-    --amazonec2-zone $7 \
+    --amazonec2-block-duration-minutes=$4 \
+    --amazonec2-zone=$7 \
     $1 2> >(grep -v "failed waiting for successful resource state" >&2) &
-#    --amazonec2-block-duration-minutes=$4 \
 }
 
 function destroyDockerMachine() {
@@ -786,7 +808,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
   fi
 
   createDockerMachine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
-    60 $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $zone;
+    $AWS_BLOCK_DURATION $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $zone;
   status=$(waitEC2Ready "docker-machine create" "$DOCKER_MACHINE" 1)
   if [[ "$status" == "price-too-low" ]]; then
     msg "Price $price is too low for $AWS_EC2_TYPE instance. Getting the up-to-date value from the error message..."
@@ -815,7 +837,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
       #try start docker machine name with new price
       msg "Attempt to create a new docker machine: $DOCKER_MACHINE with price: $EC2_PRICE."
       createDockerMachine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
-        60 $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH;
+        $AWS_BLOCK_DURATION $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $zone;
       waitEC2Ready "docker-machine create" "$DOCKER_MACHINE" 0;
     else
       err "$(date "+%Y-%m-%d %H:%M:%S") ERROR: Cannot determine actual price for the instance $AWS_EC2_TYPE."
