@@ -452,7 +452,6 @@ while [ $# -gt 0 ]; do
     --pg-version )
       PG_VERSION="$2"; shift 2 ;;
     --pg-config )
-      #Still unsupported TODO(NikolayS) top priority
       PG_CONFIG="$2"; shift 2;;
     --db-prepared-snapshot )
       #Still unsupported
@@ -1018,15 +1017,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
   msg "  To connect docker machine use:"
   msg "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
 
-  containerHash=$( \
-    docker `docker-machine config $DOCKER_MACHINE` run \
-      --name="pg_nancy_${CURRENT_TS}" \
-      -v /home/ubuntu:/machine_home \
-      -v /home/storage:/storage \
-      -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}"
-  )
-  dockerConfig=$(docker-machine config $DOCKER_MACHINE)
-
+  docker-machine ssh $DOCKER_MACHINE "sudo sh -c \"mkdir /home/storage\""
   if [[ "${AWS_EC2_TYPE:0:2}" == "i3" ]]; then
     msg "Using high-speed NVMe SSD disks"
     # Init i3's NVMe storage, mounting one of the existing volumes to /storage
@@ -1059,6 +1050,15 @@ elif [[ "$RUN_ON" == "aws" ]]; then
       docker-machine ssh $DOCKER_MACHINE sudo mount /dev/xvdf /home/storage
     fi
   fi
+
+  containerHash=$( \
+    docker `docker-machine config $DOCKER_MACHINE` run \
+      --name="pg_nancy_${CURRENT_TS}" \
+      -v /home/ubuntu:/machine_home \
+      -v /home/storage:/storage \
+      -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}"
+  )
+  dockerConfig=$(docker-machine config $DOCKER_MACHINE)
 else
   err "ASSERT: must not reach this point"
   exit 1
