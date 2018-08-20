@@ -8,7 +8,7 @@
 
 # Globals (some of them can be modified below)
 KB=1024
-DEBUG=0
+DEBUG=false
 CURRENT_TS=$(date +%Y%m%d_%H%M%S%N_%Z)
 DOCKER_MACHINE="nancy-$CURRENT_TS"
 DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
@@ -41,7 +41,9 @@ function err() {
 #   None
 #######################################
 function dbg() {
-  [[ "$DEBUG" -eq "1" ]] && msg "DEBUG: $@"
+  if $DEBUG ; then
+    msg "DEBUG: $@"
+  fi
 }
 
 #######################################
@@ -57,8 +59,166 @@ function msg() {
   echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] $@"
 }
 
-# Process CLI parameters
-while true; do
+#######################################
+# Check path to file/directory.
+# Globals:
+#   None
+# Arguments:
+#   (text) name of the variable holding the
+#          file path (starts with 'file://' or 's3://') or any string
+# Returns:
+#   (integer) for input starting with 's3://' always returns 0
+#             for 'file://': 0 if file exists locally, error if it doesn't
+#             1 if the input is empty,
+#             -1 otherwise.
+#######################################
+function checkPath() {
+  if [[ -z $1 ]]; then
+    return 1
+  fi
+  eval path=\$$1
+  if [[ $path =~ "s3://" ]]; then
+    dbg "$1 looks like a S3 file path. Warning: Its presence will not be checked!"
+    return 0 # we do not actually check S3 paths at the moment
+  elif [[ $path =~ "file://" ]]; then
+    dbg "$1 looks like a local file path."
+    path=${path/file:\/\//}
+    if [[ -f $path ]]; then
+      dbg "$path found."
+      eval "$1=\"$path\"" # update original variable
+      return 0 # file found
+    else
+      err "File '$path' is not found locally."
+      exit 1
+    fi
+  else
+    dbg "Value of $1 is not a file path. Use its value as a content."
+    return -1 #
+  fi
+}
+
+### Docker tools ###
+
+#######################################
+# Create Docker machine using an AWS EC2 spot instance
+# See also: https://docs.docker.com/machine/reference/create/
+# Globals:
+#   None
+# Arguments:
+#   (text) [1] Machine name
+#   (text) [2] EC2 Instance type
+#   (text) [3] Spot instance bid price (in dollars)
+#   (int)  [4] AWS spot instance duration in minutes (60, 120, 180, 240, 300,
+#              or 360)
+#   (text) [5] AWS keypair to use
+#   (text) [6] Path to Private Key file to use for instance
+#              Matching public key with .pub extension should exist
+#   (text) [7] The AWS zone to launch the instance in (one of a,b,c,d,e) 
+# Returns:
+#   None
+#######################################
+function create_ec2_docker_machine() {
+  msg "Attempt to create a docker machine in zone $7 with price $3..."
+  docker-machine create --driver=amazonec2 \
+    --amazonec2-request-spot-instance \
+    --amazonec2-instance-type=$2 \
+    --amazonec2-spot-price=$3 \
+    --amazonec2-block-duration-minutes=$4 \
+    --amazonec2-keypair-name="$5" \
+    --amazonec2-ssh-keypath="$6" \
+    --amazonec2-zone $7 \
+    $1 2> >(grep -v "failed waiting for successful resource state" >&2) &
+}
+
+#######################################
+# Order to destroy Docker machine (any platform)
+# See also: https://docs.docker.com/machine/reference/rm/
+# Globals:
+#   None
+# Arguments:
+#   (text) Machine name
+# Returns:
+#   None
+#######################################
+function destroy_docker_machine() {
+  # If spot request wasn't fulfilled, there is no associated instance,
+  # so "docker-machine rm" will show an error, which is safe to ignore.
+  # We better filter it out to avoid any confusions.
+  # What is used here is called "process substitution",
+  # see https://www.gnu.org/software/bash/manual/bash.html#Process-Substitution
+  # The same trick is used in create_ec2_docker_machine() to filter out errors
+  # when we have "price-too-low" attempts, such errors come in few minutes
+  # after an attempt and are generally unexpected by user.
+  cmdout=$(docker-machine rm --force $1 2> >(grep -v "unknown instance" >&2) )
+  msg "Termination requested for machine, current status: $cmdout"
+}
+
+#######################################
+# Wait until EC2 instance with Docker maching is up and running
+# Globals:
+#   None
+# Arguments:
+#   (text) Machine name
+# Returns:
+#   None
+#######################################
+function wait_ec2_docker_machine_ready() {
+  machine=$1
+  local check_price=$2
+  while true; do
+    sleep 5;
+    local stop_now=1
+    ps ax | grep "docker-machine create" | grep "$machine" >/dev/null && stop_now=0
+    ((stop_now==1)) && return 0
+    if $check_price ; then
+      status=$( \
+        aws ec2 describe-spot-instance-requests \
+        --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" \
+        | jq  '.SpotInstanceRequests | sort_by(.CreateTime) | .[] | .Status.Code' \
+        | tail -n 1
+      )
+      if [[ "$status" == "\"price-too-low\"" ]]; then
+        echo "price-too-low"; # this value is result of function (not message for user), to be checked later
+        return 0
+      fi
+    fi
+  done
+}
+
+function cleanup_and_exit {
+  if  [ "$KEEP_ALIVE" -gt "0" ]; then
+    msg "Debug timeout is $KEEP_ALIVE seconds – started."
+    msg "  To connect to the docker machine use:"
+    msg "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
+    sleep $KEEP_ALIVE
+  fi
+  msg "Remove temp files..." # if exists
+  if [[ ! -z "${dockerConfig+x}" ]]; then
+    docker $dockerConfig exec -i ${containerHash} bash -c "sudo rm -rf $MACHINE_HOME"
+  fi
+  rm -rf "$TMP_PATH"
+  if [[ "$RUN_ON" == "localhost" ]]; then
+    msg "Remove docker container"
+    docker container rm -f $containerHash
+  elif [[ "$RUN_ON" == "aws" ]]; then
+    destroy_docker_machine $DOCKER_MACHINE
+    if [ ! -z ${VOLUME_ID+x} ]; then
+        msg "Wait and delete volume $VOLUME_ID"
+        sleep 60 # wait for the machine to be removed
+        delvolout=$(aws ec2 delete-volume --volume-id $VOLUME_ID)
+        msg "Volume $VOLUME_ID deleted"
+    fi
+  else
+    err "ASSERT: must not reach this point"
+    exit 1
+  fi
+}
+
+#######################################
+# # # # #         MAIN        # # # # #  
+#######################################
+# Process CLI options
+while [ $# -gt 0 ]; do
   case "$1" in
     help )
       echo -e "\033[1mCOMMAND\033[22m
@@ -278,7 +438,7 @@ while true; do
     " | less -RFX
     exit ;;
     -d | --debug )
-      DEBUG=1;
+      DEBUG=true;
       VERBOSE_OUTPUT_REDIRECT='';
       shift ;;
     --keep-alive )
@@ -362,7 +522,7 @@ done
 
 RUN_ON=${RUN_ON:-localhost}
 
-if [[ $DEBUG -eq 1 ]]; then
+if $DEBUG ; then
   echo "DEBUG: ${DEBUG}"
   echo "KEEP_ALIVE: ${KEEP_ALIVE}"
   echo "RUN_ON: ${RUN_ON}"
@@ -680,8 +840,11 @@ if [[ "$RUN_ON" == "aws" ]] && [[ ! ${AWS_EC2_TYPE:0:2} == "i3" ]] \
   fi
 fi
 
-set -ueo pipefail
-[[ $DEBUG -eq 1 ]] && set -uox pipefail # to debug
+if $DEBUG ; then 
+  set -xueo pipefail
+else
+  set -ueo pipefail
+fi
 shopt -s expand_aliases
 
 ## Docker tools
@@ -792,7 +955,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
     --query 'SpotPriceHistory[*].{az:AvailabilityZone, price:SpotPrice}'
   )
   minprice=$(echo $prices | jq 'min_by(.price) | .price')
-  region=$(echo $prices | jq 'min_by(.price) | .az')
+  region=$(echo $prices | jq 'min_by(.price) | .az') #TODO(NikolayS) double-check zones&regions
   region="${region/\"/}"
   region="${region/\"/}"
   minprice="${minprice/\"/}"
@@ -813,14 +976,14 @@ elif [[ "$RUN_ON" == "aws" ]]; then
   if [[ "$status" == "price-too-low" ]]; then
     msg "Price $price is too low for $AWS_EC2_TYPE instance. Getting the up-to-date value from the error message..."
 
-    #destroyDockerMachine $DOCKER_MACHINE
+    #destroy_docker_machine $DOCKER_MACHINE
     # "docker-machine rm" doesn't work for "price-too-low" spot requests,
     # so we need to clean up them via aws cli interface directly
     aws ec2 describe-spot-instance-requests \
       --filters 'Name=status-code,Values=price-too-low' \
     | grep SpotInstanceRequestId | awk '{gsub(/[,"]/, "", $2); print $2}' \
-    | xargs --no-run-if-empty aws ec2 cancel-spot-instance-requests \
-      --spot-instance-request-ids
+    | xargs aws ec2 cancel-spot-instance-requests \
+      --spot-instance-request-ids || true
 
     corrrectPriceForLastFailedRequest=$( \
       aws ec2 describe-spot-instance-requests \
@@ -840,7 +1003,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
         $AWS_BLOCK_DURATION $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $zone;
       waitEC2Ready "docker-machine create" "$DOCKER_MACHINE" 0;
     else
-      err "$(date "+%Y-%m-%d %H:%M:%S") ERROR: Cannot determine actual price for the instance $AWS_EC2_TYPE."
+      err "ERROR: Cannot determine actual price for the instance $AWS_EC2_TYPE."
       exit 1;
     fi
   fi
