@@ -291,7 +291,6 @@ while true; do
     --pg-version )
       PG_VERSION="$2"; shift 2 ;;
     --pg-config )
-      #Still unsupported TODO(NikolayS) top priority
       PG_CONFIG="$2"; shift 2;;
     --db-prepared-snapshot )
       #Still unsupported
@@ -522,7 +521,7 @@ else
   if [[ "$?" -ne "0" ]]; then # TODO(NikolayS) support file:// and s3://
     #err "WARNING: Value given as pg_config: '$PG_CONFIG' not found as file will use as content"
     echo "$PG_CONFIG" > $TMP_PATH/pg_config_tmp.sql
-    WORKLOAD_CUSTOM_SQL="$TMP_PATH/pg_config_tmp.sql" ## TODO(NikolayS) <<< bug/typo?
+    PG_CONFIG="$TMP_PATH/pg_config_tmp.sql"
   fi
 fi
 
