@@ -8,43 +8,41 @@ case "$1" in
         echo -e "
 \033[1mDESCRIPTION\033[22m
 
-  The Nancy Command Line Interface is a unified way to manage
-  database experiments.
+  The Nancy Command Line Interface is a unified way to manage database
+  experiments.
 
-  Nancy is a member of Postgres.ai's Artificial DBA team
-  responsible for conducting experiments.
+  Nancy is a member of Postgres.ai's Artificial DBA team responsible for
+  conducting experiments.
 
 \033[1mSYNOPSYS\033[22m
 
-    nancy <command> [parameters]
+  nancy <command> [parameters]
 
 \033[1mAVAILABLE COMMANDS\033[22m
 
   * help
 
-  * prepare-database
+  * prepare-database (WIP)
 
   * prepare-workload
 
   * run
-" | less -RFX
-        exit 1;
-        ;;
-    * )
-        word="${1/-/_}"
-        if [ ! -f "${BASH_SOURCE%/*}/nancy_$word.sh" ]
-        then
-            >&2 echo "ERROR: Unknown command."
-            >&2 echo "Try 'nancy help'"
-            exit 1;
-        fi
-        cmd="${BASH_SOURCE%/*}/nancy_$word.sh"
-        shift;
-    ;;
+  " | less -RFX
+  exit 1;
+  ;;
+* )
+  word="${1/-/_}"
+  if [[ ! -f "${BASH_SOURCE%/*}/nancy_$word.sh" ]]; then
+    >&2 echo "ERROR: Unknown command: $word."
+    >&2 echo "Try 'nancy help'"
+    exit 1
+  fi
+  cmd="${BASH_SOURCE%/*}/nancy_$word.sh"
+  shift;
+  ;;
 esac
 
-while [ -n "$1" ]
-do
+while [ -n "$1" ]; do
   if [ "$1" == "--debug" ]; then
     DEBUG=1
   fi
@@ -56,6 +54,6 @@ do
   shift
 done
 
-[ "$DEBUG" -eq "1" ] &&  echo "CMD: $cmd"
+[[ "$DEBUG" -eq "1" ]] && echo "CMD: $cmd"
 
-eval $cmd
+eval "$cmd"

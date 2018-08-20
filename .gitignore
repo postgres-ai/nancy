@@ -1,3 +1,4 @@
 .circleci/tmp
-./*.json
-./*.gz
+docker/tmp
+*.gz
+*.json
