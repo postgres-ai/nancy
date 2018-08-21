@@ -5,6 +5,7 @@ read -r -d '' params <<PARAMS
   --aws-ssh-key-path "/home/someuser/.ssh/awskey.pem" \
   --aws-ec2-type "r4.large" \
   --s3cfg-path "/home/someuser/.s3cfg" \
+  --aws-region "us-east-1" \
   --workload-real "s3://somebucket/db.sql.30min.pgreplay" \
   --tmp-path tmp \
   --db-dump "s3://somebucket/dump.sql.bz2" \
