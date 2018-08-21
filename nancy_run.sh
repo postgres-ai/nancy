@@ -71,7 +71,7 @@ function msg() {
 #             1 if the input is empty,
 #             -1 otherwise.
 #######################################
-function checkPath() {
+function check_path() {
   if [[ -z $1 ]]; then
     return 1
   fi
@@ -112,7 +112,8 @@ function checkPath() {
 #   (text) [5] AWS keypair to use
 #   (text) [6] Path to Private Key file to use for instance
 #              Matching public key with .pub extension should exist
-#   (text) [7] The AWS zone to launch the instance in (one of a,b,c,d,e) 
+#   (text) [7] The AWS region to launch the instance (for example: us-east-1, eu-central-1)
+#   (text) [8] The AWS zone to launch the instance in (one of a,b,c,d,e)
 # Returns:
 #   None
 #######################################
@@ -125,7 +126,8 @@ function create_ec2_docker_machine() {
     --amazonec2-block-duration-minutes=$4 \
     --amazonec2-keypair-name="$5" \
     --amazonec2-ssh-keypath="$6" \
-    --amazonec2-zone $7 \
+    --amazonec2-region="$7" \
+    --amazonec2-zone="$8" \
     $1 2> >(grep -v "failed waiting for successful resource state" >&2) &
 }
 
@@ -162,7 +164,7 @@ function destroy_docker_machine() {
 #   None
 #######################################
 function wait_ec2_docker_machine_ready() {
-  machine=$1
+  local machine=$1
   local check_price=$2
   while true; do
     sleep 5;
@@ -171,7 +173,7 @@ function wait_ec2_docker_machine_ready() {
     ((stop_now==1)) && return 0
     if $check_price ; then
       status=$( \
-        aws ec2 describe-spot-instance-requests \
+        aws --region=$AWS_REGION ec2 describe-spot-instance-requests \
         --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" \
         | jq  '.SpotInstanceRequests | sort_by(.CreateTime) | .[] | .Status.Code' \
         | tail -n 1
@@ -204,7 +206,7 @@ function cleanup_and_exit {
     if [ ! -z ${VOLUME_ID+x} ]; then
         msg "Wait and delete volume $VOLUME_ID"
         sleep 60 # wait for the machine to be removed
-        delvolout=$(aws ec2 delete-volume --volume-id $VOLUME_ID)
+        delvolout=$(aws --region=$AWS_REGION ec2 delete-volume --volume-id $VOLUME_ID)
         msg "Volume $VOLUME_ID deleted"
     fi
   else
@@ -498,7 +500,8 @@ while [ $# -gt 0 ]; do
       AWS_SSH_KEY_PATH="$2"; shift 2 ;;
     --aws-ebs-volume-size )
         AWS_EBS_VOLUME_SIZE="$2"; shift 2 ;;
-
+    --aws-region )
+        AWS_REGION="$2"; shift 2 ;;
     --s3cfg-path )
       S3_CFG_PATH="$2"; shift 2 ;;
     * )
@@ -556,10 +559,14 @@ if [[ "$RUN_ON" == "aws" ]]; then
     err "ERROR: AWS keypair name and ssh key file must be specified to run on AWS EC2."
     exit 1
   else
-    checkPath AWS_SSH_KEY_PATH
+    check_path AWS_SSH_KEY_PATH
   fi
   if [[ -z ${AWS_EC2_TYPE+x} ]]; then
     err "ERROR: AWS EC2 Instance type not given."
+    exit 1
+  fi
+  if [[ -z ${AWS_REGION+x} ]]; then
+    err "ERROR: AWS EC2 region not given."
     exit 1
   fi
 elif [[ "$RUN_ON" == "localhost" ]]; then
@@ -573,6 +580,10 @@ elif [[ "$RUN_ON" == "localhost" ]]; then
   fi
   if [[ ! -z ${AWS_EBS_VOLUME_SIZE+x} ]]; then
     err "ERROR: option '--aws-ebs-volume-size' must be used with '--run on aws'."
+    exit 1
+  fi
+  if [[ ! -z ${AWS_REGION+x} ]]; then
+    err "ERROR: option '--aws-region' must be used with '--run on aws'."
     exit 1
   fi
 else
@@ -626,7 +637,7 @@ if [[ ! -z ${DB_PREPARED_SNAPSHOT+x} ]]  &&  [[ ! -z ${DB_DUMP+x} ]]; then
 fi
 
 if [[ ! -z ${DB_DUMP+x} ]]; then
-  checkPath DB_DUMP
+  check_path DB_DUMP
   if [[ "$?" -ne "0" ]]; then
     echo "$DB_DUMP" > $TMP_PATH/db_dump_tmp.sql
     DB_DUMP="$TMP_PATH/db_dump_tmp.sql"
@@ -639,7 +650,7 @@ if [[ -z ${PG_CONFIG+x} ]]; then
   err "NOTICE: No PostgreSQL config is provided. Will use default."
   # TODO(NikolayS) use "auto-tuning" – shared_buffers=1/4 RAM, etc
 else
-  checkPath PG_CONFIG
+  check_path PG_CONFIG
   if [[ "$?" -ne "0" ]]; then # TODO(NikolayS) support file:// and s3://
     #err "WARNING: Value given as pg_config: '$PG_CONFIG' not found as file will use as content"
     echo "$PG_CONFIG" > $TMP_PATH/pg_config_tmp.sql
@@ -665,18 +676,18 @@ if [[ -z ${ARTIFACTS_FILENAME+x} ]]; then
   ARTIFACTS_FILENAME=$DOCKER_MACHINE
 fi
 
-if [[ ! -z ${WORKLOAD_REAL+x} ]] && ! checkPath WORKLOAD_REAL; then
+if [[ ! -z ${WORKLOAD_REAL+x} ]] && ! check_path WORKLOAD_REAL; then
   err "ERROR: workload file '$WORKLOAD_REAL' not found."
   exit 1
 fi
 
-if [[ ! -z ${WORKLOAD_BASIS+x} ]] && ! checkPath WORKLOAD_BASIS; then
+if [[ ! -z ${WORKLOAD_BASIS+x} ]] && ! check_path WORKLOAD_BASIS; then
   err "ERROR: workload file '$WORKLOAD_BASIS' not found."
   exit 1
 fi
 
 if [[ ! -z ${WORKLOAD_CUSTOM_SQL+x} ]]; then
-  checkPath WORKLOAD_CUSTOM_SQL
+  check_path WORKLOAD_CUSTOM_SQL
   if [[ "$?" -ne "0" ]]; then
     #err "WARNING: Value given as workload-custom-sql: '$WORKLOAD_CUSTOM_SQL' not found as file will use as content"
     echo "$WORKLOAD_CUSTOM_SQL" > $TMP_PATH/workload_custom_sql_tmp.sql
@@ -685,7 +696,7 @@ if [[ ! -z ${WORKLOAD_CUSTOM_SQL+x} ]]; then
 fi
 
 if [[ ! -z ${COMMANDS_AFTER_CONTAINER_INIT+x} ]]; then
-  checkPath COMMANDS_AFTER_CONTAINER_INIT
+  check_path COMMANDS_AFTER_CONTAINER_INIT
   if [[ "$?" -ne "0" ]]; then
     #err "WARNING: Value given as after_db_init_code: '$COMMANDS_AFTER_CONTAINER_INIT' not found as file will use as content"
     echo "$COMMANDS_AFTER_CONTAINER_INIT" > $TMP_PATH/after_docker_init_code_tmp.sh
@@ -694,7 +705,7 @@ if [[ ! -z ${COMMANDS_AFTER_CONTAINER_INIT+x} ]]; then
 fi
 
 if [[ ! -z ${SQL_AFTER_DB_RESTORE+x} ]]; then
-  checkPath SQL_AFTER_DB_RESTORE
+  check_path SQL_AFTER_DB_RESTORE
   if [[ "$?" -ne "0" ]]; then
     echo "$SQL_AFTER_DB_RESTORE" > $TMP_PATH/after_db_init_code_tmp.sql
     SQL_AFTER_DB_RESTORE="$TMP_PATH/after_db_init_code_tmp.sql"
@@ -702,7 +713,7 @@ if [[ ! -z ${SQL_AFTER_DB_RESTORE+x} ]]; then
 fi
 
 if [[ ! -z ${SQL_BEFORE_DB_RESTORE+x} ]]; then
-  checkPath SQL_BEFORE_DB_RESTORE
+  check_path SQL_BEFORE_DB_RESTORE
   if [[ "$?" -ne "0" ]]; then
     #err "WARNING: Value given as before_db_init_code: '$SQL_BEFORE_DB_RESTORE' not found as file will use as content"
     echo "$SQL_BEFORE_DB_RESTORE" > $TMP_PATH/before_db_init_code_tmp.sql
@@ -711,7 +722,7 @@ if [[ ! -z ${SQL_BEFORE_DB_RESTORE+x} ]]; then
 fi
 
 if [[ ! -z ${DELTA_SQL_DO+x} ]]; then
-  checkPath DELTA_SQL_DO
+  check_path DELTA_SQL_DO
   if [[ "$?" -ne "0" ]]; then
     echo "$DELTA_SQL_DO" > $TMP_PATH/target_ddl_do_tmp.sql
     DELTA_SQL_DO="$TMP_PATH/target_ddl_do_tmp.sql"
@@ -719,7 +730,7 @@ if [[ ! -z ${DELTA_SQL_DO+x} ]]; then
 fi
 
 if [[ ! -z ${DELTA_SQL_UNDO+x} ]]; then
-  checkPath DELTA_SQL_UNDO
+  check_path DELTA_SQL_UNDO
   if [[ "$?" -ne "0" ]]; then
     echo "$DELTA_SQL_UNDO" > $TMP_PATH/target_ddl_undo_tmp.sql
     DELTA_SQL_UNDO="$TMP_PATH/target_ddl_undo_tmp.sql"
@@ -727,7 +738,7 @@ if [[ ! -z ${DELTA_SQL_UNDO+x} ]]; then
 fi
 
 if [[ ! -z ${DELTA_CONFIG+x} ]]; then
-  checkPath DELTA_CONFIG
+  check_path DELTA_CONFIG
   if [[ "$?" -ne "0" ]]; then
     echo "$DELTA_CONFIG" > $TMP_PATH/target_config_tmp.conf
     DELTA_CONFIG="$TMP_PATH/target_config_tmp.conf"
@@ -803,7 +814,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
   ## Get max price from history and apply multiplier
   # TODO detect region and/or allow to choose via options
   prices=$(
-    aws --region=us-east-1 ec2 \
+    aws --region=$AWS_REGION ec2 \
     describe-spot-price-history --instance-types $AWS_EC2_TYPE --no-paginate \
     --start-time=$(date +%s) --product-descriptions="Linux/UNIX (Amazon VPC)" \
     --query 'SpotPriceHistory[*].{az:AvailabilityZone, price:SpotPrice}'
@@ -821,11 +832,11 @@ elif [[ "$RUN_ON" == "aws" ]]; then
   msg "Increased price: $price"
   EC2_PRICE=$price
   if [ -z $zone ]; then
-    region='a' #default zone
+    zone='a' #default zone
   fi
 
   create_ec2_docker_machine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
-    60 $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $zone;
+    60 $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $AWS_REGION $zone;
   status=$(wait_ec2_docker_machine_ready "$DOCKER_MACHINE" true)
   if [[ "$status" == "price-too-low" ]]; then
     msg "Price $price is too low for $AWS_EC2_TYPE instance. Getting the up-to-date value from the error message..."
@@ -833,14 +844,14 @@ elif [[ "$RUN_ON" == "aws" ]]; then
     #destroy_docker_machine $DOCKER_MACHINE
     # "docker-machine rm" doesn't work for "price-too-low" spot requests,
     # so we need to clean up them via aws cli interface directly
-    aws ec2 describe-spot-instance-requests \
+    aws --region=$AWS_REGION ec2 describe-spot-instance-requests \
       --filters 'Name=status-code,Values=price-too-low' \
     | grep SpotInstanceRequestId | awk '{gsub(/[,"]/, "", $2); print $2}' \
-    | xargs aws ec2 cancel-spot-instance-requests \
+    | xargs aws --region=$AWS_REGION ec2 cancel-spot-instance-requests \
       --spot-instance-request-ids || true
 
     corrrectPriceForLastFailedRequest=$( \
-      aws ec2 describe-spot-instance-requests \
+      aws --region=$AWS_REGION ec2 describe-spot-instance-requests \
         --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" \
       | jq  '.SpotInstanceRequests[] | select(.Status.Code == "price-too-low") | .Status.Message' \
       | grep -Eo '[0-9]+[.][0-9]+' | tail -n 1 &
@@ -853,7 +864,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
       DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
       #try start docker machine name with new price
       create_ec2_docker_machine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
-        60 $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $zone
+        60 $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $AWS_REGION $zone
       wait_ec2_docker_machine_ready "$DOCKER_MACHINE" false;
     else
       err "$(date "+%Y-%m-%d %H:%M:%S") ERROR: Cannot determine actual price for the instance $AWS_EC2_TYPE."
@@ -896,10 +907,10 @@ elif [[ "$RUN_ON" == "aws" ]]; then
     # Create new volume and attach them for non i3 instances if needed
     if [ ! -z ${AWS_EBS_VOLUME_SIZE+x} ]; then
       msg "Create and attach a new EBS volume (size: $AWS_EBS_VOLUME_SIZE GB)"
-      VOLUME_ID=$(aws ec2 create-volume --size $AWS_EBS_VOLUME_SIZE --region us-east-1 --availability-zone us-east-1a --volume-type gp2 | jq -r .VolumeId)
+      VOLUME_ID=$(aws --region=$AWS_REGION ec2 create-volume --size $AWS_EBS_VOLUME_SIZE --availability-zone us-east-1a --volume-type gp2 | jq -r .VolumeId)
       INSTANCE_ID=$(docker-machine ssh $DOCKER_MACHINE curl -s http://169.254.169.254/latest/meta-data/instance-id)
       sleep 10 # wait to volume will ready
-      attachResult=$(aws ec2 attach-volume --device /dev/xvdf --volume-id $VOLUME_ID --instance-id $INSTANCE_ID --region us-east-1)
+      attachResult=$(aws --region=$AWS_REGION ec2 attach-volume --device /dev/xvdf --volume-id $VOLUME_ID --instance-id $INSTANCE_ID)
       docker-machine ssh $DOCKER_MACHINE sudo mkfs.ext4 /dev/xvdf
       docker-machine ssh $DOCKER_MACHINE sudo mount /dev/xvdf /home/storage
     fi
