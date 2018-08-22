@@ -118,7 +118,7 @@ function check_path() {
 #   None
 #######################################
 function create_ec2_docker_machine() {
-  msg "Attempt to create a docker machine in zone $7 with price $3..."
+  msg "Attempt to create a docker machine in region $7 with price $3..."
   docker-machine create --driver=amazonec2 \
     --amazonec2-request-spot-instance \
     --amazonec2-instance-type=$2 \
@@ -571,19 +571,19 @@ if [[ "$RUN_ON" == "aws" ]]; then
   fi
 elif [[ "$RUN_ON" == "localhost" ]]; then
   if [[ ! -z ${AWS_KEYPAIR_NAME+x} ]] || [[ ! -z ${AWS_SSH_KEY_PATH+x} ]] ; then
-    err "ERROR: options '--aws-keypair-name' and '--aws-ssh-key-path' must be used with '--run on aws'."
+    err "ERROR: options '--aws-keypair-name' and '--aws-ssh-key-path' must be used with '--run-on aws'."
     exit 1
   fi
   if [[ ! -z ${AWS_EC2_TYPE+x} ]]; then
-    err "ERROR: option '--aws-ec2-type' must be used with '--run on aws'."
+    err "ERROR: option '--aws-ec2-type' must be used with '--run-on aws'."
     exit 1
   fi
   if [[ ! -z ${AWS_EBS_VOLUME_SIZE+x} ]]; then
-    err "ERROR: option '--aws-ebs-volume-size' must be used with '--run on aws'."
+    err "ERROR: option '--aws-ebs-volume-size' must be used with '--run-on aws'."
     exit 1
   fi
   if [[ ! -z ${AWS_REGION+x} ]]; then
-    err "ERROR: option '--aws-region' must be used with '--run on aws'."
+    err "ERROR: option '--aws-region' must be used with '--run-on aws'."
     exit 1
   fi
 else
@@ -747,8 +747,9 @@ fi
 
 if [[ "$RUN_ON" == "aws" ]]; then
   if [[ ! -z ${AWS_EBS_VOLUME_SIZE+x} ]]; then
-    if ! [[ $AWS_EBS_VOLUME_SIZE =~ '^[0-9]+$' ]] ; then
-      err "ERROR: --ebs-volume-size must be integer."
+    re='^[0-9]+$'
+    if ! [[ $AWS_EBS_VOLUME_SIZE =~ $re ]] ; then
+      err "ERROR: --aws-ebs-volume-size must be integer."
       exit 1
     fi
   else
@@ -825,18 +826,19 @@ elif [[ "$RUN_ON" == "aws" ]]; then
   region="${region/\"/}"
   minprice="${minprice/\"/}"
   minprice="${minprice/\"/}"
-  zone=${region: -1}
-  msg "Min price from history: $minprice in $region (zone: $zone)"
+  AWS_ZONE=${region: -1}
+  AWS_REGION=${region:: -1}
+  msg "Min price from history: $minprice in $region (zone: $AWS_ZONE)"
   multiplier="1.01"
   price=$(echo "$minprice * $multiplier" | bc -l)
   msg "Increased price: $price"
   EC2_PRICE=$price
-  if [ -z $zone ]; then
-    zone='a' #default zone
+  if [[ -z $AWS_ZONE ]]; then
+    AWS_ZONE='a' #default zone
   fi
 
   create_ec2_docker_machine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
-    60 $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $AWS_REGION $zone;
+    60 $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $AWS_REGION $AWS_ZONE;
   status=$(wait_ec2_docker_machine_ready "$DOCKER_MACHINE" true)
   if [[ "$status" == "price-too-low" ]]; then
     msg "Price $price is too low for $AWS_EC2_TYPE instance. Getting the up-to-date value from the error message..."
@@ -864,7 +866,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
       DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
       #try start docker machine name with new price
       create_ec2_docker_machine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
-        60 $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $AWS_REGION $zone
+        60 $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $AWS_REGION $AWS_ZONE
       wait_ec2_docker_machine_ready "$DOCKER_MACHINE" false;
     else
       err "$(date "+%Y-%m-%d %H:%M:%S") ERROR: Cannot determine actual price for the instance $AWS_EC2_TYPE."
@@ -907,7 +909,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
     # Create new volume and attach them for non i3 instances if needed
     if [ ! -z ${AWS_EBS_VOLUME_SIZE+x} ]; then
       msg "Create and attach a new EBS volume (size: $AWS_EBS_VOLUME_SIZE GB)"
-      VOLUME_ID=$(aws --region=$AWS_REGION ec2 create-volume --size $AWS_EBS_VOLUME_SIZE --availability-zone us-east-1a --volume-type gp2 | jq -r .VolumeId)
+      VOLUME_ID=$(aws --region=$AWS_REGION ec2 create-volume --size $AWS_EBS_VOLUME_SIZE --availability-zone $AWS_REGION$AWS_ZONE --volume-type gp2 | jq -r .VolumeId)
       INSTANCE_ID=$(docker-machine ssh $DOCKER_MACHINE curl -s http://169.254.169.254/latest/meta-data/instance-id)
       sleep 10 # wait to volume will ready
       attachResult=$(aws --region=$AWS_REGION ec2 attach-volume --device /dev/xvdf --volume-id $VOLUME_ID --instance-id $INSTANCE_ID)
