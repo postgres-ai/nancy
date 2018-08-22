@@ -16,6 +16,7 @@ KEEP_ALIVE=0
 VERBOSE_OUTPUT_REDIRECT=" > /dev/null"
 EBS_SIZE_MULTIPLIER=15
 POSTGRES_VERSION_DEFAULT=10
+AWS_BLOCK_DURATION=0 # by default no time limit
 
 #######################################
 # Print an error/warning/notice message to STDERR
@@ -498,6 +499,8 @@ while [ $# -gt 0 ]; do
       AWS_SSH_KEY_PATH="$2"; shift 2 ;;
     --aws-ebs-volume-size )
         AWS_EBS_VOLUME_SIZE="$2"; shift 2 ;;
+    --aws-block-duration )
+        AWS_BLOCK_DURATION=$2; shift 2 ;;
 
     --s3cfg-path )
       S3_CFG_PATH="$2"; shift 2 ;;
@@ -546,6 +549,45 @@ if $DEBUG ; then
   echo "AWS_EBS_VOLUME_SIZE: $AWS_EBS_VOLUME_SIZE"
 fi
 
+#######################################
+# Check path to file/directory.
+# Globals:
+#   None
+# Arguments:
+#   (text) name of the variable holding the
+#          file path (starts with 'file://' or 's3://') or any string
+# Returns:
+#   (integer) for input starting with 's3://' always returns 0
+#             for 'file://': 0 if file exists locally, error if it doesn't
+#             1 if the input is empty,
+#             -1 otherwise.
+#######################################
+function checkPath() {
+  if [[ -z $1 ]]; then
+    return 1
+  fi
+  eval path=\$$1
+
+  if [[ $path =~ "s3://" ]]; then
+    dbg "$1 looks like a S3 file path. Warning: Its presence will not be checked!"
+    return 0 # we do not actually check S3 paths at the moment
+  elif [[ $path =~ "file://" ]]; then
+    dbg "$1 looks like a local file path."
+    path=${path/file:\/\//}
+    if [[ -f $path ]]; then
+      dbg "$path found."
+      eval "$1=\"$path\"" # update original variable
+      return 0 # file found
+    else
+      err "File '$path' is not found locally."
+      exit 1
+    fi
+  else
+    dbg "Value of $1 is not a file path. Use its value as a content."
+    return -1 #
+  fi
+}
+
 ### CLI parameters checks ###
 if [[ "$RUN_ON" == "aws" ]]; then
   if [ ! -z ${CONTAINER_ID+x} ]; then
@@ -562,6 +604,19 @@ if [[ "$RUN_ON" == "aws" ]]; then
     err "ERROR: AWS EC2 Instance type not given."
     exit 1
   fi
+  if [[ -z ${AWS_BLOCK_DURATION+x} ]]; then
+    err "NOTICE: Container live time duration is not given."
+  else
+    case $AWS_BLOCK_DURATION in
+      0|60|120|240|300|360)
+        dbg "Container live time duration is $AWS_BLOCK_DURATION. "
+      ;;
+      *)
+        err "Container live time duration (--aws-block-duration) has wrong value: $AWS_BLOCK_DURATION. Available values of AWS spot instance duration in minutes is 60, 120, 180, 240, 300, or 360)."
+        exit 1
+      ;;
+    esac
+  fi
 elif [[ "$RUN_ON" == "localhost" ]]; then
   if [[ ! -z ${AWS_KEYPAIR_NAME+x} ]] || [[ ! -z ${AWS_SSH_KEY_PATH+x} ]] ; then
     err "ERROR: options '--aws-keypair-name' and '--aws-ssh-key-path' must be used with '--run on aws'."
@@ -573,6 +628,10 @@ elif [[ "$RUN_ON" == "localhost" ]]; then
   fi
   if [[ ! -z ${AWS_EBS_VOLUME_SIZE+x} ]]; then
     err "ERROR: option '--aws-ebs-volume-size' must be used with '--run on aws'."
+    exit 1
+  fi
+  if [[ "$AWS_BLOCK_DURATION" != "0" ]]; then
+    err "ERROR: option '--aws-block-duration' must be used with '--run on aws'."
     exit 1
   fi
 else
@@ -787,7 +846,93 @@ else
 fi
 shopt -s expand_aliases
 
-trap cleanup_and_exit EXIT
+## Docker tools
+function waitEC2Ready() {
+  cmd=$1
+  machine=$2
+  checkPrice=$3
+  while true; do
+    sleep 5; STOP=1
+    ps ax | grep "$cmd" | grep "$machine" >/dev/null && STOP=0
+    ((STOP==1)) && return 0
+    if [ $checkPrice -eq 1 ]; then
+      status=$( \
+        aws ec2 describe-spot-instance-requests \
+        --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" \
+        | jq  '.SpotInstanceRequests | sort_by(.CreateTime) | .[] | .Status.Code' \
+        | tail -n 1
+      )
+      if [[ "$status" == "\"price-too-low\"" ]]; then
+        echo "price-too-low"; # this value is result of function (not message for user), will check later
+        return 0
+      fi
+    fi
+  done
+}
+
+# Params:
+#  1) machine name
+#  2) AWS EC2 instance type
+#  3) price
+#  4) duration (minutes)
+#  5) key pair name
+#  6) key path
+#  7) zone
+function createDockerMachine() {
+  msg "Attempt to create a docker machine..."
+  docker-machine create --driver=amazonec2 \
+    --amazonec2-request-spot-instance \
+    --amazonec2-keypair-name="$5" \
+    --amazonec2-ssh-keypath="$6" \
+    --amazonec2-instance-type=$2 \
+    --amazonec2-spot-price=$3 \
+    --amazonec2-block-duration-minutes=$4 \
+    --amazonec2-zone=$7 \
+    $1 2> >(grep -v "failed waiting for successful resource state" >&2) &
+}
+
+function destroyDockerMachine() {
+  # If spot request wasn't fulfilled, there is no associated instance,
+  # so "docker-machine rm" will show an error, which is safe to ignore.
+  # We better filter it out to avoid any confusions.
+  # What is used here is called "process substitution",
+  # see https://www.gnu.org/software/bash/manual/bash.html#Process-Substitution
+  # The same trick is used in createDockerMachine to filter out errors
+  # when we have "price-too-low" attempts, such errors come in few minutes
+  # after an attempt and are generally unexpected by user.
+  cmdout=$(docker-machine rm --force $1 2> >(grep -v "unknown instance" >&2) )
+  msg "Termination requested for machine, current status: $cmdout"
+}
+
+function cleanupAndExit {
+  if  [ "$KEEP_ALIVE" -gt "0" ]; then
+    msg "Debug timeout is $KEEP_ALIVE seconds – started."
+    msg "  To connect to the docker machine use:"
+    msg "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
+    sleep $KEEP_ALIVE
+  fi
+  msg "Remove temp files..." # if exists
+  if [[ ! -z "${dockerConfig+x}" ]]; then
+    docker $dockerConfig exec -i ${containerHash} bash -c "sudo rm -rf $MACHINE_HOME"
+  fi
+  rm -rf "$TMP_PATH"
+  if [[ "$RUN_ON" == "localhost" ]]; then
+    msg "Remove docker container"
+    docker container rm -f $containerHash
+  elif [[ "$RUN_ON" == "aws" ]]; then
+    destroyDockerMachine $DOCKER_MACHINE
+    if [ ! -z ${VOLUME_ID+x} ]; then
+        msg "Wait and delete volume $VOLUME_ID"
+        sleep 60 # wait for the machine to be removed
+        delvolout=$(aws ec2 delete-volume --volume-id $VOLUME_ID)
+        msg "Volume $VOLUME_ID deleted"
+    fi
+  else
+    err "ASSERT: must not reach this point"
+    exit 1
+  fi
+}
+trap cleanupAndExit EXIT
 
 if [[ "$RUN_ON" == "localhost" ]]; then
   if [[ -z ${CONTAINER_ID+x} ]]; then
@@ -824,9 +969,9 @@ elif [[ "$RUN_ON" == "aws" ]]; then
     region='a' #default zone
   fi
 
-  create_ec2_docker_machine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
-    60 $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $zone;
-  status=$(wait_ec2_docker_machine_ready "$DOCKER_MACHINE" true)
+  createDockerMachine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
+    $AWS_BLOCK_DURATION $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $zone;
+  status=$(waitEC2Ready "docker-machine create" "$DOCKER_MACHINE" 1)
   if [[ "$status" == "price-too-low" ]]; then
     msg "Price $price is too low for $AWS_EC2_TYPE instance. Getting the up-to-date value from the error message..."
 
@@ -852,11 +997,12 @@ elif [[ "$RUN_ON" == "aws" ]]; then
       DOCKER_MACHINE="nancy-$CURRENT_TS"
       DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
       #try start docker machine name with new price
-      create_ec2_docker_machine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
-        60 $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $zone
-      wait_ec2_docker_machine_ready "$DOCKER_MACHINE" false;
+      msg "Attempt to create a new docker machine: $DOCKER_MACHINE with price: $EC2_PRICE."
+      createDockerMachine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
+        $AWS_BLOCK_DURATION $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $zone;
+      waitEC2Ready "docker-machine create" "$DOCKER_MACHINE" 0;
     else
-      err "$(date "+%Y-%m-%d %H:%M:%S") ERROR: Cannot determine actual price for the instance $AWS_EC2_TYPE."
+      err "ERROR: Cannot determine actual price for the instance $AWS_EC2_TYPE."
       exit 1;
     fi
   fi
