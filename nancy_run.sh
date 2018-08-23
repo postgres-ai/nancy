@@ -16,7 +16,7 @@ KEEP_ALIVE=0
 VERBOSE_OUTPUT_REDIRECT=" > /dev/null"
 EBS_SIZE_MULTIPLIER=15
 POSTGRES_VERSION_DEFAULT=10
-AWS_BLOCK_DURATION=0 # by default no time limit
+AWS_BLOCK_DURATION=0
 
 #######################################
 # Print an error/warning/notice message to STDERR
@@ -613,11 +613,12 @@ if [[ "$RUN_ON" == "aws" ]]; then
     AWS_REGION='us-east-1'
   fi
   if [[ -z ${AWS_BLOCK_DURATION+x} ]]; then
-    err "NOTICE: Container live time duration is not given."
+    err "NOTICE: Container live time duration is not given. Will used 60 minutes."
+    AWS_BLOCK_DURATION=60
   else
     case $AWS_BLOCK_DURATION in
       0|60|120|240|300|360)
-        dbg "Container live time duration is $AWS_BLOCK_DURATION. "
+        dbg "Container live time duration is $AWS_BLOCK_DURATION."
       ;;
       *)
         err "Container live time duration (--aws-block-duration) has wrong value: $AWS_BLOCK_DURATION. Available values of AWS spot instance duration in minutes is 60, 120, 180, 240, 300, or 360)."
