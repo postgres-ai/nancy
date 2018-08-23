@@ -13,7 +13,7 @@ PARAMS
 
 output=$(${BASH_SOURCE%/*}/../nancy_run.sh $params 2>&1)
 
-if [[ $output =~ "ERROR: AWS EC2 region not given." ]]; then
+if [[ $output =~ "NOTICE: AWS EC2 region not given. Will used us-east-1." ]]; then
   echo -e "\e[36mOK\e[39m"
 else
   >&2 echo -e "\e[31mFAILED\e[39m"
