@@ -1044,6 +1044,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
     docker-machine ssh $DOCKER_MACHINE "sudo parted -a optimal -s /dev/nvme0n1 mkpart primary 0% 100%"
     docker-machine ssh $DOCKER_MACHINE "sudo mkfs.ext4 /dev/nvme0n1p1"
     docker-machine ssh $DOCKER_MACHINE "sudo mount /dev/nvme0n1p1 /home/storage"
+    docker-machine ssh $DOCKER_MACHINE "sudo df -h /dev/nvme0n1p1"
   else
     msg "Use EBS volume"
     # Create new volume and attach them for non i3 instances if needed
@@ -1055,6 +1056,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
       attachResult=$(aws --region=$AWS_REGION ec2 attach-volume --device /dev/xvdf --volume-id $VOLUME_ID --instance-id $INSTANCE_ID)
       docker-machine ssh $DOCKER_MACHINE sudo mkfs.ext4 /dev/xvdf
       docker-machine ssh $DOCKER_MACHINE sudo mount /dev/xvdf /home/storage
+      docker-machine ssh $DOCKER_MACHINE "sudo df -h /dev/xvdf"
     fi
   fi
 
