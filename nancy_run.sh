@@ -566,8 +566,8 @@ if [[ "$RUN_ON" == "aws" ]]; then
     exit 1
   fi
   if [[ -z ${AWS_REGION+x} ]]; then
-    err "ERROR: AWS EC2 region not given."
-    exit 1
+    err "NOTICE: AWS EC2 region not given. Will used us-east-1."
+    AWS_REGION='us-east-1'
   fi
 elif [[ "$RUN_ON" == "localhost" ]]; then
   if [[ ! -z ${AWS_KEYPAIR_NAME+x} ]] || [[ ! -z ${AWS_SSH_KEY_PATH+x} ]] ; then
