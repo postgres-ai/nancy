@@ -4,6 +4,7 @@ read -r -d '' params <<PARAMS
   --run-on aws --aws-keypair-name awskey --pg-version 9.6 \
   --aws-ssh-key-path "/home/someuser/.ssh/awskey.pem" \
   --aws-ec2-type "r4.large" \
+  --aws-region "us-east-1" \
   --s3cfg-path "/home/someuser/.s3cfg" \
   --workload-real "s3://somebucket/db.sql.30min.pgreplay" \
   --workload-custom-sql "select\tnow();" \
