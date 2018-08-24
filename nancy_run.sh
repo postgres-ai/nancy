@@ -644,7 +644,7 @@ elif [[ "$RUN_ON" == "localhost" ]]; then
     exit 1
   fi
   if [[ "$AWS_BLOCK_DURATION" != "0" ]]; then
-    err "ERROR: option '--aws-block-duration' must be used with '--run on aws'."
+    err "ERROR: option '--aws-block-duration' must be used with '--run-on aws'."
     exit 1
   fi
 else
