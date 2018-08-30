@@ -295,6 +295,7 @@ function dbg_cli_parameters() {
     echo "PG_CONFIG: ${PG_CONFIG}"
     echo "DB_PREPARED_SNAPSHOT: ${DB_PREPARED_SNAPSHOT}"
     echo "DB_DUMP: $DB_DUMP"
+    echo "DB_NAME: $DB_NAME"
     echo "COMMANDS_AFTER_CONTAINER_INIT: $COMMANDS_AFTER_CONTAINER_INIT"
     echo "SQL_BEFORE_DB_RESTORE: $SQL_BEFORE_DB_RESTORE"
     echo "SQL_AFTER_DB_RESTORE: $SQL_AFTER_DB_RESTORE"
@@ -511,6 +512,11 @@ function check_cli_parameters() {
   if [[ -z ${ARTIFACTS_DESTINATION+x} ]]; then
     err "NOTICE: Artifacts destination is not given. Will use ./"
     ARTIFACTS_DESTINATION="."
+  fi
+
+  if [[ -z ${DB_NAME+x} ]]; then
+    err "NOTICE: Database name is not given. Will use test"
+    DB_NAME='test'
   fi
 
   if [[ -z ${ARTIFACTS_FILENAME+x} ]]; then
@@ -926,6 +932,8 @@ while [ $# -gt 0 ]; do
       DB_PREPARED_SNAPSHOT="$2"; shift 2 ;;
     --db-dump )
       DB_DUMP="$2"; shift 2 ;;
+    --db-name )
+      DB_NAME="$2"; shift 2 ;;
     --commands-after-container-init )
       COMMANDS_AFTER_CONTAINER_INIT="$2"; shift 2 ;;
     --sql-before-db-restore )
@@ -1157,7 +1165,7 @@ if ([ ! -z ${SQL_BEFORE_DB_RESTORE+x} ] && [ "$SQL_BEFORE_DB_RESTORE" != "" ]); 
   SQL_BEFORE_DB_RESTORE_FILENAME=$(basename $SQL_BEFORE_DB_RESTORE)
   copy_file $SQL_BEFORE_DB_RESTORE
   # --set ON_ERROR_STOP=on
-  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres test -b -f $MACHINE_HOME/$SQL_BEFORE_DB_RESTORE_FILENAME $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -f $MACHINE_HOME/$SQL_BEFORE_DB_RESTORE_FILENAME $VERBOSE_OUTPUT_REDIRECT"
   END_TIME=$(date +%s);
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Before init SQL code applied for $DURATION."
@@ -1168,16 +1176,16 @@ msg "Restore database dump"
 CPU_CNT=$(docker_exec bash -c "cat /proc/cpuinfo | grep processor | wc -l") # for execute in docker
 case "$DB_DUMP_EXT" in
   sql)
-    docker_exec bash -c "cat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test $VERBOSE_OUTPUT_REDIRECT"
+    docker_exec bash -c "cat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
     ;;
   bz2)
-    docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test $VERBOSE_OUTPUT_REDIRECT"
+    docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
     ;;
   gz)
-    docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres test $VERBOSE_OUTPUT_REDIRECT"
+    docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
     ;;
   pgdmp)
-    docker_exec bash -c "pg_restore -j $CPU_CNT --no-owner --no-privileges -U postgres -d test $MACHINE_HOME/$DB_DUMP_FILENAME" || true
+    docker_exec bash -c "pg_restore -j $CPU_CNT --no-owner --no-privileges -U postgres -d $DB_NAME $MACHINE_HOME/$DB_DUMP_FILENAME" || true
     ;;
 esac
 END_TIME=$(date +%s);
@@ -1190,7 +1198,7 @@ if ([ ! -z ${SQL_AFTER_DB_RESTORE+x} ] && [ "$SQL_AFTER_DB_RESTORE" != "" ]); th
   msg "Apply sql code after db init"
   SQL_AFTER_DB_RESTORE_FILENAME=$(basename $SQL_AFTER_DB_RESTORE)
   copy_file $SQL_AFTER_DB_RESTORE
-  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres test -b -f $MACHINE_HOME/$SQL_AFTER_DB_RESTORE_FILENAME $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -f $MACHINE_HOME/$SQL_AFTER_DB_RESTORE_FILENAME $VERBOSE_OUTPUT_REDIRECT"
   END_TIME=$(date +%s);
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "After init SQL code applied for $DURATION."
@@ -1200,7 +1208,7 @@ OP_START_TIME=$(date +%s);
 if ([ ! -z ${DELTA_SQL_DO+x} ] && [ "$DELTA_SQL_DO" != "" ]); then
   msg "Apply DDL SQL code"
   DELTA_SQL_DO_FILENAME=$(basename $DELTA_SQL_DO)
-  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres test -b -f $MACHINE_HOME/$DELTA_SQL_DO_FILENAME $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -f $MACHINE_HOME/$DELTA_SQL_DO_FILENAME $VERBOSE_OUTPUT_REDIRECT"
   END_TIME=$(date +%s);
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Delta SQL \"DO\" code applied for $DURATION."
@@ -1249,7 +1257,7 @@ docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIF
 
 # Clear statistics and log
 msg "Execute vacuumdb..."
-docker_exec vacuumdb -U postgres test -j $CPU_CNT --analyze
+docker_exec vacuumdb -U postgres $DB_NAME -j $CPU_CNT --analyze
 docker_exec bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
 
 # Execute workload
@@ -1257,7 +1265,7 @@ OP_START_TIME=$(date +%s);
 msg "Execute workload..."
 if [ ! -z ${WORKLOAD_REAL+x} ] && [ "$WORKLOAD_REAL" != '' ]; then
   msg "Execute pgreplay queries..."
-  docker_exec psql -U postgres test -c 'create role testuser superuser login;'
+  docker_exec psql -U postgres $DB_NAME -c 'create role testuser superuser login;'
   WORKLOAD_FILE_NAME=$(basename $WORKLOAD_REAL)
   if [ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ] && [ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]; then
     docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED  $MACHINE_HOME/$WORKLOAD_FILE_NAME"
@@ -1268,7 +1276,7 @@ else
   if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
     WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
     msg "Execute custom sql queries..."
-    docker_exec bash -c "psql -U postgres test -E -f $MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME $VERBOSE_OUTPUT_REDIRECT"
+    docker_exec bash -c "psql -U postgres $DB_NAME -E -f $MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME $VERBOSE_OUTPUT_REDIRECT"
   fi
 fi
 END_TIME=$(date +%s);
@@ -1320,7 +1328,7 @@ OP_START_TIME=$(date +%s);
 if ([ ! -z ${DELTA_SQL_UNDO+x} ] && [ "$DELTA_SQL_UNDO" != "" ]); then
   msg "Apply DDL undo SQL code"
   DELTA_SQL_UNDO_FILENAME=$(basename $DELTA_SQL_UNDO)
-  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres test -b -f $MACHINE_HOME/$DELTA_SQL_UNDO_FILENAME $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -f $MACHINE_HOME/$DELTA_SQL_UNDO_FILENAME $VERBOSE_OUTPUT_REDIRECT"
   END_TIME=$(date +%s);
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Delta SQL \"UNDO\" code has been applied for $DURATION."
