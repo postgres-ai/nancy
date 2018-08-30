@@ -1137,6 +1137,7 @@ function copy_file() {
 ## Apply machine features
 # Dump
 sleep 2 # wait for postgres up&running
+
 OP_START_TIME=$(date +%s);
 if ([ ! -z ${COMMANDS_AFTER_CONTAINER_INIT+x} ] && [ "$COMMANDS_AFTER_CONTAINER_INIT" != "" ])
 then
@@ -1150,7 +1151,6 @@ then
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "After docker init code has been applied for $DURATION."
 fi
-
 OP_START_TIME=$(date +%s);
 if ([ ! -z ${SQL_BEFORE_DB_RESTORE+x} ] && [ "$SQL_BEFORE_DB_RESTORE" != "" ]); then
   msg "Apply sql code before db init"
@@ -1162,9 +1162,9 @@ if ([ ! -z ${SQL_BEFORE_DB_RESTORE+x} ] && [ "$SQL_BEFORE_DB_RESTORE" != "" ]); 
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Before init SQL code applied for $DURATION."
 fi
+
 OP_START_TIME=$(date +%s);
 msg "Restore database dump"
-
 CPU_CNT=$(docker_exec bash -c "cat /proc/cpuinfo | grep processor | wc -l") # for execute in docker
 case "$DB_DUMP_EXT" in
   sql)
@@ -1183,6 +1183,7 @@ esac
 END_TIME=$(date +%s);
 DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
 msg "Database dump restored for $DURATION."
+
 # After init database sql code apply
 OP_START_TIME=$(date +%s);
 if ([ ! -z ${SQL_AFTER_DB_RESTORE+x} ] && [ "$SQL_AFTER_DB_RESTORE" != "" ]); then
@@ -1236,8 +1237,10 @@ logpath=$( \
     -c \"select string_agg(setting, '/' order by name) from pg_settings where name in ('log_directory', 'log_filename');\" \
     | grep / | sed -e 's/^[ \t]*//'"
 )
+docker_exec bash -c "mkdir $MACHINE_HOME/$ARTIFACTS_FILENAME"
+docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.prepare.log.gz"
+
 # TODO(ns) get prepare.log.gz
-#docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME.prepare.log.gz"
 #if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
 #  docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.prepare.log.gz $ARTIFACTS_DESTINATION/
 #else
@@ -1248,6 +1251,7 @@ logpath=$( \
 msg "Execute vacuumdb..."
 docker_exec vacuumdb -U postgres test -j $CPU_CNT --analyze
 docker_exec bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
+
 # Execute workload
 OP_START_TIME=$(date +%s);
 msg "Execute workload..."
@@ -1277,28 +1281,32 @@ msg "Prepare JSON log..."
 docker_exec bash -c "/root/pgbadger/pgbadger \
   -j $CPU_CNT \
   --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr \
-  -o $MACHINE_HOME/$ARTIFACTS_FILENAME.json" \
+  -o $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.json" \
   2> >(grep -v "install the Text::CSV_XS" >&2)
 
-docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz"
-docker_exec bash -c "gzip -c /etc/postgresql/$PG_VERSION/main/postgresql.conf > $MACHINE_HOME/$ARTIFACTS_FILENAME.conf.gz"
+docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.log.gz"
+docker_exec bash -c "gzip -c /etc/postgresql/$PG_VERSION/main/postgresql.conf > $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.conf.gz"
 msg "Save artifacts..."
 if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
-  docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
-  docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
-  docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.conf.gz $ARTIFACTS_DESTINATION/
+  docker_exec s3cmd --recursive put /$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/
+  #docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
+  #docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
+  #docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.conf.gz $ARTIFACTS_DESTINATION/
 else
   if [[ "$RUN_ON" == "localhost" ]]; then
-    docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
-    docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
-    docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME.conf.gz $ARTIFACTS_DESTINATION/
+    docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/
+    #docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
+    #docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
+    #docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME.conf.gz $ARTIFACTS_DESTINATION/
     # TODO option: ln / cp
     #cp "$TMP_PATH/nancy_$CONTAINER_HASH/"$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
     #cp "$TMP_PATH/nancy_$CONTAINER_HASH/"$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
   elif [[ "$RUN_ON" == "aws" ]]; then
-    docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
-    docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
-    docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME.conf.gz $ARTIFACTS_DESTINATION/
+    mkdir $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME
+    docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME/* $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/
+    #docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
+    #docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
+    #docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME.conf.gz $ARTIFACTS_DESTINATION/
   else
     err "ASSERT: must not reach this point"
     exit 1
@@ -1325,8 +1333,8 @@ echo -e "  Report: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json"
 echo -e "  Query log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.log.gz"
 echo -e "  -------------------------------------------"
 echo -e "  Workload summary:"
-echo -e "    Summarized query duration:\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_duration') " ms"
-echo -e "    Queries:\t\t\t" $( docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_number')
-echo -e "    Query groups:\t\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.normalyzed_info| length')
-echo -e "    Errors:\t\t\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.errors_number')
+echo -e "    Summarized query duration:\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_duration') " ms"
+echo -e "    Queries:\t\t\t" $( docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_number')
+echo -e "    Query groups:\t\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.json | jq '.normalyzed_info| length')
+echo -e "    Errors:\t\t\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.errors_number')
 echo -e "-------------------------------------------"
