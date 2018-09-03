@@ -387,6 +387,7 @@ function check_cli_parameters() {
   ([[ ! -z ${COMMANDS_AFTER_CONTAINER_INIT+x} ]] && [[ -z $COMMANDS_AFTER_CONTAINER_INIT ]]) && unset -v COMMANDS_AFTER_CONTAINER_INIT
   ([[ ! -z ${SQL_BEFORE_DB_RESTORE+x} ]] && [[ -z $SQL_BEFORE_DB_RESTORE ]]) && unset -v SQL_BEFORE_DB_RESTORE
   ([[ ! -z ${SQL_AFTER_DB_RESTORE+x} ]] && [[ -z $SQL_AFTER_DB_RESTORE ]]) && unset -v SQL_AFTER_DB_RESTORE
+  ([[ ! -z ${AWS_ZONE+x} ]] && [[ -z $AWS_ZONE ]]) && unset -v AWS_ZONE
   ### CLI parameters checks ###
   if [[ "$RUN_ON" == "aws" ]]; then
     if [ ! -z ${CONTAINER_ID+x} ]; then
@@ -408,12 +409,7 @@ function check_cli_parameters() {
       AWS_REGION='us-east-1'
     fi
     if [[ -z ${AWS_ZONE+x} ]]; then
-      err "NOTICE: AWS EC2 zone not given. Will determined by min price."
-    else
-      if [[ -z $AWS_ZONE ]]; then
-        err "NOTICE: AWS EC2 zone not given. Will determined by min price."
-        unset -v AWS_ZONE
-      fi
+      err "NOTICE: AWS EC2 zone not given. Will be determined by min price."
     fi
     if [[ -z ${AWS_BLOCK_DURATION+x} ]]; then
       err "NOTICE: Container live time duration is not given. Will use 60 minutes."
