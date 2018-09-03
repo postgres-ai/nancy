@@ -310,6 +310,8 @@ function dbg_cli_parameters() {
     echo "S3_CFG_PATH: $S3_CFG_PATH"
     echo "TMP_PATH: $TMP_PATH"
     echo "AWS_EBS_VOLUME_SIZE: $AWS_EBS_VOLUME_SIZE"
+    echo "AWS_REGION: ${AWS_REGION}"
+    echo "AWS_ZONE: ${AWS_ZONE}"
   fi
 }
 
@@ -374,6 +376,17 @@ function check_path() {
 #   None
 #######################################
 function check_cli_parameters() {
+  ### Check path|value variables for empty value ###
+  ([[ ! -z ${DELTA_SQL_DO+x} ]] && [[ -z $DELTA_SQL_DO ]]) && unset -v DELTA_SQL_DO
+  ([[ ! -z ${DELTA_SQL_UNDO+x} ]] && [[ -z $DELTA_SQL_UNDO ]]) && unset -v DELTA_SQL_UNDO
+  ([[ ! -z ${DELTA_CONFIG+x} ]] && [[ -z $DELTA_CONFIG ]]) && unset -v DELTA_CONFIG
+  ([[ ! -z ${WORKLOAD_REAL+x} ]] && [[ -z $WORKLOAD_REAL ]]) && unset -v WORKLOAD_REAL
+  ([[ ! -z ${WORKLOAD_BASIS+x} ]] && [[ -z $WORKLOAD_BASIS ]]) && unset -v WORKLOAD_BASIS
+  ([[ ! -z ${WORKLOAD_CUSTOM_SQL+x} ]] && [[ -z $WORKLOAD_CUSTOM_SQL ]]) && unset -v WORKLOAD_CUSTOM_SQL
+  ([[ ! -z ${DB_DUMP+x} ]] && [[ -z $DB_DUMP ]]) && unset -v DB_DUMP
+  ([[ ! -z ${COMMANDS_AFTER_CONTAINER_INIT+x} ]] && [[ -z $COMMANDS_AFTER_CONTAINER_INIT ]]) && unset -v COMMANDS_AFTER_CONTAINER_INIT
+  ([[ ! -z ${SQL_BEFORE_DB_RESTORE+x} ]] && [[ -z $SQL_BEFORE_DB_RESTORE ]]) && unset -v SQL_BEFORE_DB_RESTORE
+  ([[ ! -z ${SQL_AFTER_DB_RESTORE+x} ]] && [[ -z $SQL_AFTER_DB_RESTORE ]]) && unset -v SQL_AFTER_DB_RESTORE
   ### CLI parameters checks ###
   if [[ "$RUN_ON" == "aws" ]]; then
     if [ ! -z ${CONTAINER_ID+x} ]; then
