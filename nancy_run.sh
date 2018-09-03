@@ -391,11 +391,11 @@ function check_cli_parameters() {
       exit 1
     fi
     if [[ -z ${AWS_REGION+x} ]]; then
-      err "NOTICE: AWS EC2 region not given. Will used us-east-1."
+      err "NOTICE: AWS EC2 region not given. Will use us-east-1."
       AWS_REGION='us-east-1'
     fi
     if [[ -z ${AWS_BLOCK_DURATION+x} ]]; then
-      err "NOTICE: Container live time duration is not given. Will used 60 minutes."
+      err "NOTICE: Container live time duration is not given. Will use 60 minutes."
       AWS_BLOCK_DURATION=60
     else
       case $AWS_BLOCK_DURATION in
@@ -407,6 +407,18 @@ function check_cli_parameters() {
           exit 1
         ;;
       esac
+    fi
+    if [[ ! -z ${AWS_EBS_VOLUME_SIZE+x} ]]; then
+      re='^[0-9]+$'
+      if ! [[ $AWS_EBS_VOLUME_SIZE =~ $re ]] ; then
+        err "ERROR: --aws-ebs-volume-size must be integer."
+        exit 1
+      fi
+    else
+      if [[ ! ${AWS_EC2_TYPE:0:2} == 'i3' ]]; then
+        err "NOTICE: EBS volume size is not given, will be calculated based on the dump file size (might be not enough)."
+        err "WARNING: It is recommended to specify EBS volume size explicitly (CLI option '--ebs-volume-size')."
+      fi
     fi
   elif [[ "$RUN_ON" == "localhost" ]]; then
     if [[ ! -z ${AWS_KEYPAIR_NAME+x} ]] || [[ ! -z ${AWS_SSH_KEY_PATH+x} ]] ; then
@@ -489,6 +501,11 @@ function check_cli_parameters() {
     DB_DUMP_EXT=${DB_DUMP_FILENAME##*.}
   fi
 
+  if [[ -z ${DB_NAME+x} ]]; then
+    dbg "NOTICE: Database name is not given. Will use 'test'"
+    DB_NAME='test'
+  fi
+
   if [[ -z ${PG_CONFIG+x} ]]; then
     err "NOTICE: No PostgreSQL config is provided. Will use default."
     # TODO(NikolayS) use "auto-tuning" – shared_buffers=1/4 RAM, etc
@@ -514,11 +531,6 @@ function check_cli_parameters() {
     ARTIFACTS_DESTINATION="."
   fi
 
-  if [[ -z ${DB_NAME+x} ]]; then
-    err "NOTICE: Database name is not given. Will use test"
-    DB_NAME='test'
-  fi
-
   if [[ -z ${ARTIFACTS_FILENAME+x} ]]; then
     dbg "Artifacts naming is not set. Will use: '$DOCKER_MACHINE'"
     ARTIFACTS_FILENAME=$DOCKER_MACHINE
@@ -537,7 +549,7 @@ function check_cli_parameters() {
   if [[ ! -z ${WORKLOAD_CUSTOM_SQL+x} ]]; then
     check_path WORKLOAD_CUSTOM_SQL
     if [[ "$?" -ne "0" ]]; then
-      #err "WARNING: Value given as workload-custom-sql: '$WORKLOAD_CUSTOM_SQL' not found as file will use as content"
+      dbg "WARNING: Value given as workload-custom-sql: '$WORKLOAD_CUSTOM_SQL' not found as file will use as content"
       echo "$WORKLOAD_CUSTOM_SQL" > $TMP_PATH/workload_custom_sql_tmp.sql
       WORKLOAD_CUSTOM_SQL="$TMP_PATH/workload_custom_sql_tmp.sql"
     fi
@@ -546,7 +558,7 @@ function check_cli_parameters() {
   if [[ ! -z ${COMMANDS_AFTER_CONTAINER_INIT+x} ]]; then
     check_path COMMANDS_AFTER_CONTAINER_INIT
     if [[ "$?" -ne "0" ]]; then
-      #err "WARNING: Value given as after_db_init_code: '$COMMANDS_AFTER_CONTAINER_INIT' not found as file will use as content"
+      dbg "WARNING: Value given as after_db_init_code: '$COMMANDS_AFTER_CONTAINER_INIT' not found as file will use as content"
       echo "$COMMANDS_AFTER_CONTAINER_INIT" > $TMP_PATH/after_docker_init_code_tmp.sh
       COMMANDS_AFTER_CONTAINER_INIT="$TMP_PATH/after_docker_init_code_tmp.sh"
     fi
@@ -563,7 +575,7 @@ function check_cli_parameters() {
   if [[ ! -z ${SQL_BEFORE_DB_RESTORE+x} ]]; then
     check_path SQL_BEFORE_DB_RESTORE
     if [[ "$?" -ne "0" ]]; then
-      #err "WARNING: Value given as before_db_init_code: '$SQL_BEFORE_DB_RESTORE' not found as file will use as content"
+      dbg "WARNING: Value given as before_db_init_code: '$SQL_BEFORE_DB_RESTORE' not found as file will use as content"
       echo "$SQL_BEFORE_DB_RESTORE" > $TMP_PATH/before_db_init_code_tmp.sql
       SQL_BEFORE_DB_RESTORE="$TMP_PATH/before_db_init_code_tmp.sql"
     fi
@@ -592,21 +604,6 @@ function check_cli_parameters() {
       DELTA_CONFIG="$TMP_PATH/target_config_tmp.conf"
     fi
   fi
-
-  if [[ "$RUN_ON" == "aws" ]]; then
-    if [[ ! -z ${AWS_EBS_VOLUME_SIZE+x} ]]; then
-      re='^[0-9]+$'
-      if ! [[ $AWS_EBS_VOLUME_SIZE =~ $re ]] ; then
-        err "ERROR: --aws-ebs-volume-size must be integer."
-        exit 1
-      fi
-    else
-      if [[ ! ${AWS_EC2_TYPE:0:2} == 'i3' ]]; then
-        err "NOTICE: EBS volume size is not given, will be calculated based on the dump file size (might be not enough)."
-        err "WARNING: It is recommended to specify EBS volume size explicitly (CLI option '--ebs-volume-size')."
-      fi
-    fi
-  fi
   ### End of CLI parameters checks ###
 }
 
@@ -626,7 +623,8 @@ function check_cli_parameters() {
 #   (text) [5] AWS keypair to use
 #   (text) [6] Path to Private Key file to use for instance
 #              Matching public key with .pub extension should exist
-#   (text) [7] The AWS region to launch the instance (us-east-1, eu-central-1)
+#   (text) [7] The AWS region to launch the instance
+#              (for example us-east-1, eu-central-1)
 #   (text) [8] The AWS zone to launch the instance in (one of a,b,c,d,e)
 # Returns:
 #   None
@@ -688,7 +686,7 @@ function wait_ec2_docker_machine_ready() {
     if $check_price ; then
       status=$( \
         aws --region=$AWS_REGION ec2 describe-spot-instance-requests \
-        --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" \
+          --filters="Name=launch.instance-type,Values=$AWS_EC2_TYPE" \
         | jq  '.SpotInstanceRequests | sort_by(.CreateTime) | .[] | .Status.Code' \
         | tail -n 1
       )
@@ -716,9 +714,9 @@ function determine_history_ec2_spot_price() {
   # TODO detect region and/or allow to choose via options
   prices=$(
     aws --region=$AWS_REGION ec2 \
-    describe-spot-price-history --instance-types $AWS_EC2_TYPE --no-paginate \
-    --start-time=$(date +%s) --product-descriptions="Linux/UNIX (Amazon VPC)" \
-    --query 'SpotPriceHistory[*].{az:AvailabilityZone, price:SpotPrice}'
+      describe-spot-price-history --instance-types $AWS_EC2_TYPE --no-paginate \
+      --start-time=$(date +%s) --product-descriptions="Linux/UNIX (Amazon VPC)" \
+      --query 'SpotPriceHistory[*].{az:AvailabilityZone, price:SpotPrice}'
   )
   minprice=$(echo $prices | jq 'min_by(.price) | .price')
   region=$(echo $prices | jq 'min_by(.price) | .az') #TODO(NikolayS) double-check zones&regions
@@ -726,8 +724,8 @@ function determine_history_ec2_spot_price() {
   region="${region/\"/}"
   minprice="${minprice/\"/}"
   minprice="${minprice/\"/}"
-  AWS_ZONE=${region: -1}
-  AWS_REGION=${region:: -1}
+  AWS_ZONE=${region:$((${#region}-1)):1}
+  AWS_REGION=${region:0:$((${#region}-1))}
   msg "Min price from history: $minprice in $region (zone: $AWS_ZONE)"
   multiplier="1.01"
   price=$(echo "$minprice * $multiplier" | bc -l)
