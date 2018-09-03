@@ -394,6 +394,14 @@ function check_cli_parameters() {
       err "NOTICE: AWS EC2 region not given. Will use us-east-1."
       AWS_REGION='us-east-1'
     fi
+    if [[ -z ${AWS_ZONE+x} ]]; then
+      err "NOTICE: AWS EC2 zone not given. Will determined by min price."
+    else
+      if [[ -z $AWS_ZONE ]]; then
+        err "NOTICE: AWS EC2 zone not given. Will determined by min price."
+        unset -v AWS_ZONE
+      fi
+    fi
     if [[ -z ${AWS_BLOCK_DURATION+x} ]]; then
       err "NOTICE: Container live time duration is not given. Will use 60 minutes."
       AWS_BLOCK_DURATION=60
@@ -435,6 +443,10 @@ function check_cli_parameters() {
     fi
     if [[ ! -z ${AWS_REGION+x} ]]; then
       err "ERROR: option '--aws-region' must be used with '--run-on aws'."
+      exit 1
+    fi
+    if [[ ! -z ${AWS_ZONE+x} ]]; then
+      err "ERROR: option '--aws-zone' must be used with '--run-on aws'."
       exit 1
     fi
     if [[ "$AWS_BLOCK_DURATION" != "0" ]]; then
@@ -718,22 +730,27 @@ function determine_history_ec2_spot_price() {
       --start-time=$(date +%s) --product-descriptions="Linux/UNIX (Amazon VPC)" \
       --query 'SpotPriceHistory[*].{az:AvailabilityZone, price:SpotPrice}'
   )
-  minprice=$(echo $prices | jq 'min_by(.price) | .price')
-  region=$(echo $prices | jq 'min_by(.price) | .az') #TODO(NikolayS) double-check zones&regions
+  if [[ ! -z ${AWS_ZONE+x} ]]; then
+    # zone given by option
+    price_data=$(echo $prices | jq ".[] | select(.az == \"$AWS_REGION$AWS_ZONE\")")
+  else
+    # zone NOT given by options, will detected from min price
+    price_data=$(echo $prices | jq 'min_by(.price)')
+  fi
+  region=$(echo $price_data | jq '.az')
+  price=$(echo $price_data | jq '.price')
+  #region=$(echo $price_data | jq 'min_by(.price) | .az') #TODO(NikolayS) double-check zones&regions
   region="${region/\"/}"
   region="${region/\"/}"
-  minprice="${minprice/\"/}"
-  minprice="${minprice/\"/}"
+  price="${price/\"/}"
+  price="${price/\"/}"
   AWS_ZONE=${region:$((${#region}-1)):1}
   AWS_REGION=${region:0:$((${#region}-1))}
-  msg "Min price from history: $minprice in $region (zone: $AWS_ZONE)"
+  msg "Min price from history: $price in $AWS_REGION (zone: $AWS_ZONE)"
   multiplier="1.01"
-  price=$(echo "$minprice * $multiplier" | bc -l)
+  price=$(echo "$price * $multiplier" | bc -l)
   msg "Increased price: $price"
   EC2_PRICE=$price
-  if [[ -z $AWS_ZONE ]]; then
-    AWS_ZONE='a' #default zone
-  fi
 }
 
 #######################################
@@ -975,6 +992,8 @@ while [ $# -gt 0 ]; do
         AWS_EBS_VOLUME_SIZE="$2"; shift 2 ;;
     --aws-region )
         AWS_REGION="$2"; shift 2 ;;
+    --aws-zone )
+        AWS_ZONE="$2"; shift 2 ;;
     --aws-block-duration )
         AWS_BLOCK_DURATION=$2; shift 2 ;;
 
