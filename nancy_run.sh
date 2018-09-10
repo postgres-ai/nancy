@@ -22,14 +22,14 @@ declare -a RUNS # i - delta_config  i+1 delta_ddl_do i+2 delta_ddl_undo
 function _attach_pancake_drive() {
   docker-machine ssh $DOCKER_MACHINE "sudo sh -c \"mkdir /home/basedump\""
   INSTANCE_ID=$(docker-machine ssh $DOCKER_MACHINE curl -s http://169.254.169.254/latest/meta-data/instance-id)
-  attachResult=$(aws --region=$AWS_REGION ec2 attach-volume --device /dev/xvdc --volume-id $BACKUP_VOLUME_ID --instance-id $INSTANCE_ID)
+  attachResult=$(aws --region=$AWS_REGION ec2 attach-volume --device /dev/xvdc --volume-id $DB_EBS_VOLUME_ID --instance-id $INSTANCE_ID)
   sleep 10
   docker-machine ssh $DOCKER_MACHINE sudo mount /dev/xvdc /home/basedump
   docker-machine ssh $DOCKER_MACHINE "sudo df -h /dev/xvdc"
 }
 
 function _dettach_pancake_drive() {
-  dettachResult=$(aws --region=$AWS_REGION ec2 detach-volume --volume-id $BACKUP_VOLUME_ID)
+  dettachResult=$(aws --region=$AWS_REGION ec2 detach-volume --volume-id $DB_EBS_VOLUME_ID)
 }
 
 #######################################
@@ -449,7 +449,7 @@ function check_cli_parameters() {
   ([[ ! -z ${SQL_BEFORE_DB_RESTORE+x} ]] && [[ -z $SQL_BEFORE_DB_RESTORE ]]) && unset -v SQL_BEFORE_DB_RESTORE
   ([[ ! -z ${SQL_AFTER_DB_RESTORE+x} ]] && [[ -z $SQL_AFTER_DB_RESTORE ]]) && unset -v SQL_AFTER_DB_RESTORE
   ([[ ! -z ${AWS_ZONE+x} ]] && [[ -z $AWS_ZONE ]]) && unset -v AWS_ZONE
-  ([[ ! -z ${RUNS_CONFIG+x} ]] && [[ -z $RUNS_CONFIG ]]) && unset -v RUNS_CONFIG
+  ([[ ! -z ${CONFIG+x} ]] && [[ -z $CONFIG ]]) && unset -v CONFIG
 
   ### CLI parameters checks ###
   if [[ "$RUN_ON" == "aws" ]]; then
@@ -602,15 +602,15 @@ function check_cli_parameters() {
     fi
   fi
 
-  if [[ ! -z ${RUNS_CONFIG+x} ]]; then
+  if [[ ! -z ${CONFIG+x} ]]; then
     #fill runs config
-    check_path RUNS_CONFIG
+    check_path CONFIG
     if [[ "$?" -ne "0" ]]; then
       err "ERROR: Runs config YML file not found."
       exit 1;
     fi
     # load and parse file
-    eval $(parse_yaml $RUNS_CONFIG "yml_")
+    eval $(parse_yaml $CONFIG "yml_")
     # preload runs config data
     i=0
     while : ; do
@@ -708,9 +708,9 @@ function check_cli_parameters() {
         DELTA_CONFIG="$TMP_PATH/target_config_tmp.conf"
       fi
     fi
-    RUNS[0]=DELTA_CONFIG
-    RUNS[1]=DELTA_SQL_DO
-    RUNS[2]=DELTA_SQL_UNDO
+    RUNS[0]=$DELTA_CONFIG
+    RUNS[1]=$DELTA_SQL_DO
+    RUNS[2]=$DELTA_SQL_UNDO
   fi
 
   if [[ -z ${ARTIFACTS_DESTINATION+x} ]]; then
@@ -1147,10 +1147,10 @@ while [[ $# -gt 0 ]]; do
       AWS_ZONE="$2"; shift 2 ;;
     --aws-block-duration )
       AWS_BLOCK_DURATION=$2; shift 2 ;;
-    --runs-config )
-      RUNS_CONFIG=$2; shift 2;;
-    --backup-volume-id )
-      BACKUP_VOLUME_ID=$2; shift 2;;
+    --config )
+      CONFIG=$2; shift 2;;
+    --db-ebs-volume-id )
+      DB_EBS_VOLUME_ID=$2; shift 2;;
 
     --s3cfg-path )
       S3_CFG_PATH="$2"; shift 2 ;;
@@ -1229,7 +1229,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
   msg "  To connect docker machine use:"
   msg "    docker-machine ssh $DOCKER_MACHINE"
 
-  if [[ ! -z ${BACKUP_VOLUME_ID+x} ]]; then
+  if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]]; then
     _attach_pancake_drive;
   fi
 
@@ -1576,7 +1576,7 @@ function collect_results() {
   docker_exec bash -c "/root/pgbadger/pgbadger \
     -j $CPU_CNT \
     --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr \
-    -o $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.$run_number.json" \
+    -o $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.$run_number.json" \
     2> >(grep -v "install the Text::CSV_XS" >&2)
   msg "Prepare HTML log..."
   docker_exec bash -c "/root/pgbadger/pgbadger \
@@ -1633,6 +1633,7 @@ function collect_results() {
 }
 
 function _cp_backup_2_storage() {
+  msg "Copy backup files from pancake to local storage."
   docker_exec bash -c "mkdir -p /storage/backup/pg_base"
   docker_exec bash -c "mkdir -p /storage/backup/pg_base_tblspace"
 
@@ -1651,6 +1652,7 @@ function _cp_backup_2_storage() {
 
 function _cp_backup() {
   # Here we think what postgress stopped
+  msg "Restore(cp) database backup."
   docker_exec bash -c "rm -rf /var/lib/postgresql/9.6/main/*"
 
   OP_START_TIME=$(date +%s);
@@ -1686,6 +1688,7 @@ function _cp_backup() {
 }
 
 function _rsync(){
+  msg "Restore(rsync) database from backup."
   docker_exec bash -c "sudo /etc/init.d/postgresql stop"
   sleep 10
   OP_START_TIME=$(date +%s);
@@ -1726,7 +1729,7 @@ if [[ "$RUN_ON" == "aws" ]]; then
   docker_exec bash -c "sudo mv /var/lib/postgresql /storage/"
   docker_exec bash -c "ln -s /storage/postgresql /var/lib/postgresql"
 
-  if [[ ! -z ${BACKUP_VOLUME_ID+x} ]]; then
+  if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]]; then
     _cp_backup_2_storage;
     _dettach_pancake_drive
     _cp_backup;
@@ -1736,7 +1739,7 @@ if [[ "$RUN_ON" == "aws" ]]; then
   sleep 10 # wait for postgres started
 fi
 
-if [[ ! -z ${BACKUP_VOLUME_ID+x} ]]; then
+if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]]; then
   docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'drop database if exists test;'"
   docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'alter database postila_ru rename to test;'"
 fi
@@ -1748,7 +1751,8 @@ fi
 [ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && copy_file $WORKLOAD_CUSTOM_SQL
 [ ! -z ${WORKLOAD_REAL+x} ] && copy_file $WORKLOAD_REAL
 
-# copy runs config files
+# copy files
+msg "Copy files."
 runs_count=${#RUNS[*]}
 let runs_count=runs_count/3
 i=0
@@ -1770,7 +1774,9 @@ sleep 10 # wait for postgres up&running
 ## Apply machine features
 apply_commands_after_container_init;
 apply_sql_before_db_restore;
-restore_dump; # commented for use pancake drive
+if [[ -z ${DB_EBS_VOLUME_ID+x} ]]; then
+  restore_dump; # commented for use pancake drive
+fi
 apply_sql_after_db_restore;
 apply_initial_postgres_configuration;
 
@@ -1782,15 +1788,17 @@ while : ; do
   j=$i*3
   d=$j+1
   u=$j+2
+  let num=$i+1
+  msg "Start run #$num."
   delta_config=${RUNS[$j]}
   delta_ddl_do=${RUNS[$d]}
   delta_ddl_undo=${RUNS[$u]}
 
   #restore database if not first run
-  if [[ "$" -gt "0" ]]; then
+  if [[ "$i" -gt "0" ]]; then
     docker_exec bash -c "sudo /etc/init.d/postgresql stop"
     sleep 10
-    if [[ ! -z ${BACKUP_VOLUME_ID+x} ]]; then
+    if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]]; then
       _rsync
     else
       restore_dump;
@@ -1807,13 +1815,12 @@ while : ; do
   execute_workload;
   collect_results $i;
 
-  num=$i+1
-  echo -e "  Run #$num done."
+  msg "Run #$num done."
   echo -e "  JSON Report: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/pgbadger.$num.json"
   echo -e "  HTML Report: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/pgbadger.$num.html"
   echo -e "  Query log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/postgresql.workload.$num.log.gz"
   echo -e "  Prepare log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/postgresql.prepare.$num.log.gz"
-echo -e "  Postgresql configuration log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/postgresql.$num.conf"
+  echo -e "  Postgresql configuration log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/postgresql.$num.conf"
   echo -e "  -------------------------------------------"
   echo -e "  Workload summary:"
   echo -e "    Summarized query duration:\t" $(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.$num.json | jq '.overall_stat.queries_duration') " ms"
@@ -1829,4 +1836,4 @@ echo -e "  Postgresql configuration log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILEN
 done
 
 DURATION=$(echo $((END_TIME-START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-echo -e "$(date "+%Y-%m-%d %H:%M:%S"): All runs done for $DURATION"
+msg "All runs done for $DURATION"
