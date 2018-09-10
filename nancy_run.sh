@@ -1114,6 +1114,7 @@ fi
 MACHINE_HOME="/machine_home/nancy_${CONTAINER_HASH}"
 
 alias docker_exec='docker $DOCKER_CONFIG exec -i ${CONTAINER_HASH} '
+CPU_CNT=$(docker_exec bash -c "cat /proc/cpuinfo | grep processor | wc -l") # for execute in docker
 
 docker_exec bash -c "mkdir $MACHINE_HOME && chmod a+w $MACHINE_HOME"
 if [[ "$RUN_ON" == "aws" ]]; then
@@ -1158,6 +1159,337 @@ function copy_file() {
   fi
 }
 
+#######################################
+# Execute shell commands in container after it was started
+# Globals:
+#   COMMANDS_AFTER_CONTAINER_INIT, MACHINE_HOME,docker_exec alias
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function apply_commands_after_container_init() {
+  OP_START_TIME=$(date +%s);
+  if ([ ! -z ${COMMANDS_AFTER_CONTAINER_INIT+x} ] && [ "$COMMANDS_AFTER_CONTAINER_INIT" != "" ])
+  then
+    msg "Apply code after docker init"
+    COMMANDS_AFTER_CONTAINER_INIT_FILENAME=$(basename $COMMANDS_AFTER_CONTAINER_INIT)
+    copy_file $COMMANDS_AFTER_CONTAINER_INIT
+    docker_exec bash -c "chmod +x $MACHINE_HOME/$COMMANDS_AFTER_CONTAINER_INIT_FILENAME"
+    docker_exec sh $MACHINE_HOME/$COMMANDS_AFTER_CONTAINER_INIT_FILENAME
+    END_TIME=$(date +%s);
+    DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+    msg "After docker init code has been applied for $DURATION."
+  fi
+}
+
+#######################################
+# Execute sql code before restore database
+# Globals:
+#   SQL_BEFORE_DB_RESTORE, MACHINE_HOME, docker_exec alias
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function apply_sql_before_db_restore() {
+  OP_START_TIME=$(date +%s);
+  if ([ ! -z ${SQL_BEFORE_DB_RESTORE+x} ] && [ "$SQL_BEFORE_DB_RESTORE" != "" ]); then
+    msg "Apply sql code before db init"
+    SQL_BEFORE_DB_RESTORE_FILENAME=$(basename $SQL_BEFORE_DB_RESTORE)
+    copy_file $SQL_BEFORE_DB_RESTORE
+    # --set ON_ERROR_STOP=on
+    docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -f $MACHINE_HOME/$SQL_BEFORE_DB_RESTORE_FILENAME $VERBOSE_OUTPUT_REDIRECT"
+    END_TIME=$(date +%s);
+    DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+    msg "Before init SQL code applied for $DURATION."
+  fi
+}
+
+#######################################
+# Restore database dump
+# Globals:
+#   DB_DUMP_EXT, DB_DUMP_FILENAME, DB_NAME, MACHINE_HOME, VERBOSE_OUTPUT_REDIRECT
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function restore_dump() {
+  OP_START_TIME=$(date +%s);
+  msg "Restore database dump"
+  case "$DB_DUMP_EXT" in
+    sql)
+      docker_exec bash -c "cat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
+      ;;
+    bz2)
+      docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
+      ;;
+    gz)
+      docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
+      ;;
+    pgdmp)
+      docker_exec bash -c "pg_restore -j $CPU_CNT --no-owner --no-privileges -U postgres -d $DB_NAME $MACHINE_HOME/$DB_DUMP_FILENAME" || true
+      ;;
+  esac
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  msg "Database dump restored for $DURATION."
+}
+
+#######################################
+# Execute sql code after db restore
+# Globals:
+#   SQL_AFTER_DB_RESTORE, DB_NAME, MACHINE_HOME, VERBOSE_OUTPUT_REDIRECT, docker_exec alias
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function apply_sql_after_db_restore() {
+  # After init database sql code apply
+  OP_START_TIME=$(date +%s);
+  if ([ ! -z ${SQL_AFTER_DB_RESTORE+x} ] && [ "$SQL_AFTER_DB_RESTORE" != "" ]); then
+    msg "Apply sql code after db init"
+    SQL_AFTER_DB_RESTORE_FILENAME=$(basename $SQL_AFTER_DB_RESTORE)
+    copy_file $SQL_AFTER_DB_RESTORE
+    docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -f $MACHINE_HOME/$SQL_AFTER_DB_RESTORE_FILENAME $VERBOSE_OUTPUT_REDIRECT"
+    END_TIME=$(date +%s);
+    DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+    msg "After init SQL code applied for $DURATION."
+  fi
+}
+
+#######################################
+# Apply DDL code
+# Globals:
+#   DELTA_SQL_DO, DB_NAME, MACHINE_HOME, VERBOSE_OUTPUT_REDIRECT, docker_exec alias
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function apply_ddl_do_code() {
+  # Apply DDL code
+  OP_START_TIME=$(date +%s);
+  if ([ ! -z ${DELTA_SQL_DO+x} ] && [ "$DELTA_SQL_DO" != "" ]); then
+    msg "Apply DDL SQL code"
+    DELTA_SQL_DO_FILENAME=$(basename $DELTA_SQL_DO)
+    docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -f $MACHINE_HOME/$DELTA_SQL_DO_FILENAME $VERBOSE_OUTPUT_REDIRECT"
+    END_TIME=$(date +%s);
+    DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+    msg "Delta SQL \"DO\" code applied for $DURATION."
+  fi
+}
+
+#######################################
+# Apply DDL undo code
+# Globals:
+#   DELTA_SQL_UNDO, DB_NAME, MACHINE_HOME, VERBOSE_OUTPUT_REDIRECT, docker_exec alias
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function apply_ddl_undo_code() {
+  OP_START_TIME=$(date +%s);
+  if ([ ! -z ${DELTA_SQL_UNDO+x} ] && [ "$DELTA_SQL_UNDO" != "" ]); then
+    msg "Apply DDL undo SQL code"
+    DELTA_SQL_UNDO_FILENAME=$(basename $DELTA_SQL_UNDO)
+    docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -f $MACHINE_HOME/$DELTA_SQL_UNDO_FILENAME $VERBOSE_OUTPUT_REDIRECT"
+    END_TIME=$(date +%s);
+    DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+    msg "Delta SQL \"UNDO\" code has been applied for $DURATION."
+  fi
+}
+
+#######################################
+# Apply initial postgres configuration
+# Globals:
+#   PG_CONFIG, MACHINE_HOME, docker_exec alias
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function apply_initial_postgres_configuration() {
+  # Apply initial postgres configuration
+  OP_START_TIME=$(date +%s);
+  if ([ ! -z ${PG_CONFIG+x} ] && [ "$PG_CONFIG" != "" ]); then
+    msg "Apply initial postgres configuration"
+    PG_CONFIG_FILENAME=$(basename $PG_CONFIG)
+    docker_exec bash -c "cat $MACHINE_HOME/$PG_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    if [ -z ${DELTA_CONFIG+x} ]
+    then
+      docker_exec bash -c "sudo /etc/init.d/postgresql restart"
+      sleep 10
+    fi
+    END_TIME=$(date +%s);
+    DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+    msg "Initial configuration applied for $DURATION."
+  fi
+}
+
+#######################################
+# Apply test postgres configuration
+# Globals:
+#   DELTA_CONFIG, MACHINE_HOME, docker_exec alias
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function apply_postgres_configuration() {
+  # Apply postgres configuration
+  OP_START_TIME=$(date +%s);
+  if ([ ! -z ${DELTA_CONFIG+x} ] && [ "$DELTA_CONFIG" != "" ]); then
+    msg "Apply postgres configuration"
+    DELTA_CONFIG_FILENAME=$(basename $DELTA_CONFIG)
+    docker_exec bash -c "cat $MACHINE_HOME/$DELTA_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "sudo /etc/init.d/postgresql restart"
+    sleep 10
+    END_TIME=$(date +%s);
+    DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+    msg "Postgres configuration applied for $DURATION."
+  fi
+}
+
+#######################################
+# Prepare to start workload.
+# Save restore db log, vacuumdb, clear log
+# Globals:
+#   ARTIFACTS_FILENAME, MACHINE_HOME, DB_NAME, docker_exec alias
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function prepare_start_workload() {
+  #Save before workload log
+  msg "Save prepaparation log"
+  logpath=$( \
+    docker_exec bash -c "psql -XtU postgres \
+      -c \"select string_agg(setting, '/' order by name) from pg_settings where name in ('log_directory', 'log_filename');\" \
+      | grep / | sed -e 's/^[ \t]*//'"
+  )
+  docker_exec bash -c "mkdir $MACHINE_HOME/$ARTIFACTS_FILENAME"
+  docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.prepare.log.gz"
+
+  # Clear statistics and log
+  msg "Execute vacuumdb..."
+  docker_exec vacuumdb -U postgres $DB_NAME -j $CPU_CNT --analyze
+  docker_exec bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
+}
+
+#######################################
+# Execute workload.
+# Globals:
+#   WORKLOAD_REAL, WORKLOAD_REAL_REPLAY_SPEED, WORKLOAD_CUSTOM_SQL, MACHINE_HOME,
+#   DB_NAME, VERBOSE_OUTPUT_REDIRECT, docker_exec alias
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function execute_workload() {
+  # Execute workload
+  OP_START_TIME=$(date +%s);
+  msg "Execute workload..."
+  if [[ ! -z ${WORKLOAD_REAL+x} ]] && [[ "$WORKLOAD_REAL" != '' ]]; then
+    msg "Execute pgreplay queries..."
+    docker_exec psql -U postgres $DB_NAME -c 'create role testuser superuser login;'
+    WORKLOAD_FILE_NAME=$(basename $WORKLOAD_REAL)
+    if [[ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ]] && [[ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]]; then
+      docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED  $MACHINE_HOME/$WORKLOAD_FILE_NAME"
+    else
+      docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
+    fi
+  else
+    if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
+      WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
+      msg "Execute custom sql queries..."
+      docker_exec bash -c "psql -U postgres $DB_NAME -E -f $MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME $VERBOSE_OUTPUT_REDIRECT"
+    fi
+  fi
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  msg "Workload executed for $DURATION."
+}
+
+#######################################
+# Collect results of workload execution and save to artifact destination
+# Globals:
+#   CONTAINER_HASH, MACHINE_HOME, ARTIFACTS_DESTINATION, docker_exec alias
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function collect_results() {
+  ## Get statistics
+  OP_START_TIME=$(date +%s);
+  msg "Prepare JSON log..."
+  docker_exec bash -c "/root/pgbadger/pgbadger \
+    -j $CPU_CNT \
+    --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr \
+    -o $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json" \
+    2> >(grep -v "install the Text::CSV_XS" >&2)
+  msg "Prepare HTML log..."
+  docker_exec bash -c "/root/pgbadger/pgbadger \
+    -j $CPU_CNT \
+    --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr \
+    -o $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.html" \
+    2> >(grep -v "install the Text::CSV_XS" >&2)
+
+  #pg_stat_* artifacts
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_activity) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_activity.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_archiver) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_archiver.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_bgwriter) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_bgwriter.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_database) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_database.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_database_conflicts) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_database_conflicts.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_all_tables) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_all_tables.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_sys_tables) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_sys_tables.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_user_tables) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_user_tables.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_xact_all_tables) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_xact_all_tables.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_xact_sys_tables) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_xact_sys_tables.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_xact_user_tables) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_xact_user_tables.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_all_indexes) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_all_indexes.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_sys_indexes) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_sys_indexes.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_user_indexes) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_user_indexes.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_statio_all_tables) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_statio_all_tables.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_statio_sys_tables) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_statio_sys_tables.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_statio_user_tables) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_statio_user_tables.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_statio_all_indexes) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_statio_all_indexes.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_statio_sys_indexes) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_statio_sys_indexes.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_statio_user_indexes) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_statio_user_indexes.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_statio_all_sequences) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_statio_all_sequences.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_statio_sys_sequences) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_statio_sys_sequences.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_statio_user_sequences) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_statio_user_sequences.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_user_functions) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_user_functions.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_xact_user_functions) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_xact_user_functions.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  #docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_statements) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_statements.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+
+  docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.workload.log.gz"
+  docker_exec bash -c "cp /etc/postgresql/$PG_VERSION/main/postgresql.conf $MACHINE_HOME/$ARTIFACTS_FILENAME/"
+  msg "Save artifacts..."
+  if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
+    docker_exec s3cmd --recursive put /$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/
+  else
+    if [[ "$RUN_ON" == "localhost" ]]; then
+      docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/
+    elif [[ "$RUN_ON" == "aws" ]]; then
+      mkdir $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME
+      docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME/* $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/
+    else
+      err "ASSERT: must not reach this point"
+      exit 1
+    fi
+  fi
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  msg "Statistics got for $DURATION."
+}
+
 [ ! -z ${S3_CFG_PATH+x} ] && copy_file $S3_CFG_PATH \
   && docker_exec cp $MACHINE_HOME/.s3cfg /root/.s3cfg
 [ ! -z ${DB_DUMP+x} ] && copy_file $DB_DUMP
@@ -1172,203 +1504,31 @@ function copy_file() {
 # Dump
 sleep 2 # wait for postgres up&running
 
-OP_START_TIME=$(date +%s);
-if ([ ! -z ${COMMANDS_AFTER_CONTAINER_INIT+x} ] && [ "$COMMANDS_AFTER_CONTAINER_INIT" != "" ])
-then
-  msg "Apply code after docker init"
-  COMMANDS_AFTER_CONTAINER_INIT_FILENAME=$(basename $COMMANDS_AFTER_CONTAINER_INIT)
-  copy_file $COMMANDS_AFTER_CONTAINER_INIT
-  # --set ON_ERROR_STOP=on
-  docker_exec bash -c "chmod +x $MACHINE_HOME/$COMMANDS_AFTER_CONTAINER_INIT_FILENAME"
-  docker_exec sh $MACHINE_HOME/$COMMANDS_AFTER_CONTAINER_INIT_FILENAME
-  END_TIME=$(date +%s);
-  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-  msg "After docker init code has been applied for $DURATION."
-fi
-OP_START_TIME=$(date +%s);
-if ([ ! -z ${SQL_BEFORE_DB_RESTORE+x} ] && [ "$SQL_BEFORE_DB_RESTORE" != "" ]); then
-  msg "Apply sql code before db init"
-  SQL_BEFORE_DB_RESTORE_FILENAME=$(basename $SQL_BEFORE_DB_RESTORE)
-  copy_file $SQL_BEFORE_DB_RESTORE
-  # --set ON_ERROR_STOP=on
-  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -f $MACHINE_HOME/$SQL_BEFORE_DB_RESTORE_FILENAME $VERBOSE_OUTPUT_REDIRECT"
-  END_TIME=$(date +%s);
-  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-  msg "Before init SQL code applied for $DURATION."
-fi
-
-OP_START_TIME=$(date +%s);
-msg "Restore database dump"
-CPU_CNT=$(docker_exec bash -c "cat /proc/cpuinfo | grep processor | wc -l") # for execute in docker
-case "$DB_DUMP_EXT" in
-  sql)
-    docker_exec bash -c "cat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
-    ;;
-  bz2)
-    docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
-    ;;
-  gz)
-    docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
-    ;;
-  pgdmp)
-    docker_exec bash -c "pg_restore -j $CPU_CNT --no-owner --no-privileges -U postgres -d $DB_NAME $MACHINE_HOME/$DB_DUMP_FILENAME" || true
-    ;;
-esac
-END_TIME=$(date +%s);
-DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-msg "Database dump restored for $DURATION."
-
-# After init database sql code apply
-OP_START_TIME=$(date +%s);
-if ([ ! -z ${SQL_AFTER_DB_RESTORE+x} ] && [ "$SQL_AFTER_DB_RESTORE" != "" ]); then
-  msg "Apply sql code after db init"
-  SQL_AFTER_DB_RESTORE_FILENAME=$(basename $SQL_AFTER_DB_RESTORE)
-  copy_file $SQL_AFTER_DB_RESTORE
-  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -f $MACHINE_HOME/$SQL_AFTER_DB_RESTORE_FILENAME $VERBOSE_OUTPUT_REDIRECT"
-  END_TIME=$(date +%s);
-  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-  msg "After init SQL code applied for $DURATION."
-fi
-# Apply DDL code
-OP_START_TIME=$(date +%s);
-if ([ ! -z ${DELTA_SQL_DO+x} ] && [ "$DELTA_SQL_DO" != "" ]); then
-  msg "Apply DDL SQL code"
-  DELTA_SQL_DO_FILENAME=$(basename $DELTA_SQL_DO)
-  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -f $MACHINE_HOME/$DELTA_SQL_DO_FILENAME $VERBOSE_OUTPUT_REDIRECT"
-  END_TIME=$(date +%s);
-  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-  msg "Delta SQL \"DO\" code applied for $DURATION."
-fi
-# Apply initial postgres configuration
-OP_START_TIME=$(date +%s);
-if ([ ! -z ${PG_CONFIG+x} ] && [ "$PG_CONFIG" != "" ]); then
-  msg "Apply initial postgres configuration"
-  PG_CONFIG_FILENAME=$(basename $PG_CONFIG)
-  docker_exec bash -c "cat $MACHINE_HOME/$PG_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
-  if [ -z ${DELTA_CONFIG+x} ]
-  then
-    docker_exec bash -c "sudo /etc/init.d/postgresql restart"
-  fi
-  END_TIME=$(date +%s);
-  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-  msg "Initial configuration applied for $DURATION."
-fi
-# Apply postgres configuration
-OP_START_TIME=$(date +%s);
-if ([ ! -z ${DELTA_CONFIG+x} ] && [ "$DELTA_CONFIG" != "" ]); then
-  msg "Apply postgres configuration"
-  DELTA_CONFIG_FILENAME=$(basename $DELTA_CONFIG)
-  docker_exec bash -c "cat $MACHINE_HOME/$DELTA_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
-  docker_exec bash -c "sudo /etc/init.d/postgresql restart"
-  END_TIME=$(date +%s);
-  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-  msg "Postgres configuration applied for $DURATION."
-fi
-#Save before workload log
-msg "Save prepaparation log"
-logpath=$( \
-  docker_exec bash -c "psql -XtU postgres \
-    -c \"select string_agg(setting, '/' order by name) from pg_settings where name in ('log_directory', 'log_filename');\" \
-    | grep / | sed -e 's/^[ \t]*//'"
-)
-docker_exec bash -c "mkdir $MACHINE_HOME/$ARTIFACTS_FILENAME"
-docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.prepare.log.gz"
-
-# TODO(ns) get prepare.log.gz
-#if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
-#  docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.prepare.log.gz $ARTIFACTS_DESTINATION/
-#else
-#  docker `docker-machine config $DOCKER_MACHINE` cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME.prepare.log.gz $ARTIFACTS_DESTINATION/
-#fi
-
-# Clear statistics and log
-msg "Execute vacuumdb..."
-docker_exec vacuumdb -U postgres $DB_NAME -j $CPU_CNT --analyze
-docker_exec bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
-
-# Execute workload
-OP_START_TIME=$(date +%s);
-msg "Execute workload..."
-if [ ! -z ${WORKLOAD_REAL+x} ] && [ "$WORKLOAD_REAL" != '' ]; then
-  msg "Execute pgreplay queries..."
-  docker_exec psql -U postgres $DB_NAME -c 'create role testuser superuser login;'
-  WORKLOAD_FILE_NAME=$(basename $WORKLOAD_REAL)
-  if [ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ] && [ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]; then
-    docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED  $MACHINE_HOME/$WORKLOAD_FILE_NAME"
-  else
-    docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
-  fi
-else
-  if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
-    WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
-    msg "Execute custom sql queries..."
-    docker_exec bash -c "psql -U postgres $DB_NAME -E -f $MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME $VERBOSE_OUTPUT_REDIRECT"
-  fi
-fi
-END_TIME=$(date +%s);
-DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-msg "Workload executed for $DURATION."
-
-## Get statistics
-OP_START_TIME=$(date +%s);
-msg "Prepare JSON log..."
-docker_exec bash -c "/root/pgbadger/pgbadger \
-  -j $CPU_CNT \
-  --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr \
-  -o $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.json" \
-  2> >(grep -v "install the Text::CSV_XS" >&2)
-
-docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.log.gz"
-docker_exec bash -c "gzip -c /etc/postgresql/$PG_VERSION/main/postgresql.conf > $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.conf.gz"
-msg "Save artifacts..."
-if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
-  docker_exec s3cmd --recursive put /$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/
-  #docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
-  #docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
-  #docker_exec s3cmd put /$MACHINE_HOME/$ARTIFACTS_FILENAME.conf.gz $ARTIFACTS_DESTINATION/
-else
-  if [[ "$RUN_ON" == "localhost" ]]; then
-    docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/
-    #docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
-    #docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
-    #docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME.conf.gz $ARTIFACTS_DESTINATION/
-    # TODO option: ln / cp
-    #cp "$TMP_PATH/nancy_$CONTAINER_HASH/"$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
-    #cp "$TMP_PATH/nancy_$CONTAINER_HASH/"$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
-  elif [[ "$RUN_ON" == "aws" ]]; then
-    mkdir $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME
-    docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME/* $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/
-    #docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME.json $ARTIFACTS_DESTINATION/
-    #docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME.log.gz $ARTIFACTS_DESTINATION/
-    #docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME.conf.gz $ARTIFACTS_DESTINATION/
-  else
-    err "ASSERT: must not reach this point"
-    exit 1
-  fi
-fi
-END_TIME=$(date +%s);
-DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-msg "Statistics got for $DURATION."
-
-OP_START_TIME=$(date +%s);
-if ([ ! -z ${DELTA_SQL_UNDO+x} ] && [ "$DELTA_SQL_UNDO" != "" ]); then
-  msg "Apply DDL undo SQL code"
-  DELTA_SQL_UNDO_FILENAME=$(basename $DELTA_SQL_UNDO)
-  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -f $MACHINE_HOME/$DELTA_SQL_UNDO_FILENAME $VERBOSE_OUTPUT_REDIRECT"
-  END_TIME=$(date +%s);
-  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-  msg "Delta SQL \"UNDO\" code has been applied for $DURATION."
-fi
+apply_commands_after_container_init;
+apply_sql_before_db_restore;
+restore_dump;
+apply_sql_after_db_restore;
+apply_ddl_do_code;
+apply_initial_postgres_configuration;
+apply_postgres_configuration;
+prepare_start_workload;
+execute_workload;
+collect_results;
+apply_ddl_undo_code;
 
 END_TIME=$(date +%s);
 DURATION=$(echo $((END_TIME-START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
 echo -e "$(date "+%Y-%m-%d %H:%M:%S"): Run done for $DURATION"
-echo -e "  Report: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json"
-echo -e "  Query log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.log.gz"
+echo -e "  JSON Report: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/pgbadger.json"
+echo -e "  HTML Report: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/pgbadger.html"
+echo -e "  Query log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/postgresql.workload.log.gz"
+echo -e "  Prepare log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/postgresql.prepare.log.gz"
+echo -e "  Postgresql configuration log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/postgresql.conf"
+
 echo -e "  -------------------------------------------"
 echo -e "  Workload summary:"
-echo -e "    Summarized query duration:\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_duration') " ms"
-echo -e "    Queries:\t\t\t" $( docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_number')
-echo -e "    Query groups:\t\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.json | jq '.normalyzed_info| length')
-echo -e "    Errors:\t\t\t" $(docker_exec cat /$MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.errors_number')
+echo -e "    Summarized query duration:\t" $(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.overall_stat.queries_duration') " ms"
+echo -e "    Queries:\t\t\t" $( docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.overall_stat.queries_number')
+echo -e "    Query groups:\t\t" $(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.normalyzed_info| length')
+echo -e "    Errors:\t\t\t" $(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.overall_stat.errors_number')
 echo -e "-------------------------------------------"
