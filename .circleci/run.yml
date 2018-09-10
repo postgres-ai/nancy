@@ -1,0 +1,13 @@
+run:
+  0:
+    delta_ddl_do: select now(); select now();
+    delta_ddl_undo: select now();
+#    delta_config: max_wal_size = 2048MB
+  1:
+#    delta_ddl_do: select now();
+#    delta_ddl_undo: select now();
+    delta_config: max_wal_size = 4092MB
+#  2:
+#    delta_ddl_do: select now();
+#    delta_ddl_undo: select now();
+#    delta_config: max_wal_size = 4092MB    

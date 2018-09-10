@@ -1512,8 +1512,8 @@ function prepare_start_workload() {
   )
   if [[ "$run_number" -eq "1" ]]; then
     # save preparation log only before first run
-    docker_exec bash -c "mkdir $MACHINE_HOME/$ARTIFACTS_FILENAME"
-    docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.$run_number.prepare.log.gz"
+    docker_exec bash -c "mkdir -p $MACHINE_HOME/$ARTIFACTS_FILENAME"
+    docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.prepare.log.gz"
   fi
 
   # Clear statistics and log
@@ -1611,8 +1611,7 @@ function collect_results() {
   docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_user_functions) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_user_functions.$run_number.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
   docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_xact_user_functions) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_xact_user_functions.$run_number.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
 
-
-  docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.workload.log.gz"
+  docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.workload.$run_number.log.gz"
   docker_exec bash -c "cp /etc/postgresql/$PG_VERSION/main/postgresql.conf $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.$run_number.conf"
   msg "Save artifacts..."
   if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
@@ -1621,7 +1620,7 @@ function collect_results() {
     if [[ "$RUN_ON" == "localhost" ]]; then
       docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/
     elif [[ "$RUN_ON" == "aws" ]]; then
-      mkdir $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME
+      mkdir -p $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME
       docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME/* $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/
     else
       err "ASSERT: must not reach this point"
