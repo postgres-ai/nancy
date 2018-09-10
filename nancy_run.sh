@@ -1175,7 +1175,6 @@ function apply_commands_after_container_init() {
     msg "Apply code after docker init"
     COMMANDS_AFTER_CONTAINER_INIT_FILENAME=$(basename $COMMANDS_AFTER_CONTAINER_INIT)
     copy_file $COMMANDS_AFTER_CONTAINER_INIT
-    # --set ON_ERROR_STOP=on
     docker_exec bash -c "chmod +x $MACHINE_HOME/$COMMANDS_AFTER_CONTAINER_INIT_FILENAME"
     docker_exec sh $MACHINE_HOME/$COMMANDS_AFTER_CONTAINER_INIT_FILENAME
     END_TIME=$(date +%s);
@@ -1374,7 +1373,7 @@ function prepare_start_workload() {
       | grep / | sed -e 's/^[ \t]*//'"
   )
   docker_exec bash -c "mkdir $MACHINE_HOME/$ARTIFACTS_FILENAME"
-  docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.prepare.log.gz"
+  docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.prepare.log.gz"
 
   # Clear statistics and log
   msg "Execute vacuumdb..."
@@ -1396,11 +1395,11 @@ function execute_workload() {
   # Execute workload
   OP_START_TIME=$(date +%s);
   msg "Execute workload..."
-  if [ ! -z ${WORKLOAD_REAL+x} ] && [ "$WORKLOAD_REAL" != '' ]; then
+  if [[ ! -z ${WORKLOAD_REAL+x} ]] && [[ "$WORKLOAD_REAL" != '' ]]; then
     msg "Execute pgreplay queries..."
     docker_exec psql -U postgres $DB_NAME -c 'create role testuser superuser login;'
     WORKLOAD_FILE_NAME=$(basename $WORKLOAD_REAL)
-    if [ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ] && [ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]; then
+    if [[ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ]] && [[ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]]; then
       docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED  $MACHINE_HOME/$WORKLOAD_FILE_NAME"
     else
       docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
@@ -1433,11 +1432,45 @@ function collect_results() {
   docker_exec bash -c "/root/pgbadger/pgbadger \
     -j $CPU_CNT \
     --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr \
-    -o $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.json" \
+    -o $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json" \
+    2> >(grep -v "install the Text::CSV_XS" >&2)
+  msg "Prepare HTML log..."
+  docker_exec bash -c "/root/pgbadger/pgbadger \
+    -j $CPU_CNT \
+    --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr \
+    -o $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.html" \
     2> >(grep -v "install the Text::CSV_XS" >&2)
 
-  docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.log.gz"
-  docker_exec bash -c "gzip -c /etc/postgresql/$PG_VERSION/main/postgresql.conf > $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.conf.gz"
+  #pg_stat_* artifacts
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_activity) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_activity.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_archiver) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_archiver.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_bgwriter) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_bgwriter.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_database) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_database.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_database_conflicts) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_database_conflicts.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_all_tables) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_all_tables.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_sys_tables) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_sys_tables.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_user_tables) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_user_tables.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_xact_all_tables) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_xact_all_tables.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_xact_sys_tables) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_xact_sys_tables.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_xact_user_tables) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_xact_user_tables.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_all_indexes) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_all_indexes.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_sys_indexes) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_sys_indexes.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_user_indexes) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_user_indexes.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_statio_all_tables) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_statio_all_tables.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_statio_sys_tables) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_statio_sys_tables.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_statio_user_tables) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_statio_user_tables.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_statio_all_indexes) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_statio_all_indexes.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_statio_sys_indexes) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_statio_sys_indexes.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_statio_user_indexes) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_statio_user_indexes.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_statio_all_sequences) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_statio_all_sequences.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_statio_sys_sequences) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_statio_sys_sequences.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_statio_user_sequences) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_statio_user_sequences.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_user_functions) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_user_functions.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_xact_user_functions) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_xact_user_functions.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+  #docker_exec bash -c "psql -U postgres $DB_NAME -b -c '\copy (select * from pg_stat_statements) to /$MACHINE_HOME/$ARTIFACTS_FILENAME/pg_stat_statements.csv with csv;' $VERBOSE_OUTPUT_REDIRECT"
+
+  docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.workload.log.gz"
+  docker_exec bash -c "cp /etc/postgresql/$PG_VERSION/main/postgresql.conf $MACHINE_HOME/$ARTIFACTS_FILENAME/"
   msg "Save artifacts..."
   if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
     docker_exec s3cmd --recursive put /$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/
@@ -1486,12 +1519,16 @@ apply_ddl_undo_code;
 END_TIME=$(date +%s);
 DURATION=$(echo $((END_TIME-START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
 echo -e "$(date "+%Y-%m-%d %H:%M:%S"): Run done for $DURATION"
-echo -e "  Report: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.json"
-echo -e "  Query log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME.log.gz"
+echo -e "  JSON Report: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/pgbadger.json"
+echo -e "  HTML Report: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/pgbadger.html"
+echo -e "  Query log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/postgresql.workload.log.gz"
+echo -e "  Prepare log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/postgresql.prepare.log.gz"
+echo -e "  Postgresql configuration log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/postgresql.conf"
+
 echo -e "  -------------------------------------------"
 echo -e "  Workload summary:"
-echo -e "    Summarized query duration:\t" $(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_duration') " ms"
-echo -e "    Queries:\t\t\t" $( docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.queries_number')
-echo -e "    Query groups:\t\t" $(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.json | jq '.normalyzed_info| length')
-echo -e "    Errors:\t\t\t" $(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/$ARTIFACTS_FILENAME.json | jq '.overall_stat.errors_number')
+echo -e "    Summarized query duration:\t" $(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.overall_stat.queries_duration') " ms"
+echo -e "    Queries:\t\t\t" $( docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.overall_stat.queries_number')
+echo -e "    Query groups:\t\t" $(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.normalyzed_info| length')
+echo -e "    Errors:\t\t\t" $(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.overall_stat.errors_number')
 echo -e "-------------------------------------------"
