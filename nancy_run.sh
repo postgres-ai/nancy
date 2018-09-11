@@ -28,10 +28,6 @@ function _attach_pancake_drive() {
   docker-machine ssh $DOCKER_MACHINE "sudo df -h /dev/xvdc"
 }
 
-function _dettach_pancake_drive() {
-  dettachResult=$(aws --region=$AWS_REGION ec2 detach-volume --volume-id $DB_EBS_VOLUME_ID)
-}
-
 #######################################
 # Print a help
 # Globals:
@@ -1248,6 +1244,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
   CONTAINER_HASH=$( \
     docker `docker-machine config $DOCKER_MACHINE` run \
       --name="pg_nancy_${CURRENT_TS}" \
+      --privileged \
       -v /home/ubuntu:/machine_home \
       -v /home/storage:/storage \
       -v /home/basedump:/basedump \
@@ -1265,6 +1262,13 @@ MACHINE_HOME="/machine_home/nancy_${CONTAINER_HASH}"
 
 alias docker_exec='docker $DOCKER_CONFIG exec -i ${CONTAINER_HASH} '
 CPU_CNT=$(docker_exec bash -c "cat /proc/cpuinfo | grep processor | wc -l") # for execute in docker
+
+
+function _dettach_pancake_drive() {
+  docker_exec bash -c "umount /basedump"
+  docker-machine ssh $DOCKER_MACHINE sudo umount /home/basedump
+  dettachResult=$(aws --region=$AWS_REGION ec2 detach-volume --volume-id $DB_EBS_VOLUME_ID)
+}
 
 #######################################
 # Copy file to container
