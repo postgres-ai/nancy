@@ -14,7 +14,7 @@ DOCKER_MACHINE="nancy-$CURRENT_TS"
 DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
 KEEP_ALIVE=0
 VERBOSE_OUTPUT_REDIRECT=" > /dev/null"
-EBS_SIZE_MULTIPLIER=15
+EBS_SIZE_MULTIPLIER=5
 POSTGRES_VERSION_DEFAULT=10
 AWS_BLOCK_DURATION=0
 
@@ -843,10 +843,10 @@ function determine_ebs_drive_size() {
       dbg "S3 file size: $dumpFileSize"
     elif [[ $DB_DUMP =~ "file://" ]]; then
       dumpFileSize=$(stat -c%s "$DB_DUMP" | awk '{print $1}') # TODO(NikolayS) MacOS version
-      let dumpFileSize=dumpFileSize*$EBS_SIZE_MULTIPLIER
     else
       dumpFileSize=$(echo "$DB_DUMP" | wc -c)
     fi
+    let dumpFileSize=dumpFileSize*$EBS_SIZE_MULTIPLIER
     let minSize=50*$KB*$KB*$KB
     local ebsSize=$minSize # 50 GB
     if [[ "$dumpFileSize" -gt "$minSize" ]]; then
