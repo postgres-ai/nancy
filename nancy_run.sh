@@ -1495,7 +1495,7 @@ apply_commands_after_container_init
 apply_sql_before_db_restore
 restore_dump
 apply_sql_after_db_restore
-docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -c 'create extension if not exists           pg_stat_statements;' $VERBOSE_OUTPUT_REDIRECT"
+docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -c 'create extension if not exists pg_stat_statements;' $VERBOSE_OUTPUT_REDIRECT"
 apply_ddl_do_code
 apply_initial_postgres_configuration
 apply_postgres_configuration
