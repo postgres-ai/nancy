@@ -1,0 +1,9 @@
+# common options for running pgbench under nancy:
+
+export INIT="-i"            # init to use with pgbench, -i creates standard tables
+export SCALE="50"           # "scaling factor" to use when populating tables
+export CLIENTS="5"          # number of client sessions to run
+export JOBS="2"             # number of concurrent sessions.
+export TRANSACTIONS="10000" # number of "transactions" (see pgbench docs)
+export PROGRESS="1"         # progress report interval
+

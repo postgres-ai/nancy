@@ -486,10 +486,21 @@ function check_cli_parameters() {
   fi
   err "NOTICE: Switched to a new sub-directory in the temp path: $TMP_PATH"
 
+  if [[ ! -z ${DB_DUMP+x} ]]; then
+    check_path DB_DUMP
+    if [[ "$?" -ne "0" ]]; then
+      echo "$DB_DUMP" > $TMP_PATH/db_dump_tmp.sql
+      DB_DUMP="$TMP_PATH/db_dump_tmp.sql"
+    fi
+    DB_DUMP_FILENAME=$(basename $DB_DUMP)
+    DB_DUMP_EXT=${DB_DUMP_FILENAME##*.}
+  fi
+
   workloads_count=0
   [[ ! -z ${WORKLOAD_BASIS+x} ]] && let workloads_count=$workloads_count+1
   [[ ! -z ${WORKLOAD_REAL+x} ]] && let workloads_count=$workloads_count+1
   [[ ! -z ${WORKLOAD_CUSTOM_SQL+x} ]] && let workloads_count=$workloads_count+1
+  [[ ${DB_DUMP_EXT} = "pgbnch" ]] && let workloads_count=$workloads_count+1
 
   if [[ -z ${DB_PREPARED_SNAPSHOT+x} ]]  &&  [[ -z ${DB_DUMP+x} ]]; then
     err "ERROR: The object (database) is not defined."
@@ -510,16 +521,6 @@ function check_cli_parameters() {
   if [[ ! -z ${DB_PREPARED_SNAPSHOT+x} ]]  &&  [[ ! -z ${DB_DUMP+x} ]]; then
     err "ERROR: Both snapshot and dump sources are given."
     exit 1
-  fi
-
-  if [[ ! -z ${DB_DUMP+x} ]]; then
-    check_path DB_DUMP
-    if [[ "$?" -ne "0" ]]; then
-      echo "$DB_DUMP" > $TMP_PATH/db_dump_tmp.sql
-      DB_DUMP="$TMP_PATH/db_dump_tmp.sql"
-    fi
-    DB_DUMP_FILENAME=$(basename $DB_DUMP)
-    DB_DUMP_EXT=${DB_DUMP_FILENAME##*.}
   fi
 
   if [[ -z ${DB_NAME+x} ]]; then
@@ -1231,6 +1232,9 @@ function restore_dump() {
     pgdmp)
       docker_exec bash -c "pg_restore -j $CPU_CNT --no-owner --no-privileges -U postgres -d $DB_NAME $MACHINE_HOME/$DB_DUMP_FILENAME" || true
       ;;
+    pgbnch)
+      docker_exec bash -c "source $MACHINE_HOME/$DB_DUMP_FILENAME; pgbench \$INIT -U postgres -s \$SCALE $DB_NAME" || true
+      ;;
   esac
   END_TIME=$(date +%s)
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
@@ -1404,6 +1408,12 @@ function execute_workload() {
     else
       docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
     fi
+  elif [ "$DB_DUMP_EXT" = "pgbnch" ]; then
+      msg "Running pgbench..."
+      docker_exec bash -c <<EOF "
+source $MACHINE_HOME/$DB_DUMP_FILENAME;
+pgbench -P \$PROGRESS -c \$CLIENTS -j \$JOBS -t \$TRANSACTIONS -U postgres $DB_NAME"
+EOF
   else
     if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
       WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
