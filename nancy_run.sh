@@ -1233,7 +1233,7 @@ function restore_dump() {
       docker_exec bash -c "pg_restore -j $CPU_CNT --no-owner --no-privileges -U postgres -d $DB_NAME $MACHINE_HOME/$DB_DUMP_FILENAME" || true
       ;;
     pgbnch)
-      docker_exec bash -c "source $MACHINE_HOME/$DB_DUMP_FILENAME; pgbench -U postgres -i -s \$PGBENCH_SCALE $DB_NAME" || true
+      docker_exec bash -c "source $MACHINE_HOME/$DB_DUMP_FILENAME; pgbench \$INIT -U postgres -s \$SCALE $DB_NAME" || true
       ;;
   esac
   END_TIME=$(date +%s);
@@ -1410,7 +1410,10 @@ function execute_workload() {
     fi
   elif [ "$DB_DUMP_EXT" = "pgbnch" ]; then
       msg "Running pgbench..."
-      docker_exec bash -c "source $MACHINE_HOME/$DB_DUMP_FILENAME; pgbench -c \$PGBENCH_CLIENTS -j \$PGBENCH_JOBS -t \$PGBENCH_TRANSACTIONS -U postgres $DB_NAME"
+      docker_exec bash -c <<EOF "
+source $MACHINE_HOME/$DB_DUMP_FILENAME;
+pgbench -P \$PROGRESS -c \$CLIENTS -j \$JOBS -t \$TRANSACTIONS -U postgres $DB_NAME"
+EOF
   else
     if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
       WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
