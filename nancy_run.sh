@@ -1465,7 +1465,7 @@ function collect_results() {
     if [[ "$RUN_ON" == "localhost" ]]; then
       docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/
     elif [[ "$RUN_ON" == "aws" ]]; then
-      mkdir $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME
+      mkdir -p $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME
       docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME/* $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/
     else
       err "ASSERT: must not reach this point"
