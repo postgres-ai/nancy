@@ -1047,7 +1047,7 @@ if [[ "$RUN_ON" == "localhost" ]]; then
   if [[ -z ${CONTAINER_ID+x} ]]; then
     CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
       -v $TMP_PATH:/machine_home \
-      -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}" \
+      -dit "postgresmen/postgres-with-stuff:postgres${PG_VERSION}_pgbadger10" \
     )
   else
     CONTAINER_HASH="$CONTAINER_ID"

@@ -24,7 +24,7 @@ RUN apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys B97
       && apt-get install -y git postgresql-client-10 pspg pgreplay jq etcd libjson-xs-perl \
       && perl -MCPAN -e'install Text::CSV_XS' \
       && git clone https://github.com/NikolayS/postgres_dba.git /root/postgres_dba \
-      && git clone https://github.com/NikolayS/pgbadger.git /root/pgbadger
+      && git clone https://github.com/darold/pgbadger.git /root/pgbadger
 
 # additionally, install newer NodeJS, npm, Sqitch, and more
 RUN wget -q -S -O - https://deb.nodesource.com/setup_8.x | sudo bash \
