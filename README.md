@@ -1,7 +1,10 @@
 <a href="https://postgres.ai"><img src="https://img.shields.io/badge/Postgres-AI-orange.svg" alt="Postgres.AI" /></a>
-  &nbsp; 
+  &nbsp;
+[![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/badges/shields.svg)](github.com/postgres-ai/nancy)
+  &nbsp;
+<img src="https://img.shields.io/docker/pulls/postgresmen/postgres-with-stuff.svg" />
+  &nbsp;
 [![CircleCI](https://circleci.com/gh/postgres-ai/nancy.svg?style=svg)](https://circleci.com/gh/postgres-ai/nancy)
-
 
 
 About
