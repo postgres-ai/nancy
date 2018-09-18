@@ -1429,7 +1429,6 @@ function execute_workload() {
     fi
   elif [ ! -z ${WORKLOAD_PGBENCH+x} ]; then
       docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME"
-EOF
   else
     if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
       WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
