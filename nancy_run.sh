@@ -500,16 +500,6 @@ function check_cli_parameters() {
   fi
   err "NOTICE: Switched to a new sub-directory in the temp path: $TMP_PATH"
 
-  if [[ ! -z ${DB_DUMP+x} ]]; then
-    check_path DB_DUMP
-    if [[ "$?" -ne "0" ]]; then
-      echo "$DB_DUMP" > $TMP_PATH/db_dump_tmp.sql
-      DB_DUMP="$TMP_PATH/db_dump_tmp.sql"
-    fi
-    DB_DUMP_FILENAME=$(basename $DB_DUMP)
-    DB_DUMP_EXT=${DB_DUMP_FILENAME##*.}
-  fi
-
   workloads_count=0
   [[ ! -z ${WORKLOAD_BASIS+x} ]] && let workloads_count=$workloads_count+1
   [[ ! -z ${WORKLOAD_REAL+x} ]] && let workloads_count=$workloads_count+1
@@ -534,6 +524,16 @@ function check_cli_parameters() {
   if [[ ! -z ${DB_PREPARED_SNAPSHOT+x} ]]  &&  [[ ! -z ${DB_DUMP+x} ]]; then
     err "ERROR: Both snapshot and dump sources are given."
     exit 1
+  fi
+
+  if [[ ! -z ${DB_DUMP+x} ]]; then
+    check_path DB_DUMP
+    if [[ "$?" -ne "0" ]]; then
+      echo "$DB_DUMP" > $TMP_PATH/db_dump_tmp.sql
+      DB_DUMP="$TMP_PATH/db_dump_tmp.sql"
+    fi
+    DB_DUMP_FILENAME=$(basename $DB_DUMP)
+    DB_DUMP_EXT=${DB_DUMP_FILENAME##*.}
   fi
 
   if [[ -z ${DB_NAME+x} ]]; then
