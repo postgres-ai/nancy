@@ -1,4 +1,6 @@
-[![PostgresAI](https://img.shields.io/badge/Postgres-AI-orange.svg)](https://postgres.ai) [![CircleCI (https://circleci.com/gh/postgres-ai/nancy.svg?style=svg)](https://circleci.com/gh/postgres-ai/nancy)
+<a href="https://postgres.ai"><img src="https://img.shields.io/badge/Postgres-AI-orange.svg" alt="Postgres.AI" /></a>
+
+[![CircleCI](https://circleci.com/gh/postgres-ai/nancy.svg?style=svg)](https://circleci.com/gh/postgres-ai/nancy)
 
 
 
