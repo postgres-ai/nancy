@@ -8,7 +8,6 @@ Nancy helps to conduct automated database experiments.
 The Nancy Command Line Interface is a unified way to manage automated
 database experiments either in clouds or on-premise.
 
-
 What is a Database Experiment?
 ===
 Database experiment is a set of actions performed to test
