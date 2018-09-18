@@ -1,6 +1,14 @@
+<a href="https://postgres.ai"><img src="https://img.shields.io/badge/Postgres-AI-orange.svg" alt="Postgres.AI" /></a>
+  &nbsp;
+[![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/badges/shields.svg)](github.com/postgres-ai/nancy)
+  &nbsp;
+<img src="https://img.shields.io/docker/pulls/postgresmen/postgres-with-stuff.svg" />
+  &nbsp;
 [![CircleCI](https://circleci.com/gh/postgres-ai/nancy.svg?style=svg)](https://circleci.com/gh/postgres-ai/nancy)
 
-Description
+
+About
+<img width="122" alt="screen shot 2018-09-18 at 03 04 09" src="https://user-images.githubusercontent.com/1345402/45656700-8a987f00-baef-11e8-87b6-cccf8f65ee8f.png" align="right">
 ===
 Nancy helps to conduct automated database experiments.
 

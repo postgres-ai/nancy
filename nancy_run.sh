@@ -13,6 +13,7 @@ CURRENT_TS=$(date +%Y%m%d_%H%M%S%N_%Z)
 DOCKER_MACHINE="nancy-$CURRENT_TS"
 DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
 KEEP_ALIVE=0
+DURATION_WRKLD=""
 VERBOSE_OUTPUT_REDIRECT=" > /dev/null"
 EBS_SIZE_MULTIPLIER=5
 POSTGRES_VERSION_DEFAULT=10
@@ -1365,7 +1366,9 @@ function apply_postgres_configuration() {
 #   None
 #######################################
 function prepare_start_workload() {
-  #Save before workload log
+  msg "Execute vacuumdb..."
+  docker_exec vacuumdb -U postgres $DB_NAME -j $CPU_CNT --analyze
+
   msg "Save prepaparation log"
   logpath=$( \
     docker_exec bash -c "psql -XtU postgres \
@@ -1375,9 +1378,8 @@ function prepare_start_workload() {
   docker_exec bash -c "mkdir $MACHINE_HOME/$ARTIFACTS_FILENAME"
   docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.prepare.log.gz"
 
-  # Clear statistics and log
-  msg "Execute vacuumdb..."
-  docker_exec vacuumdb -U postgres $DB_NAME -j $CPU_CNT --analyze
+  msg "Reset pg_stat_*** and Postgres log"
+  docker_exec psql -U postgres $DB_NAME -c 'select pg_stat_reset(), pg_stat_statements_reset();' >/dev/null
   docker_exec bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
 }
 
@@ -1385,7 +1387,7 @@ function prepare_start_workload() {
 # Execute workload.
 # Globals:
 #   WORKLOAD_REAL, WORKLOAD_REAL_REPLAY_SPEED, WORKLOAD_CUSTOM_SQL, MACHINE_HOME,
-#   DB_NAME, VERBOSE_OUTPUT_REDIRECT, docker_exec alias
+#   DURATION_WRKLD, DB_NAME, VERBOSE_OUTPUT_REDIRECT, docker_exec alias
 # Arguments:
 #   None
 # Returns:
@@ -1414,6 +1416,7 @@ function execute_workload() {
   END_TIME=$(date +%s)
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Time taken to execute workload: $DURATION."
+  DURATION_WRKLD="$DURATION"
 }
 
 #######################################
@@ -1506,17 +1509,24 @@ apply_ddl_undo_code
 
 END_TIME=$(date +%s)
 DURATION=$(echo $((END_TIME-START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-echo -e "$(date "+%Y-%m-%d %H:%M:%S"): Run done for $DURATION"
-echo -e "  JSON Report: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/pgbadger.json"
-echo -e "  HTML Report: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/pgbadger.html"
-echo -e "  Query log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/postgresql.workload.log.gz"
-echo -e "  Prepare log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/postgresql.prepare.log.gz"
-echo -e "  Postgresql configuration log: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/postgresql.conf"
-
-echo -e "  -------------------------------------------"
-echo -e "  Workload summary:"
-echo -e "    Summarized query duration:\t" $(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.overall_stat.queries_duration') " ms"
-echo -e "    Queries:\t\t\t" $( docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.overall_stat.queries_number')
-echo -e "    Query groups:\t\t" $(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.normalyzed_info| length')
-echo -e "    Errors:\t\t\t" $(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.overall_stat.errors_number')
-echo -e "-------------------------------------------"
+msg "Done."
+echo -e "------------------------------------------------------------------------------"
+echo -e "Artifacts (collected in \"$ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/\"):"
+echo -e "  Postgres config:    postgresql.conf"
+echo -e "  Postgres logs:      postgresql.prepare.log.gz (preparation),"
+echo -e "                      postgresql.workload.log.gz (workload)"
+echo -e "  pgBadger reports:   pgbadger.html (for humans),"
+echo -e "                      pgbadger.json (for robots)"
+echo -e "  Stat stapshots:     pg_stat_statements.csv,"
+echo -e "                      pg_stat_***.csv"
+echo -e "------------------------------------------------------------------------------"
+echo -e "Total execution time: $DURATION"
+echo -e "------------------------------------------------------------------------------"
+echo -e "Workload:"
+echo -e "  Execution time:     $DURATION_WRKLD"
+echo -e "  Total query time:   "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.overall_stat.queries_duration') " ms"
+echo -e "  Queries:            "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.overall_stat.queries_number')
+echo -e "  Query groups:       "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.normalyzed_info | length')
+echo -e "  Errors:             "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.overall_stat.errors_number')
+echo -e "  Errors groups:      "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.error_info | length')
+echo -e "------------------------------------------------------------------------------"
