@@ -1,5 +1,5 @@
 <a href="https://postgres.ai"><img src="https://img.shields.io/badge/Postgres-AI-orange.svg" alt="Postgres.AI" /></a>
-
+  &nbsp; 
 [![CircleCI](https://circleci.com/gh/postgres-ai/nancy.svg?style=svg)](https://circleci.com/gh/postgres-ai/nancy)
 
 
