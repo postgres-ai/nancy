@@ -169,6 +169,13 @@ function help() {
     'pg_basebackup -U postgres -z -ZX -P -Ft -D /ebs-db-vol-root'
   where X any compression level.
 
+
+  \033[1m--db-pgbench\033[22m (string)
+
+  Initialize database for pgbench. Contains pgbench init arguments:
+
+    * Example nancy run --db-pgbench \"-s 100\"
+
   \033[1m--commands-after-container-init\033[22m (string)
 
   Shell commands to be executed after the container initialization. Can be used
@@ -198,6 +205,10 @@ function help() {
 
   SQL queries to be used as workload. These queries will be executed in a signle
   database session.
+
+  \033[1m--workload-pgbench\033[22m (string)
+
+  pgbench arguments to pass for tests.  Ex: \"-c 10 -j 4 -t 1000\"
 
   \033[1m--workload-basis\033[22m (string)
 
@@ -327,12 +338,14 @@ function dbg_cli_parameters() {
     echo "DB_PREPARED_SNAPSHOT: ${DB_PREPARED_SNAPSHOT}"
     echo "DB_DUMP: $DB_DUMP"
     echo "DB_NAME: $DB_NAME"
+    echo "DB_PGBENCH: $DB_PGBENCH"
     echo "COMMANDS_AFTER_CONTAINER_INIT: $COMMANDS_AFTER_CONTAINER_INIT"
     echo "SQL_BEFORE_DB_RESTORE: $SQL_BEFORE_DB_RESTORE"
     echo "SQL_AFTER_DB_RESTORE: $SQL_AFTER_DB_RESTORE"
     echo "WORKLOAD_REAL: $WORKLOAD_REAL"
     echo "WORKLOAD_BASIS: $WORKLOAD_BASIS"
     echo "WORKLOAD_CUSTOM_SQL: $WORKLOAD_CUSTOM_SQL"
+    echo "WORKLOAD_PGBENCH: $WORKLOAD_PGBENCH"
     echo "WORKLOAD_REAL_REPLAY_SPEED: $WORKLOAD_REAL_REPLAY_SPEED"
     echo "DELTA_SQL_DO: $DELTA_SQL_DO"
     echo "DELTA_SQL_UNDO: $DELTA_SQL_UNDO"
@@ -414,7 +427,9 @@ function check_cli_parameters() {
   ([[ ! -z ${WORKLOAD_REAL+x} ]] && [[ -z $WORKLOAD_REAL ]]) && unset -v WORKLOAD_REAL
   ([[ ! -z ${WORKLOAD_BASIS+x} ]] && [[ -z $WORKLOAD_BASIS ]]) && unset -v WORKLOAD_BASIS
   ([[ ! -z ${WORKLOAD_CUSTOM_SQL+x} ]] && [[ -z $WORKLOAD_CUSTOM_SQL ]]) && unset -v WORKLOAD_CUSTOM_SQL
+  ([[ ! -z ${WORKLOAD_PGBENCH+x} ]] && [[ -z $WORKLOAD_PGBENCH ]]) && unset -v WORKLOAD_PGBENCH
   ([[ ! -z ${DB_DUMP+x} ]] && [[ -z $DB_DUMP ]]) && unset -v DB_DUMP
+  ([[ ! -z ${DB_PGBENCH+x} ]] && [[ -z $DB_PGBENCH ]]) && unset -v DB_PGBENCH
   ([[ ! -z ${COMMANDS_AFTER_CONTAINER_INIT+x} ]] && [[ -z $COMMANDS_AFTER_CONTAINER_INIT ]]) && unset -v COMMANDS_AFTER_CONTAINER_INIT
   ([[ ! -z ${SQL_BEFORE_DB_RESTORE+x} ]] && [[ -z $SQL_BEFORE_DB_RESTORE ]]) && unset -v SQL_BEFORE_DB_RESTORE
   ([[ ! -z ${SQL_AFTER_DB_RESTORE+x} ]] && [[ -z $SQL_AFTER_DB_RESTORE ]]) && unset -v SQL_AFTER_DB_RESTORE
@@ -521,8 +536,9 @@ function check_cli_parameters() {
   [[ ! -z ${WORKLOAD_BASIS+x} ]] && let workloads_count=$workloads_count+1
   [[ ! -z ${WORKLOAD_REAL+x} ]] && let workloads_count=$workloads_count+1
   [[ ! -z ${WORKLOAD_CUSTOM_SQL+x} ]] && let workloads_count=$workloads_count+1
+  [[ ! -z ${WORKLOAD_PGBENCH+x} ]] && let workloads_count=$workloads_count+1
 
-  if [[ -z ${DB_PREPARED_SNAPSHOT+x} ]]  &&  [[ -z ${DB_DUMP+x} ]] && [[  -z ${DB_EBS_VOLUME_ID+x}  ]];then
+  if [[ -z ${DB_PREPARED_SNAPSHOT+x} ]]  &&  [[ -z ${DB_DUMP+x} ]] &&  [[ -z ${DB_PGBENCH+x} ]] && [[ -z ${DB_EBS_VOLUME_ID+x} ]]; then
     err "ERROR: The object (database) is not defined."
     exit 1
   fi
@@ -987,6 +1003,8 @@ while [ $# -gt 0 ]; do
       DB_PREPARED_SNAPSHOT="$2"; shift 2 ;;
     --db-dump )
       DB_DUMP="$2"; shift 2 ;;
+    --db-pgbench )
+      DB_PGBENCH="$2"; shift 2 ;;
     --db-name )
       DB_NAME="$2"; shift 2 ;;
     --commands-after-container-init )
@@ -1000,6 +1018,9 @@ while [ $# -gt 0 ]; do
     --workload-custom-sql )
       #s3 url|filename|content
       WORKLOAD_CUSTOM_SQL="$2"; shift 2 ;;
+    --workload-pgbench )
+      #s3 url|filename|content
+      WORKLOAD_PGBENCH="$2"; shift 2 ;;
     --workload-real )
       #s3 url
       WORKLOAD_REAL="$2"; shift 2 ;;
@@ -1303,20 +1324,24 @@ function apply_sql_before_db_restore() {
 function restore_dump() {
   OP_START_TIME=$(date +%s)
   msg "Restore database dump"
-  case "$DB_DUMP_EXT" in
-    sql)
-      docker_exec bash -c "cat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
-      ;;
-    bz2)
-      docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
-      ;;
-    gz)
-      docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
-      ;;
-    pgdmp)
-      docker_exec bash -c "pg_restore -j $CPU_CNT --no-owner --no-privileges -U postgres -d $DB_NAME $MACHINE_HOME/$DB_DUMP_FILENAME" || true
-      ;;
-  esac
+  if ([ ! -z ${DB_PGBENCH+x} ]); then
+      docker_exec bash -c "pgbench -i $DB_PGBENCH -U postgres $DB_NAME" || true
+  else
+    case "$DB_DUMP_EXT" in
+      sql)
+	docker_exec bash -c "cat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
+	;;
+      bz2)
+	docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
+	;;
+      gz)
+	docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
+	;;
+      pgdmp)
+	docker_exec bash -c "pg_restore -j $CPU_CNT --no-owner --no-privileges -U postgres -d $DB_NAME $MACHINE_HOME/$DB_DUMP_FILENAME" || true
+	;;
+    esac
+  fi
   END_TIME=$(date +%s)
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Time taken to restore database: $DURATION."
@@ -1490,6 +1515,8 @@ function execute_workload() {
     else
       docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
     fi
+  elif [ ! -z ${WORKLOAD_PGBENCH+x} ]; then
+      docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME"
   else
     if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
       WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
