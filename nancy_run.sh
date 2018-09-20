@@ -20,6 +20,24 @@ POSTGRES_VERSION_DEFAULT=10
 AWS_BLOCK_DURATION=0
 
 #######################################
+# Attach ebs drive with db backup
+# Globals:
+#   DOCKER_MACHINE, AWS_REGION, DB_EBS_VOLUME_ID
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function attach_db_ebs_drive() {
+  docker-machine ssh $DOCKER_MACHINE "sudo sh -c \"mkdir /home/backup\""
+  instance_id=$(docker-machine ssh $DOCKER_MACHINE curl -s http://169.254.169.254/latest/meta-data/instance-id)
+  attachResult=$(aws --region=$AWS_REGION ec2 attach-volume --device /dev/xvdc --volume-id $DB_EBS_VOLUME_ID --instance-id $instance_id)
+  sleep 10
+  docker-machine ssh $DOCKER_MACHINE sudo mount /dev/xvdc /home/backup
+  docker-machine ssh $DOCKER_MACHINE "sudo df -h /dev/xvdc"
+}
+
+#######################################
 # Print a help
 # Globals:
 #   None
@@ -138,6 +156,18 @@ function help() {
       - bzip2-compressed plain dump ('*.bz2'),
       - dump in \"custom\" format, made with 'pg_dump -Fc ..' ('*.pgdmp'),
     * sequence of SQL commands specified as in a form of plain text.
+
+  \033[1m--db-ebs-volume-id\033[22m (string)
+
+  Id of Amazon ebs volume with backup of database.
+
+  In root of drive expected be found
+    - base.tar.gz
+    - pg_xlog.tar.gz
+
+  Created as result of execution:
+    'pg_basebackup -U postgres -z -ZX -P -Ft -D /ebs-db-vol-root'
+  where X any compression level.
 
   \033[1m--commands-after-container-init\033[22m (string)
 
@@ -492,7 +522,7 @@ function check_cli_parameters() {
   [[ ! -z ${WORKLOAD_REAL+x} ]] && let workloads_count=$workloads_count+1
   [[ ! -z ${WORKLOAD_CUSTOM_SQL+x} ]] && let workloads_count=$workloads_count+1
 
-  if [[ -z ${DB_PREPARED_SNAPSHOT+x} ]]  &&  [[ -z ${DB_DUMP+x} ]]; then
+  if [[ -z ${DB_PREPARED_SNAPSHOT+x} ]]  &&  [[ -z ${DB_DUMP+x} ]] && [[  -z ${DB_EBS_VOLUME_ID+x}  ]];then
     err "ERROR: The object (database) is not defined."
     exit 1
   fi
@@ -1006,6 +1036,8 @@ while [ $# -gt 0 ]; do
         AWS_ZONE="$2"; shift 2 ;;
     --aws-block-duration )
         AWS_BLOCK_DURATION=$2; shift 2 ;;
+    --db-ebs-volume-id )
+      DB_EBS_VOLUME_ID=$2; shift 2;;
 
     --s3cfg-path )
       S3_CFG_PATH="$2"; shift 2 ;;
@@ -1084,6 +1116,10 @@ elif [[ "$RUN_ON" == "aws" ]]; then
   msg "  To connect docker machine use:"
   msg "    docker-machine ssh $DOCKER_MACHINE"
 
+  if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]]; then
+    attach_db_ebs_drive;
+  fi
+
   docker-machine ssh $DOCKER_MACHINE "sudo sh -c \"mkdir /home/storage\""
   if [[ "${AWS_EC2_TYPE:0:2}" == "i3" ]]; then
     msg "Using high-speed NVMe SSD disks"
@@ -1099,9 +1135,10 @@ elif [[ "$RUN_ON" == "aws" ]]; then
   CONTAINER_HASH=$( \
     docker `docker-machine config $DOCKER_MACHINE` run \
       --name="pg_nancy_${CURRENT_TS}" \
+      --privileged \
       -v /home/ubuntu:/machine_home \
       -v /home/storage:/storage \
-      -v /home/basedump:/basedump \
+      -v /home/backup:/backup \
       -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}"
   )
   DOCKER_CONFIG=$(docker-machine config $DOCKER_MACHINE)
@@ -1117,6 +1154,47 @@ MACHINE_HOME="/machine_home/nancy_${CONTAINER_HASH}"
 alias docker_exec='docker $DOCKER_CONFIG exec -i ${CONTAINER_HASH} '
 CPU_CNT=$(docker_exec bash -c "cat /proc/cpuinfo | grep processor | wc -l") # for execute in docker
 
+#######################################
+# Extract database backup from attached ebs volume to database
+# Globals:
+#   PG_VERSION
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function cp_db_ebs_backup() {
+  # Here we think what postgress stopped
+  msg "Restore(cp) database backup."
+  docker_exec bash -c "rm -rf /var/lib/postgresql/9.6/main/*"
+
+  OP_START_TIME=$(date +%s);
+  docker_exec bash -c "rm -rf /var/lib/postgresql/$PG_VERSION/main/*"
+  docker_exec bash -c "tar -C /storage/postgresql/$PG_VERSION/main/ -xzvf /backup/base.tar.gz"
+  docker_exec bash -c "tar -C /storage/postgresql/$PG_VERSION/main/pg_xlog -xzvf /backup/pg_xlog.tar.gz"
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  msg "Backup copied for $DURATION."
+
+  docker_exec bash -c "chown -R postgres:postgres /storage/postgresql/$PG_VERSION/main"
+  docker_exec bash -c "localedef -f UTF-8 -i en_US en_US.UTF-8"
+}
+
+#######################################
+# Dettach drive with database backup
+# Globals:
+#   DOCKER_MACHINE, DB_EBS_VOLUME_ID
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function dettach_db_ebs_drive() {
+  docker_exec bash -c "umount /backup"
+  docker-machine ssh $DOCKER_MACHINE sudo umount /home/backup
+  dettachResult=$(aws --region=$AWS_REGION ec2 detach-volume --volume-id $DB_EBS_VOLUME_ID)
+}
+
 docker_exec bash -c "mkdir $MACHINE_HOME && chmod a+w $MACHINE_HOME"
 if [[ "$RUN_ON" == "aws" ]]; then
   docker-machine ssh $DOCKER_MACHINE "sudo chmod a+w /home/storage"
@@ -1128,6 +1206,12 @@ if [[ "$RUN_ON" == "aws" ]]; then
   sleep 2 # wait for postgres stopped
   docker_exec bash -c "sudo mv /var/lib/postgresql /storage/"
   docker_exec bash -c "ln -s /storage/postgresql /var/lib/postgresql"
+
+  if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]]; then
+    cp_db_ebs_backup;
+    dettach_db_ebs_drive
+  fi
+
   docker_exec bash -c "sudo /etc/init.d/postgresql start"
   sleep 2 # wait for postgres started
 fi
@@ -1480,6 +1564,12 @@ function collect_results() {
   msg "Time taken to generate and collect artifacts: $DURATION."
 }
 
+if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]]; then
+  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'drop database if exists test;'"
+  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'alter database $DB_NAME rename to test;'"
+  DB_NAME=test
+fi
+
 [ ! -z ${S3_CFG_PATH+x} ] && copy_file $S3_CFG_PATH \
   && docker_exec cp $MACHINE_HOME/.s3cfg /root/.s3cfg
 [ ! -z ${DB_DUMP+x} ] && copy_file $DB_DUMP
@@ -1496,7 +1586,9 @@ sleep 2 # wait for postgres up&running
 
 apply_commands_after_container_init
 apply_sql_before_db_restore
-restore_dump
+if [[ -z ${DB_EBS_VOLUME_ID+x} ]]; then
+  restore_dump;
+fi
 apply_sql_after_db_restore
 docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not exists pg_stat_statements;' $VERBOSE_OUTPUT_REDIRECT"
 apply_ddl_do_code
