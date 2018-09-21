@@ -84,7 +84,7 @@ cat $INPUT \
   | awk -v dbname="\"$DB_NAME\"" '
 BEGIN {
   RS="\nNANCY_NEW_LINE_SEPARATOR\n";
-  FPAT = "([^,]+)|(\"[^\"]+\")"
+  FPAT = "([^,]*)|(\"[^\"]+\")"
   OFS=","
 }
 {
@@ -93,10 +93,10 @@ BEGIN {
     if (match($14, /^"duration: ([^ ]+) ms  statement: (.*)$/, match_arr)) {
       duration = match_arr[1] * 1000
       statement = "\"statement: " match_arr[2]
+      "date -u -d @$(echo \"scale=6; ($(date -u --date=\"" $1 "\" +'%s%6N') - " duration \
+        ") / 1000000\" | bc) +\"%Y-%m-%d %H:%M:%S.%6N%:::z\" | tr -d \"\\n\"" | getline res_ts
+      print res_ts,"\"postgres\"","\"test\"",$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,statement ",,,,,,,,"
     }
-    "date -u -d @$(echo \"scale=6; ($(date -u --date=\"" $1 "\" +'%s%6N') - " duration \
-      ") / 1000000\" | bc) +\"%Y-%m-%d %H:%M:%S.%6N%:::z\" | tr -d \"\\n\"" | getline res_ts
-    print res_ts,"\"postgres\"","\"test\"",$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,statement ",,,,,,,,"
   }
 }' \
   | sed "s/NANCY_TWO_DOUBLE_QUOTES_SEPARATOR/\"\"/g" \
