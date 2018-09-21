@@ -30,7 +30,10 @@ AWS_BLOCK_DURATION=0
 #######################################
 function attach_db_ebs_drive() {
   docker-machine ssh $DOCKER_MACHINE "sudo sh -c \"mkdir /home/backup\""
-  instance_id=$(docker-machine ssh $DOCKER_MACHINE curl -s http://169.254.169.254/latest/meta-data/instance-id)
+  docker-machine ssh $DOCKER_MACHINE "wget http://s3.amazonaws.com/ec2metadata/ec2-metadata"
+  docker-machine ssh $DOCKER_MACHINE "chmod u+x ec2-metadata"
+  instance_id=$(docker-machine ssh $DOCKER_MACHINE ./ec2-metadata -i)
+  instance_id=${instance_id:13}
   attachResult=$(aws --region=$AWS_REGION ec2 attach-volume --device /dev/xvdc --volume-id $DB_EBS_VOLUME_ID --instance-id $instance_id)
   sleep 10
   docker-machine ssh $DOCKER_MACHINE sudo mount /dev/xvdc /home/backup
