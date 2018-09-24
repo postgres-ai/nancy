@@ -1201,12 +1201,20 @@ function cp_db_ebs_backup() {
 
   local op_start_time=$(date +%s);
   docker_exec bash -c "rm -rf /var/lib/postgresql/$PG_VERSION/main/*"
-  docker_exec bash -c "([[ -f /backup/base.tar.gz ]] && tar -C /storage/postgresql/$PG_VERSION/main/ -xzvf /backup/base.tar.gz) || true"
-  docker_exec bash -c "([[ -f /backup/base.tar ]] && tar -C /storage/postgresql/$PG_VERSION/main/ -xvf /backup/base.tar) || true"
-  docker_exec bash -c "([[ -f /backup/pg_xlog.tar.gz ]] && tar -C /storage/postgresql/$PG_VERSION/main/pg_xlog -xzvf /backup/pg_xlog.tar.gz) || true"
-  docker_exec bash -c "([[ -f /backup/pg_wal.tar.gz ]] && tar -C /storage/postgresql/$PG_VERSION/main/pg_xlog -xzvf /backup/pg_wal.tar.gz) || true"
-  docker_exec bash -c "([[ -f /backup/pg_xlog.tar ]] && tar -C /storage/postgresql/$PG_VERSION/main/pg_xlog -xvf /backup/pg_xlog.tar) || true"
-  docker_exec bash -c "([[ -f /backup/pg_wal.tar ]] && tar -C /storage/postgresql/$PG_VERSION/main/pg_xlog -xvf /backup/pg_wal.tar) || true"
+  local result=$(docker_exec bash -c "([[ -f /backup/base.tar.gz ]] \
+    && tar -C /storage/postgresql/$PG_VERSION/main/ -xzvf /backup/base.tar.gz) || true")
+  result=$(docker_exec bash -c "([[ -f /backup/base.tar ]] \
+    && tar -C /storage/postgresql/$PG_VERSION/main/ -xvf /backup/base.tar) || true")
+
+  result=$(docker_exec bash -c "([[ -f /backup/pg_xlog.tar.gz ]] \
+    && tar -C /storage/postgresql/$PG_VERSION/main/pg_xlog -xzvf /backup/pg_xlog.tar.gz) || true")
+  result=$(docker_exec bash -c "([[ -f /backup/pg_xlog.tar ]] \
+    && tar -C /storage/postgresql/$PG_VERSION/main/pg_xlog -xvf /backup/pg_xlog.tar) || true")
+
+  result=$(docker_exec bash -c "([[ -f /backup/pg_wal.tar.gz ]] \
+    && tar -C /storage/postgresql/$PG_VERSION/main/pg_xlog -xzvf /backup/pg_wal.tar.gz) || true")
+  result=$(docker_exec bash -c "([[ -f /backup/pg_wal.tar ]] \
+    && tar -C /storage/postgresql/$PG_VERSION/main/pg_wal -xvf /backup/pg_wal.tar) || true")
 
   local end_time=$(date +%s);
   local duration=$(echo $((end_time-op_start_time)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
