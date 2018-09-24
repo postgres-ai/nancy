@@ -124,6 +124,17 @@ function help() {
 
   PostgreSQL config to be used (may be partial).
 
+  \033[1m--pg-config-auto\033[22m (enum: oltp|olap)
+
+  Perform \"auto-tuning\" for PostgreSQL config. Allowed values:
+
+    * \"oltp\" to auto-tune Postgres for OLTP workload,
+    * \"olap\" to auto-tune Postgres for OLAP (analytical) workload.
+
+  This option can be combined with \"--pg-config\" – in this case, it will be
+  applied *after* it (so \"auto-tuning\" values will be added to the end of
+  the postgresql.conf file).
+
   \033[1m--db-prepared-snapshot\033[22m (string)
 
   Reserved / Not yet implemented.
@@ -304,6 +315,7 @@ function dbg_cli_parameters() {
     echo "AWS_SSH_KEY_PATH: $AWS_SSH_KEY_PATH"
     echo "PG_VERSION: ${PG_VERSION}"
     echo "PG_CONFIG: ${PG_CONFIG}"
+    echo "PG_CONFIG_AUTO: ${PG_CONFIG_AUTO}"
     echo "DB_PREPARED_SNAPSHOT: ${DB_PREPARED_SNAPSHOT}"
     echo "DB_DUMP: $DB_DUMP"
     echo "DB_NAME: $DB_NAME"
@@ -543,8 +555,11 @@ function check_cli_parameters() {
   fi
 
   if [[ -z ${PG_CONFIG+x} ]]; then
-    err "NOTICE: No PostgreSQL config is provided. Will use default."
-    # TODO(NikolayS) use "auto-tuning" – shared_buffers=1/4 RAM, etc
+    if [[ -z ${PG_CONFIG_AUTO+x}} ]]; then
+      err "NOTICE: No PostgreSQL config is provided. Will use default."
+    else
+      msg "Postgres config will be auto-tuned."
+    fi
   else
     check_path PG_CONFIG
     if [[ "$?" -ne "0" ]]; then # TODO(NikolayS) support file:// and s3://
@@ -942,6 +957,43 @@ function cleanup_and_exit {
 }
 
 #######################################
+# Determine how many CPU, RAM we have, and what kind of disks.
+# Globals:
+#   CPU_CNT, RAM_MB, DISK_ROTATIONAL
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function get_system_characteristics() {
+  #TODO(NikolayS) hyperthreading?
+  CPU_CNT=$(docker_exec bash -c "cat /proc/cpuinfo | grep processor | wc -l")
+
+  local ram_bytes=$( \
+    docker_exec bash -c "cat /proc/meminfo | grep MemTotal | awk '{print \$2}'" \
+  )
+  RAM_MB=$( \
+    docker_exec bash -c \
+      "echo \"print round(\$(cat /proc/meminfo | grep MemTotal | awk '{print \$2}').0 / 1000, 0)\" | python" \
+  )
+  #TODO(NikolayS) use bc instead of python
+
+  if [[ "$RUN_ON" == "aws" ]]; then
+    if [[ "${AWS_EC2_TYPE:0:2}" == "i3" ]]; then
+      DISK_ROTATIONAL=false
+    else
+      DISK_ROTATIONAL=true # EBS might be SSD, but here we consider them as
+                           # high-latency disks (TODO(NikolayS) improve
+    fi
+  else
+    #TODO(NikolayS) check if we work with SSD or not
+    DISK_ROTATIONAL=false
+  fi
+
+  msg "CPU_CNT: $CPU_CNT, RAM_MB: $RAM_MB, DISK_ROTATIONAL: $DISK_ROTATIONAL"
+}
+
+#######################################
 # # # # #         MAIN        # # # # #
 #######################################
 # Process CLI options
@@ -966,6 +1018,8 @@ while [ $# -gt 0 ]; do
       PG_VERSION="$2"; shift 2 ;;
     --pg-config )
       PG_CONFIG="$2"; shift 2;;
+    --pg-config-auto )
+      PG_CONFIG_AUTO="$2"; shift 2;;
     --db-prepared-snapshot )
       #Still unsupported
       DB_PREPARED_SNAPSHOT="$2"; shift 2 ;;
@@ -1134,7 +1188,7 @@ fi
 MACHINE_HOME="/machine_home/nancy_${CONTAINER_HASH}"
 
 alias docker_exec='docker $DOCKER_CONFIG exec -i ${CONTAINER_HASH} '
-CPU_CNT=$(docker_exec bash -c "cat /proc/cpuinfo | grep processor | wc -l") # for execute in docker
+get_system_characteristics
 
 docker_exec bash -c "mkdir $MACHINE_HOME && chmod a+w $MACHINE_HOME"
 if [[ "$RUN_ON" == "aws" ]]; then
@@ -1336,26 +1390,75 @@ function apply_ddl_undo_code() {
 # Returns:
 #   None
 #######################################
-function apply_initial_postgres_configuration() {
+function pg_config_init() {
   # Apply initial postgres configuration
+  local restart_needed=false
   OP_START_TIME=$(date +%s)
-  if ([ ! -z ${PG_CONFIG+x} ] && [ "$PG_CONFIG" != "" ]); then
-    msg "Apply initial postgres configuration"
+  if ([[ ! -z ${PG_CONFIG+x} ]] && [[ "$PG_CONFIG" != "" ]]); then
+    msg "Initialize Postgres config (postgresql.conf)."
     PG_CONFIG_FILENAME=$(basename $PG_CONFIG)
     docker_exec bash -c "cat $MACHINE_HOME/$PG_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
-    if [ -z ${DELTA_CONFIG+x} ]
-    then
-      docker_exec bash -c "sudo /etc/init.d/postgresql restart"
-      sleep 10
-    fi
-    END_TIME=$(date +%s)
-    DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-    msg "Time taken to apply Postgres initial configuration: $DURATION."
+    restart_needed=true
   fi
+  if [[ ! -z ${PG_CONFIG_AUTO+x} ]]; then
+    msg "Auto-tune PostgreSQL (mode: '$PG_CONFIG_AUTO')..."
+    # TODO(NikolayS): better auto-tuning, more params
+    # see:
+    #    - https://pgtune.leopard.in.ua
+    #    - https://postgresqlco.nf/ and https://github.com/jberkus/annotated.conf
+    #    - http://pgconfigurator.cybertec.at/
+    # TODO(NikolayS): use bc instead of python (add bc to the docker image first)
+    local shared_buffers="$(echo "print round($RAM_MB / 4)" | python | awk -F '.' '{print $1}')MB"
+    local effective_cache_size="$(echo "print round(3 * $RAM_MB / 4)" | python | awk -F '.' '{print $1}')MB"
+    if [[ "$PG_CONFIG_AUTO" = "oltp" ]]; then
+      local work_mem="$(echo "print round($RAM_MB / 5)" | python | awk -F '.' '{print $1}')kB"
+    elif [[ "$PG_CONFIG_AUTO" = "olap" ]]; then
+      local work_mem="$(echo "print round($RAM_MB / 5)" | python | awk -F '.' '{print $1}')kB"
+    else
+      err "ASSERT: must not reach this point"
+      exit 1
+    fi
+    if [[ $work_mem = "0kB" ]]; then # sanity check, set to tiny value just to start
+      work_mem="1kB"
+    fi
+    if [[ $DISK_ROTATIONAL = false ]]; then
+      local random_page_cost="1.1"
+      local effective_io_concurrency="200"
+    else
+      local random_page_cost="4.0"
+      local effective_io_concurrency="2"
+    fi
+    if [[ $CPU_CNT > 1 ]]; then # Only for postgres 9.6+!
+      local max_worker_processes="$CPU_CNT"
+      local max_parallel_workers_per_gather="$(echo "print round($CPU_CNT / 2)" | python | awk -F '.' '{print $1}')"
+      local max_parallel_workers="$CPU_CNT"
+    fi
+
+    docker_exec bash -c "echo '# AUTO-TUNED KNOBS:' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "echo 'shared_buffers = $shared_buffers' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "echo 'effective_cache_size = $effective_cache_size' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "echo 'work_mem = $work_mem' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "echo 'random_page_cost = $random_page_cost' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "echo 'effective_io_concurrency = $effective_io_concurrency' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "echo 'max_worker_processes = $max_worker_processes' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "echo 'max_parallel_workers_per_gather = $max_parallel_workers_per_gather' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "echo 'max_parallel_workers = $max_parallel_workers' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    restart_needed=true
+  fi
+  if [[ ! -z ${DELTA_CONFIG+x} ]]; then # if DELTA_CONFIG is not empty, restart will be done later
+    local restart_needed=false
+  fi
+  if [[ $restart_needed == true ]]; then
+    docker_exec bash -c "sudo /etc/init.d/postgresql restart"
+    sleep 10
+  fi
+  END_TIME=$(date +%s)
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  msg "Time taken to apply Postgres initial configuration: $DURATION."
 }
 
 #######################################
-# Apply test postgres configuration
+# Apply Postgres "delta" configuration
 # Globals:
 #   DELTA_CONFIG, MACHINE_HOME, docker_exec alias
 # Arguments:
@@ -1364,11 +1467,11 @@ function apply_initial_postgres_configuration() {
 #   None
 #######################################
 function apply_postgres_configuration() {
-  # Apply postgres configuration
   OP_START_TIME=$(date +%s)
   if ([ ! -z ${DELTA_CONFIG+x} ] && [ "$DELTA_CONFIG" != "" ]); then
-    msg "Apply postgres configuration"
+    msg "Apply configuration delta..."
     DELTA_CONFIG_FILENAME=$(basename $DELTA_CONFIG)
+    docker_exec bash -c "echo '# DELTA:' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
     docker_exec bash -c "cat $MACHINE_HOME/$DELTA_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
     docker_exec bash -c "sudo /etc/init.d/postgresql restart"
     sleep 10
@@ -1466,21 +1569,21 @@ function collect_results() {
   done
 
   for table2export in \
-    "pg_stat_statements" \
+    "pg_stat_statements order by total_time desc" \
     "pg_stat_archiver" \
     "pg_stat_bgwriter" \
-    "pg_stat_database" \
-    "pg_stat_database_conflicts" \
-    "pg_stat_all_tables" \
-    "pg_stat_xact_all_tables" \
-    "pg_stat_all_indexes" \
-    "pg_statio_all_tables" \
-    "pg_statio_all_indexes" \
-    "pg_statio_all_sequences" \
-    "pg_stat_user_functions" \
-    "pg_stat_xact_user_functions" \
+    "pg_stat_database order by datname" \
+    "pg_stat_database_conflicts order by datname" \
+    "pg_stat_all_tables order by schemaname, relname" \
+    "pg_stat_xact_all_tables order by schemaname, relname" \
+    "pg_stat_all_indexes order by schemaname, relname, indexrelname" \
+    "pg_statio_all_tables order by schemaname, relname" \
+    "pg_statio_all_indexes order by schemaname, relname, indexrelname" \
+    "pg_statio_all_sequences order by schemaname, relname" \
+    "pg_stat_user_functions order by schemaname, funcname" \
+    "pg_stat_xact_user_functions order by schemaname, funcname" \
   ; do
-    docker_exec bash -c "psql -U postgres $DB_NAME -b -c \"copy (select * from $table2export) to stdout with csv header delimiter ',';\" > /$MACHINE_HOME/$ARTIFACTS_FILENAME/$table2export.csv"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c \"copy (select * from $table2export) to stdout with csv header delimiter ',';\" > /$MACHINE_HOME/$ARTIFACTS_FILENAME/\$(echo \"$table2export\" | awk '{print \$1}').csv"
   done
 
   docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.workload.log.gz"
@@ -1524,8 +1627,8 @@ apply_sql_before_db_restore
 restore_dump
 apply_sql_after_db_restore
 docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not exists pg_stat_statements;' $VERBOSE_OUTPUT_REDIRECT"
+pg_config_init
 apply_ddl_do_code
-apply_initial_postgres_configuration
 apply_postgres_configuration
 prepare_start_workload
 execute_workload
