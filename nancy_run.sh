@@ -1148,7 +1148,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
   msg "    docker-machine ssh $DOCKER_MACHINE"
 
   if [[ "$RUN_ON" == "aws" ]] && [[ ! -z ${DB_EBS_VOLUME_ID+x} ]]; then
-    attach_db_ebs_drive;
+    attach_db_ebs_drive
   fi
 
   docker-machine ssh $DOCKER_MACHINE "sudo sh -c \"mkdir /home/storage\""
@@ -1199,7 +1199,7 @@ function cp_db_ebs_backup() {
   msg "Extract database backup from EBS volume"
   docker_exec bash -c "rm -rf /var/lib/postgresql/9.6/main/*"
 
-  local op_start_time=$(date +%s);
+  local op_start_time=$(date +%s)
   docker_exec bash -c "rm -rf /var/lib/postgresql/$PG_VERSION/main/*"
   local result=$(docker_exec bash -c "([[ -f /backup/base.tar.gz ]] \
     && tar -C /storage/postgresql/$PG_VERSION/main/ -xzvf /backup/base.tar.gz) || true")
@@ -1216,7 +1216,7 @@ function cp_db_ebs_backup() {
   result=$(docker_exec bash -c "([[ -f /backup/pg_wal.tar ]] \
     && tar -C /storage/postgresql/$PG_VERSION/main/pg_wal -xvf /backup/pg_wal.tar) || true")
 
-  local end_time=$(date +%s);
+  local end_time=$(date +%s)
   local duration=$(echo $((end_time-op_start_time)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Time taken to extract database backup from EBS volume: $duration."
 
@@ -1638,7 +1638,7 @@ sleep 2 # wait for postgres up&running
 apply_commands_after_container_init
 apply_sql_before_db_restore
 if [[ -z ${DB_EBS_VOLUME_ID+x} ]]; then
-  restore_dump;
+  restore_dump
 fi
 apply_sql_after_db_restore
 docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not exists pg_stat_statements;' $VERBOSE_OUTPUT_REDIRECT"
