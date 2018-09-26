@@ -1222,7 +1222,7 @@ function cp_db_ebs_backup() {
 
   docker_exec bash -c "chown -R postgres:postgres /storage/postgresql/$PG_VERSION/main"
   docker_exec bash -c "localedef -f UTF-8 -i en_US en_US.UTF-8"
-  docker_exec bash -c "localedef -f UTF-8 -i en_US ru_RU.UTF-8"
+  docker_exec bash -c "localedef -f UTF-8 -i ru_RU ru_RU.UTF-8"
 }
 
 #######################################
