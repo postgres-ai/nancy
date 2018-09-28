@@ -377,6 +377,7 @@ function dbg_cli_parameters() {
     echo "AWS_EBS_VOLUME_SIZE: $AWS_EBS_VOLUME_SIZE"
     echo "AWS_REGION: ${AWS_REGION}"
     echo "AWS_ZONE: ${AWS_ZONE}"
+    echo "DB_LOCAL_PGDATA: ${DB_LOCAL_PGDATA}"
   fi
 }
 
@@ -461,6 +462,10 @@ function check_cli_parameters() {
       err "ERROR: Container ID may be specified only for local runs ('--run-on localhost')."
       exit 1
     fi
+    if [[ ! -z ${DB_LOCAL_PGDATA+x} ]]; then
+      err "ERROR: --db-local-pgdata may be specified only for local runs ('--run-on localhost')."
+      exit 1
+    fi
     if [[ -z ${AWS_KEYPAIR_NAME+x} ]] || [[ -z ${AWS_SSH_KEY_PATH+x} ]]; then
       err "ERROR: AWS keypair name and ssh key file must be specified to run on AWS EC2."
       exit 1
@@ -505,6 +510,10 @@ function check_cli_parameters() {
       fi
     fi
   elif [[ "$RUN_ON" == "localhost" ]]; then
+    if [[ ! -z ${CONTAINER_ID+x} ]] && [[ ! -z ${DB_LOCAL_PGDATA+x} ]]; then
+      err "ERROR: Both --container-id and --db-local-pgdata given. Impossible use --db-local-pgdata width existing container."
+      exit 1
+    fi
     if [[ ! -z ${AWS_KEYPAIR_NAME+x} ]] || [[ ! -z ${AWS_SSH_KEY_PATH+x} ]] ; then
       err "ERROR: options '--aws-keypair-name' and '--aws-ssh-key-path' must be used with '--run-on aws'."
       exit 1
@@ -560,7 +569,8 @@ function check_cli_parameters() {
   [[ ! -z ${WORKLOAD_PGBENCH+x} ]] && let workloads_count=$workloads_count+1
 
   if [[ -z ${DB_PREPARED_SNAPSHOT+x} ]]  &&  [[ -z ${DB_DUMP+x} ]] \
-    &&  [[ -z ${DB_PGBENCH+x} ]] && [[ -z ${DB_EBS_VOLUME_ID+x} ]]; then
+    && [[ -z ${DB_PGBENCH+x} ]] && [[ -z ${DB_EBS_VOLUME_ID+x} ]] \
+    && [[ -z ${DB_LOCAL_PGDATA+x} ]]; then
     err "ERROR: The object (database) is not defined."
     exit 1
   fi
@@ -606,8 +616,8 @@ function check_cli_parameters() {
     check_path PG_CONFIG
     if [[ "$?" -ne "0" ]]; then # TODO(NikolayS) support file:// and s3://
       #err "WARNING: Value given as pg_config: '$PG_CONFIG' not found as file will use as content"
-      echo "$PG_CONFIG" > $TMP_PATH/pg_config_tmp.sql
-      PG_CONFIG="$TMP_PATH/pg_config_tmp.sql"
+      echo "$PG_CONFIG" > $TMP_PATH/pg_config_tmp.conf
+      PG_CONFIG="$TMP_PATH/pg_config_tmp.conf"
     fi
   fi
 
@@ -1123,6 +1133,8 @@ while [ $# -gt 0 ]; do
         AWS_BLOCK_DURATION=$2; shift 2 ;;
     --db-ebs-volume-id )
       DB_EBS_VOLUME_ID=$2; shift 2;;
+    --db-local-pgdata )
+      DB_LOCAL_PGDATA=$2; shift 2;;
 
     --s3cfg-path )
       S3_CFG_PATH="$2"; shift 2 ;;
@@ -1162,10 +1174,18 @@ trap cleanup_and_exit EXIT
 
 if [[ "$RUN_ON" == "localhost" ]]; then
   if [[ -z ${CONTAINER_ID+x} ]]; then
-    CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
-      -v $TMP_PATH:/machine_home \
-      -dit "postgresmen/postgres-with-stuff:postgres${PG_VERSION}_pgbadger10" \
-    )
+    if [[ -z ${DB_LOCAL_PGDATA+x} ]]; then
+      CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
+        -v $TMP_PATH:/machine_home \
+        -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}" \
+      )
+    else
+      CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
+        -v $TMP_PATH:/machine_home \
+        -v $DB_LOCAL_PGDATA:/pgdata \
+        -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}" \
+      )
+    fi
   else
     CONTAINER_HASH="$CONTAINER_ID"
   fi
@@ -1280,6 +1300,26 @@ function cp_db_ebs_backup() {
 }
 
 #######################################
+# Copy pgdata to postgres localtion
+# Globals:
+#   PG_VERSION
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+
+function cp_pgdata() {
+  local op_start_time=$(date +%s)
+  docker_exec bash -c "sudo rm -rf /var/lib/postgresql/$PG_VERSION/main/*"
+  docker_exec bash -c "sudo cp -r -p -f /pgdata/* /var/lib/postgresql/$PG_VERSION/main/"
+  docker_exec bash -c "sudo chown -R postgres:postgres /var/lib/postgresql/$PG_VERSION/main"
+  local end_time=$(date +%s);
+  local duration=$(echo $((end_time-op_start_time)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  msg "pgdata copied to postgres location for $duration."
+}
+
+#######################################
 # Detach EBS volume
 # Globals:
 #   DOCKER_MACHINE, DB_EBS_VOLUME_ID, AWS_REGION
@@ -1313,6 +1353,13 @@ if [[ "$RUN_ON" == "aws" ]]; then
 
   docker_exec bash -c "sudo /etc/init.d/postgresql start"
   sleep 2 # wait for postgres started
+else
+  if [[ ! -z ${DB_LOCAL_PGDATA+x} ]]; then
+    docker_exec bash -c "sudo /etc/init.d/postgresql stop"
+    cp_pgdata
+    docker_exec bash -c "sudo /etc/init.d/postgresql start"
+    sleep 2 # wait for postgres started
+  fi
 fi
 
 #######################################
@@ -1740,7 +1787,7 @@ sleep 2 # wait for postgres up&running
 
 apply_commands_after_container_init
 apply_sql_before_db_restore
-if [[ -z ${DB_EBS_VOLUME_ID+x} ]]; then
+if [[ -z ${DB_EBS_VOLUME_ID+x} ]] && [[ -z ${DB_LOCAL_PGDATA+x} ]]; then
   restore_dump
 fi
 apply_sql_after_db_restore
