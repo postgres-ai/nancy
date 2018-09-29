@@ -1309,14 +1309,15 @@ function cp_db_ebs_backup() {
 #   None
 #######################################
 
-function cp_pgdata() {
+function attach_pgdata() {
   local op_start_time=$(date +%s)
-  docker_exec bash -c "sudo rm -rf /var/lib/postgresql/$PG_VERSION/main/*"
-  docker_exec bash -c "sudo cp -r -p -f /pgdata/* /var/lib/postgresql/$PG_VERSION/main/"
-  docker_exec bash -c "sudo chown -R postgres:postgres /var/lib/postgresql/$PG_VERSION/main"
+  docker_exec bash -c "sudo rm -rf /var/lib/postgresql/$PG_VERSION/main"
+  docker_exec bash -c "ln -s /pgdata/ /var/lib/postgresql/$PG_VERSION/main"
+  docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql/$PG_VERSION/main"
+  docker_exec bash -c "chmod -R 0700 /var/lib/postgresql/9.6/main/"
   local end_time=$(date +%s);
   local duration=$(echo $((end_time-op_start_time)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-  msg "pgdata copied to postgres location for $duration."
+  msg "pgdata attached for $duration."
 }
 
 #######################################
@@ -1356,9 +1357,9 @@ if [[ "$RUN_ON" == "aws" ]]; then
 else
   if [[ ! -z ${DB_LOCAL_PGDATA+x} ]]; then
     docker_exec bash -c "sudo /etc/init.d/postgresql stop"
-    cp_pgdata
+    attach_pgdata
     docker_exec bash -c "sudo /etc/init.d/postgresql start"
-    sleep 2 # wait for postgres started
+    sleep 10 # wait for postgres started
   fi
 fi
 
