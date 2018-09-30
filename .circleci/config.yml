@@ -3,7 +3,7 @@ jobs:
   build:
     working_directory: ~/nancy
     docker:
-      - image: ubuntu:16.04
+      - image: postgresmen/nancy_circleci
     steps:
       - run:
           name: Install software
