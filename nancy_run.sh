@@ -1638,9 +1638,9 @@ function execute_workload() {
     docker_exec psql -U postgres $DB_NAME -c 'create role testuser superuser login;'
     WORKLOAD_FILE_NAME=$(basename $WORKLOAD_REAL)
     if [[ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ]] && [[ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]]; then
-      docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED  $MACHINE_HOME/$WORKLOAD_FILE_NAME"
+      docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED  $MACHINE_HOME/$WORKLOAD_FILE_NAME > $MACHINE_HOME/$ARTIFACTS_FILENAME/pgreplay.txt"
     else
-      docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
+      docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME > $MACHINE_HOME/$ARTIFACTS_FILENAME/pgreplay.txt"
     fi
   elif [ ! -z ${WORKLOAD_PGBENCH+x} ]; then
       docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME"
@@ -1765,6 +1765,7 @@ echo -e "  pgBadger reports:   pgbadger.html (for humans),"
 echo -e "                      pgbadger.json (for robots)"
 echo -e "  Stat stapshots:     pg_stat_statements.csv,"
 echo -e "                      pg_stat_***.csv"
+echo -e "  pgReplay report:    pgreplay.txt
 echo -e "------------------------------------------------------------------------------"
 echo -e "Total execution time: $DURATION"
 echo -e "------------------------------------------------------------------------------"
