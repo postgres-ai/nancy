@@ -1765,7 +1765,7 @@ echo -e "  pgBadger reports:   pgbadger.html (for humans),"
 echo -e "                      pgbadger.json (for robots)"
 echo -e "  Stat stapshots:     pg_stat_statements.csv,"
 echo -e "                      pg_stat_***.csv"
-echo -e "  pgReplay report:    pgreplay.txt
+echo -e "  pgreplay report:    pgreplay.txt"
 echo -e "------------------------------------------------------------------------------"
 echo -e "Total execution time: $DURATION"
 echo -e "------------------------------------------------------------------------------"
