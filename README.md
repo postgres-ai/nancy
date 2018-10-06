@@ -85,7 +85,7 @@ In the minimal configuration, only two steps are needed:
 
 2) Clone this repo and adjust `$PATH`:
 ```bash
-git clone https://github.com/startupturbo/nancy
+git clone https://github.com/postgres-ai/nancy
 echo "export PATH=\$PATH:"$(pwd)"/nancy" >> ~/.bash_profile
 source ~/.bash_profile
 ```
@@ -146,7 +146,10 @@ If you experience issues with running (locally) `nancy run` inside `screen` or
 group:
 ```bash
 usermod -aG docker ${USER}
+newgrp docker
 ```
+
+(On some systems it may be `dockerroot` instead of `docker`)
 
 On MacOS, it is recommended to specify `--tmp-path` explicitly, similar to this:
 ```
