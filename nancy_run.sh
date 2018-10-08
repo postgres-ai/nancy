@@ -1650,8 +1650,10 @@ function apply_postgres_configuration() {
 #   None
 #######################################
 function prepare_start_workload() {
-  msg "Execute vacuumdb..."
-  docker_exec vacuumdb -U postgres $DB_NAME -j $CPU_CNT --analyze
+  if [[ -z ${WORKLOAD_PGBENCH+x} ]]; then
+    msg "Execute vacuumdb..."
+    docker_exec vacuumdb -U postgres $DB_NAME -j $CPU_CNT --analyze
+  fi
 
   msg "Save prepaparation log"
   logpath=$( \
