@@ -511,7 +511,7 @@ function check_cli_parameters() {
     fi
   elif [[ "$RUN_ON" == "localhost" ]]; then
     if [[ ! -z ${CONTAINER_ID+x} ]] && [[ ! -z ${DB_LOCAL_PGDATA+x} ]]; then
-      err "ERROR: Both --container-id and --db-local-pgdata given. Impossible use --db-local-pgdata width existing container."
+      err "ERROR: Both --container-id and --db-local-pgdata are provided. Cannot use --db-local-pgdata with existing container."
       exit 1
     fi
     if [[ ! -z ${AWS_KEYPAIR_NAME+x} ]] || [[ ! -z ${AWS_SSH_KEY_PATH+x} ]] ; then
@@ -1311,13 +1311,16 @@ function cp_db_ebs_backup() {
 
 function attach_pgdata() {
   local op_start_time=$(date +%s)
+  docker_exec bash -c "sudo /etc/init.d/postgresql stop"
   docker_exec bash -c "sudo rm -rf /var/lib/postgresql/$PG_VERSION/main"
   docker_exec bash -c "ln -s /pgdata/ /var/lib/postgresql/$PG_VERSION/main"
   docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql/$PG_VERSION/main"
   docker_exec bash -c "chmod -R 0700 /var/lib/postgresql/9.6/main/"
   local end_time=$(date +%s);
   local duration=$(echo $((end_time-op_start_time)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-  msg "pgdata attached for $duration."
+  msg "Time taken to attach PGDATA: $duration."
+  docker_exec bash -c "sudo /etc/init.d/postgresql start"
+  sleep 30 # wait for postgres started, may be will recover database
 }
 
 #######################################
@@ -1356,10 +1359,7 @@ if [[ "$RUN_ON" == "aws" ]]; then
   sleep 2 # wait for postgres started
 else
   if [[ ! -z ${DB_LOCAL_PGDATA+x} ]]; then
-    docker_exec bash -c "sudo /etc/init.d/postgresql stop"
     attach_pgdata
-    docker_exec bash -c "sudo /etc/init.d/postgresql start"
-    sleep 10 # wait for postgres started
   fi
 fi
 
@@ -1784,11 +1784,11 @@ fi
 
 ## Apply machine features
 # Dump
-sleep 2 # wait for postgres up&running
+sleep 10 # wait for postgres up&running
 
 apply_commands_after_container_init
 apply_sql_before_db_restore
-if [[ -z ${DB_EBS_VOLUME_ID+x} ]] && [[ -z ${DB_LOCAL_PGDATA+x} ]]; then
+if [[ ! -z ${DB_DUMP+x} ]] || [[ ! -z ${DB_PGBENCH+x} ]]; then
   restore_dump
 fi
 apply_sql_after_db_restore
