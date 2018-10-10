@@ -3,31 +3,29 @@
 DEBUG=0
 cmd=""
 
+#######################################
+# Print a help
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function help() {
+  local help=$(cat ${BASH_SOURCE%/*}/help/nancy.md)
+  help=${help//<b>/\\033[1m}
+  help=${help//<\/b>/\\033[22m}
+  help=${help//"\`\`\`"/"'"}
+  help=${help//"\`"/"'"}
+  help=${help//"==="/""}
+  echo -e "$help" | less -RFX
+}
+
+
 case "$1" in
-    help )
-        echo -e "
-\033[1mDESCRIPTION\033[22m
-
-  The Nancy Command Line Interface is a unified way to manage database
-  experiments.
-
-  Nancy is a member of Postgres.ai's Artificial DBA team responsible for
-  conducting experiments.
-
-\033[1mSYNOPSYS\033[22m
-
-  nancy <command> [parameters]
-
-\033[1mAVAILABLE COMMANDS\033[22m
-
-  * help
-
-  * prepare-database (WIP)
-
-  * prepare-workload
-
-  * run
-  " | less -RFX
+help )
+  help
   exit 1;
   ;;
 * )
