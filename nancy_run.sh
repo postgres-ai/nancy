@@ -57,6 +57,7 @@ function help() {
   help=${help//"\`\`\`"/"'"}
   help=${help//"\`"/"'"}
   help=${help//"==="/""}
+  help=${help//"=="/""}
   echo -e "$help" | less -RFX
 }
 
@@ -1024,7 +1025,7 @@ get_system_characteristics
 function cp_db_ebs_backup() {
   # Here we think what postgress stopped
   msg "Extract database backup from EBS volume"
-  docker_exec bash -c "rm -rf /var/lib/postgresql/9.6/main/*"
+  docker_exec bash -c "rm -rf /var/lib/postgresql/$PG_VERSION/main/*"
 
   local op_start_time=$(date +%s)
   docker_exec bash -c "rm -rf /var/lib/postgresql/$PG_VERSION/main/*"
@@ -1068,7 +1069,7 @@ function attach_pgdata() {
   docker_exec bash -c "sudo rm -rf /var/lib/postgresql/$PG_VERSION/main"
   docker_exec bash -c "ln -s /pgdata/ /var/lib/postgresql/$PG_VERSION/main"
   docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql/$PG_VERSION/main"
-  docker_exec bash -c "chmod -R 0700 /var/lib/postgresql/9.6/main/"
+  docker_exec bash -c "chmod -R 0700 /var/lib/postgresql/$PG_VERSION/main/"
   local end_time=$(date +%s);
   local duration=$(echo $((end_time-op_start_time)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Time taken to attach PGDATA: $duration."
