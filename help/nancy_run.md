@@ -238,6 +238,19 @@
 
   Size (in gigabytes) of EBS volume to be attached to the EC2 instance.
 
+  <b>--aws-region</b> (string)
+
+  Region for creating AWS EC2 instance
+
+  <b>--aws-zone</b> (letter)
+
+  Zone for creating AWS EC2 spot in region given by --aws-zone.
+
+  <b>--aws-block-duration</b> (integer)
+
+  EC2 spot max live time in minutes. This value must be a multiple
+  of 60 (60, 120, 180, 240, 300, or 360). Default value is 0 - no time limit.
+
   <b>--s3cfg-path</b>
 
   The path the '.s3cfg' configuration file to be used when accessing files in
@@ -248,5 +261,4 @@
 
 <b>SEE ALSO</b>
 ==
-
     nancy help
