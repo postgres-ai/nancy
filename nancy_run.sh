@@ -1419,7 +1419,9 @@ function prepare_start_workload() {
   docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.prepare.log.gz"
 
   msg "Reset pg_stat_*** and Postgres log"
-  docker_exec psql -U postgres $DB_NAME -c 'select pg_stat_reset(), pg_stat_statements_reset();' >/dev/null
+  >/dev/null docker_exec psql -U postgres $DB_NAME -f - <<EOF
+    select pg_stat_reset(), pg_stat_statements_reset(), pg_stat_reset_shared('archiver'), pg_stat_reset_shared('bgwriter');
+EOF
   docker_exec bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
 }
 
