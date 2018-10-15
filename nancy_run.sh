@@ -322,6 +322,8 @@ function dbg_cli_parameters() {
     echo "AWS_EBS_VOLUME_SIZE: $AWS_EBS_VOLUME_SIZE"
     echo "AWS_REGION: ${AWS_REGION}"
     echo "AWS_ZONE: ${AWS_ZONE}"
+    echo "DB_PGBENCH: $DB_PGBENCH"
+    echo "WORKLOAD_PGBENCH: $WORKLOAD_PGBENCH"
   fi
 }
 
@@ -446,6 +448,8 @@ function check_cli_parameters() {
   ([[ ! -z ${SQL_AFTER_DB_RESTORE+x} ]] && [[ -z $SQL_AFTER_DB_RESTORE ]]) && unset -v SQL_AFTER_DB_RESTORE
   ([[ ! -z ${AWS_ZONE+x} ]] && [[ -z $AWS_ZONE ]]) && unset -v AWS_ZONE
   ([[ ! -z ${CONFIG+x} ]] && [[ -z $CONFIG ]]) && unset -v CONFIG
+  ([[ ! -z ${WORKLOAD_PGBENCH+x} ]] && [[ -z $WORKLOAD_PGBENCH ]]) && unset -v WORKLOAD_PGBENCH
+  ([[ ! -z ${DB_PGBENCH+x} ]] && [[ -z $DB_PGBENCH ]]) && unset -v DB_PGBENCH
 
   ### CLI parameters checks ###
   if [[ "$RUN_ON" == "aws" ]]; then
@@ -549,10 +553,13 @@ function check_cli_parameters() {
   [[ ! -z ${WORKLOAD_BASIS+x} ]] && let workloads_count=$workloads_count+1
   [[ ! -z ${WORKLOAD_REAL+x} ]] && let workloads_count=$workloads_count+1
   [[ ! -z ${WORKLOAD_CUSTOM_SQL+x} ]] && let workloads_count=$workloads_count+1
+  [[ ! -z ${WORKLOAD_PGBENCH+x} ]] && let workloads_count=$workloads_count+1
 
-  if [[ -z ${DB_PREPARED_SNAPSHOT+x} ]]  &&  [[ -z ${DB_DUMP+x} ]]; then
+  if [[ -z ${DB_PREPARED_SNAPSHOT+x} ]]  &&  [[ -z ${DB_DUMP+x} ]] \
+    && [[ -z ${DB_PGBENCH+x} ]] && [[ -z ${DB_EBS_VOLUME_ID+x} ]] \
+    && [[ -z ${DB_LOCAL_PGDATA+x} ]]; then
     err "ERROR: The object (database) is not defined."
-    exit 1;
+    exit 1
   fi
 
   # --workload-real or --workload-basis-path or --workload-custom-sql
@@ -593,8 +600,8 @@ function check_cli_parameters() {
     check_path PG_CONFIG
     if [[ "$?" -ne "0" ]]; then # TODO(NikolayS) support file:// and s3://
       #err "WARNING: Value given as pg_config: '$PG_CONFIG' not found as file will use as content"
-      echo "$PG_CONFIG" > $TMP_PATH/pg_config_tmp.sql
-      PG_CONFIG="$TMP_PATH/pg_config_tmp.sql"
+      echo "$PG_CONFIG" > $TMP_PATH/pg_config_tmp.conf
+      PG_CONFIG="$TMP_PATH/pg_config_tmp.conf"
     fi
   fi
 
@@ -612,6 +619,7 @@ function check_cli_parameters() {
     while : ; do
       var_name_config="yml_run_"$i"_delta_config"
       delta_config=$(eval echo \$$var_name_config)
+      delta_config=$(echo $delta_config | tr ";" "\n")
       var_name_ddl_do="yml_run_"$i"_delta_ddl_do"
       delta_ddl_do=$(eval echo \$$var_name_ddl_do)
       var_name_ddl_undo="yml_run_"$i"_delta_ddl_undo"
@@ -652,8 +660,8 @@ function check_cli_parameters() {
       if [[ ! -z "$delta_config" ]]; then
         check_path delta_config
         if [[ "$?" -ne "0" ]]; then
-          echo "$delta_config" > $TMP_PATH/target_config_tmp_$i.sql
-          RUNS[$j]="$TMP_PATH/target_config_tmp_$i.sql"
+          echo "$delta_config" > $TMP_PATH/target_config_tmp_$i.conf
+          RUNS[$j]="$TMP_PATH/target_config_tmp_$i.conf"
         fi
       fi
       if [[ ! -z "$delta_ddl_do" ]]; then
@@ -894,7 +902,7 @@ function determine_history_ec2_spot_price() {
   AWS_ZONE=${region:$((${#region}-1)):1}
   AWS_REGION=${region:0:$((${#region}-1))}
   msg "Min price from history: $price in $AWS_REGION (zone: $AWS_ZONE)"
-  multiplier="1.01"
+  multiplier="1.2"
   price=$(echo "$price * $multiplier" | bc -l)
   msg "Increased price: $price"
   EC2_PRICE=$price
@@ -1096,6 +1104,8 @@ while [[ $# -gt 0 ]]; do
       DB_DUMP="$2"; shift 2 ;;
     --db-name )
       DB_NAME="$2"; shift 2 ;;
+    --db-pgbench )
+      DB_PGBENCH="$2"; shift 2 ;;
     --commands-after-container-init )
       COMMANDS_AFTER_CONTAINER_INIT="$2"; shift 2 ;;
     --sql-before-db-restore )
@@ -1107,6 +1117,9 @@ while [[ $# -gt 0 ]]; do
     --workload-custom-sql )
       #s3 url|filename|content
       WORKLOAD_CUSTOM_SQL="$2"; shift 2 ;;
+    --workload-pgbench )
+      #s3 url|filename|content
+      WORKLOAD_PGBENCH="$2"; shift 2 ;;
     --workload-real )
       #s3 url
       WORKLOAD_REAL="$2"; shift 2 ;;
@@ -1356,25 +1369,29 @@ function apply_sql_before_db_restore() {
 #   None
 #######################################
 function restore_dump() {
-  OP_START_TIME=$(date +%s);
+  local op_start_time=$(date +%s)
   msg "Restore database dump"
-  case "$DB_DUMP_EXT" in
-    sql)
-      docker_exec bash -c "cat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
-      ;;
-    bz2)
-      docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
-      ;;
-    gz)
-      docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
-      ;;
-    pgdmp)
-      docker_exec bash -c "pg_restore -j $CPU_CNT --no-owner --no-privileges -U postgres -d $DB_NAME $MACHINE_HOME/$DB_DUMP_FILENAME" || true
-      ;;
-  esac
-  END_TIME=$(date +%s);
-  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-  msg "Database dump restored for $DURATION."
+  if ([ ! -z ${DB_PGBENCH+x} ]); then
+    docker_exec bash -c "pgbench -i $DB_PGBENCH -U postgres $DB_NAME" || true
+  else
+    case "$DB_DUMP_EXT" in
+      sql)
+        docker_exec bash -c "cat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
+        ;;
+      bz2)
+        docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
+        ;;
+      gz)
+        docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
+        ;;
+      pgdmp)
+        docker_exec bash -c "pg_restore -j $CPU_CNT --no-owner --no-privileges -U postgres -d $DB_NAME $MACHINE_HOME/$DB_DUMP_FILENAME" || true
+        ;;
+    esac
+  fi
+  local end_time=$(date +%s)
+  local duration=$(echo $((end_time-op_start_time)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  msg "Time taken to restore database: $duration."
 }
 
 #######################################
@@ -1521,8 +1538,12 @@ function prepare_start_workload() {
   fi
 
   # Clear statistics and log
-  msg "Execute vacuumdb..."
-  docker_exec vacuumdb -U postgres $DB_NAME -j $CPU_CNT --analyze
+  if [[ -z ${WORKLOAD_PGBENCH+x} ]]; then
+    msg "Execute vacuumdb..."
+    docker_exec vacuumdb -U postgres $DB_NAME -j $CPU_CNT --analyze
+  fi
+  #msg "Execute vacuumdb..."
+  #docker_exec vacuumdb -U postgres $DB_NAME -j $CPU_CNT --analyze
   docker_exec bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
 }
 
@@ -1537,6 +1558,7 @@ function prepare_start_workload() {
 #   None
 #######################################
 function execute_workload() {
+  local run_number=$1
   # Execute workload
   OP_START_TIME=$(date +%s);
   msg "Execute workload..."
@@ -1548,8 +1570,10 @@ function execute_workload() {
     if [[ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ]] && [[ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]]; then
       docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED  $MACHINE_HOME/$WORKLOAD_FILE_NAME"
     else
-      docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
+      docker_exec bash -c "pgreplay -r $MACHINE_HOME/$WORKLOAD_FILE_NAME"
     fi
+  elif [ ! -z ${WORKLOAD_PGBENCH+x} ]; then
+    docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbench.$run_number.txt"
   else
     if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
       WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
@@ -1639,19 +1663,19 @@ function collect_results() {
 function _cp_backup_2_storage() {
   msg "Copy backup files from pancake to local storage."
   docker_exec bash -c "mkdir -p /storage/backup/pg_base"
-  docker_exec bash -c "mkdir -p /storage/backup/pg_base_tblspace"
+docker_exec bash -c "mkdir -p /storage/backup/pg_base_tblspace"
 
   OP_START_TIME=$(date +%s);
-  docker_exec bash -c "cp -r -p -f /basedump/pg_base/* /storage/backup/pg_base/"
+  docker_exec bash -c "cp -r -p -f /basedump/pg_base/* /storage/backup/pg_base/" || true
   END_TIME=$(date +%s);
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "pg_base copied for $DURATION to storage."
 
-  OP_START_TIME=$(date +%s);
-  docker_exec bash -c "cp -r -p -f /basedump/pg_base_tblspace/* /storage/backup/pg_base_tblspace/"
-  END_TIME=$(date +%s);
-  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-  msg "pg_base_16418 copied for $DURATION to storage."
+OP_START_TIME=$(date +%s);
+docker_exec bash -c "cp -r -p -f /basedump/pg_base_tblspace/* /storage/backup/pg_base_tblspace/" || true
+END_TIME=$(date +%s);
+DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+msg "pg_base_16418 copied for $DURATION to storage."
 }
 
 function _cp_backup() {
@@ -1660,35 +1684,36 @@ function _cp_backup() {
   docker_exec bash -c "rm -rf /var/lib/postgresql/9.6/main/*"
 
   OP_START_TIME=$(date +%s);
-  docker_exec bash -c "rm -rf /var/lib/postgresql/$PG_VERSION/main/*"
-  docker_exec bash -c "cp -r -p -f /storage/backup/pg_base/* /storage/postgresql/$PG_VERSION/main/"
+  docker_exec bash -c "rm -rf /var/lib/postgresql/$PG_VERSION/main/*" || true
+  docker_exec bash -c "cp -r -p -f /storage/backup/pg_base/* /storage/postgresql/$PG_VERSION/main/" || true
   END_TIME=$(date +%s);
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "pg_base main copied for $DURATION."
 
-  docker_exec bash -c "mkdir /storage/postgresql_hdd" || true
-  docker_exec bash -c "ln -s /storage/postgresql_hdd/ /var/lib/postgresql_hdd" || true
-  docker_exec bash -c "rm -rf /storage/postgresql_hdd/*"
-  OP_START_TIME=$(date +%s);
-  docker_exec bash -c "cp -r -p -f /storage/backup/pg_base_tblspace/* /storage/postgresql_hdd/"
-  END_TIME=$(date +%s);
-  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-  msg "pg_base_16418 copied for $DURATION."
+docker_exec bash -c "mkdir /storage/postgresql_hdd" || true
+docker_exec bash -c "ln -s /storage/postgresql_hdd/ /var/lib/postgresql_hdd" || true
+docker_exec bash -c "rm -rf /storage/postgresql_hdd/*"
+OP_START_TIME=$(date +%s);
+docker_exec bash -c "cp -r -p -f /storage/backup/pg_base_tblspace/* /storage/postgresql_hdd/"
+END_TIME=$(date +%s);
+DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+msg "pg_base_16418 copied for $DURATION."
 
   OP_START_TIME=$(date +%s);
-  docker_exec bash -c "chown -R postgres:postgres /storage/postgresql/$PG_VERSION/main/*"
-  docker_exec bash -c "chown -R postgres:postgres /storage/postgresql/$PG_VERSION/main"
-  docker_exec bash -c "chown -R postgres:postgres /storage/postgresql_hdd/*"
-  docker_exec bash -c "chown -R postgres:postgres /storage/postgresql_hdd"
-  docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql"
-  docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql_hdd"
+  docker_exec bash -c "chown -R postgres:postgres /storage/postgresql/$PG_VERSION/main/*" || true
+  docker_exec bash -c "chown -R postgres:postgres /storage/postgresql/$PG_VERSION/main" || true
+docker_exec bash -c "chown -R postgres:postgres /storage/postgresql_hdd/*" || true
+docker_exec bash -c "chown -R postgres:postgres /storage/postgresql_hdd" || true
+  docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql" || true
+docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql_hdd" || true
 
-  docker_exec bash -c "chmod 0700 /var/lib/postgresql/9.6/main/"
+  docker_exec bash -c "chmod 0700 /var/lib/postgresql/9.6/main/" || true
   END_TIME=$(date +%s);
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Rights changed for $DURATION."
 
   docker_exec bash -c "localedef -f UTF-8 -i en_US en_US.UTF-8"
+  docker_exec bash -c "localedef -f UTF-8 -i ru_RU ru_RU.UTF-8"
 }
 
 function _rsync(){
@@ -1696,29 +1721,31 @@ function _rsync(){
   docker_exec bash -c "sudo /etc/init.d/postgresql stop"
   sleep 10
   OP_START_TIME=$(date +%s);
-  docker_exec bash -c "rsync -av /storage/backup/pg_base/ /storage/postgresql/9.6/main"
+  docker_exec bash -c "rsync -av /storage/backup/pg_base/ /storage/postgresql/9.6/main" || true
   END_TIME=$(date +%s);
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "pg_base main rsync done for $DURATION."
-  OP_START_TIME=$(date +%s);
-  docker_exec bash -c "rsync -av /storage/backup/pg_base_tblspace/ /storage/postgresql_hdd/"
-  END_TIME=$(date +%s);
-  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-  msg "pg_base_tblspace rsync done for $DURATION."
+OP_START_TIME=$(date +%s);
+docker_exec bash -c "rsync -av /storage/backup/pg_base_tblspace/ /storage/postgresql_hdd/" || true
+END_TIME=$(date +%s);
+DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+msg "pg_base_tblspace rsync done for $DURATION."
 
-  docker_exec bash -c "chown -R postgres:postgres /storage/postgresql/$PG_VERSION/main/*"
-  docker_exec bash -c "chown -R postgres:postgres /storage/postgresql/$PG_VERSION/main"
-  docker_exec bash -c "chown -R postgres:postgres /storage/postgresql_hdd/*"
-  docker_exec bash -c "chown -R postgres:postgres /storage/postgresql_hdd"
-  docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql"
-  docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql_hdd"
-  docker_exec bash -c "chmod 0700 /var/lib/postgresql/9.6/main/"
+  docker_exec bash -c "chown -R postgres:postgres /storage/postgresql/$PG_VERSION/main/*" || true
+  docker_exec bash -c "chown -R postgres:postgres /storage/postgresql/$PG_VERSION/main" || true
+docker_exec bash -c "chown -R postgres:postgres /storage/postgresql_hdd/*" || true
+docker_exec bash -c "chown -R postgres:postgres /storage/postgresql_hdd" || true
+  docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql" || true
+docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql_hdd" || true
+  docker_exec bash -c "chmod 0700 /var/lib/postgresql/9.6/main/" || true
 
   docker_exec bash -c "sudo /etc/init.d/postgresql start"
   sleep 10
 
-  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'drop database if exists test;'"
-  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'alter database postila_ru rename to test;'"
+  if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]] && [[ ! -z ${ORIGINAL_DB_NAME+x} ]] && [[ ! "$ORIGINAL_DB_NAME" == "test" ]]; then
+    docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'drop database if exists test;'"
+    docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'alter database $ORIGINAL_DB_NAME rename to test;'"
+  fi
 }
 
 docker_exec bash -c "mkdir $MACHINE_HOME && chmod a+w $MACHINE_HOME"
@@ -1743,9 +1770,11 @@ if [[ "$RUN_ON" == "aws" ]]; then
   sleep 10 # wait for postgres started
 fi
 
-if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]]; then
+if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]] && [[ ! "$DB_NAME" == "test" ]]; then
   docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'drop database if exists test;'"
-  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'alter database postila_ru rename to test;'"
+  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'alter database $DB_NAME rename to test;'"
+  ORIGINAL_DB_NAME=$DB_NAME
+  DB_NAME=test
 fi
 
 [ ! -z ${S3_CFG_PATH+x} ] && copy_file $S3_CFG_PATH \
@@ -1778,8 +1807,8 @@ sleep 10 # wait for postgres up&running
 ## Apply machine features
 apply_commands_after_container_init;
 apply_sql_before_db_restore;
-if [[ -z ${DB_EBS_VOLUME_ID+x} ]]; then
-  restore_dump; # commented for use pancake drive
+if ([[ ! -z ${DB_DUMP+x} ]] || [[ ! -z ${DB_PGBENCH+x} ]]) && [[ -z ${DB_EBS_VOLUME_ID+x} ]]; then
+  restore_dump
 fi
 apply_sql_after_db_restore;
 apply_initial_postgres_configuration;
@@ -1816,7 +1845,7 @@ while : ; do
   [[ ! -z "$delta_ddl_do" ]] && apply_ddl_do_code $delta_ddl_do
 
   prepare_start_workload $i;
-  execute_workload;
+  execute_workload $i;
   collect_results $i;
 
   msg "Run #$num done."
