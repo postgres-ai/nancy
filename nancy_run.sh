@@ -1757,12 +1757,10 @@ END_TIME=$(date +%s)
 DURATION=$(echo $((END_TIME-START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
 let SECONDS_DURATION=$END_TIME-$START_TIME
 if [[ ! -z ${EC2_PRICE+x} ]]; then
-  SECOND_PRICE=$(echo "scale=10; $EC2_PRICE / 3600" | bc)
-  ESTIMATE_COST=`bc << EOF
-$SECONDS_DURATION * $SECOND_PRICE
-EOF
-`
-  ESTIMATE_COST=$(echo $ESTIMATE_COST | awk '{printf "%02.03f", $1}')
+  PRICE_PER_SECOND=$(echo "scale=10; $EC2_PRICE / 3600" | bc)
+  let DURATION_SECONDS=$END_TIME-$START_TIME
+  ESTIMATE_COST=$(echo "scale=10; $DURATION_SECONDS * $PRICE_PER_SECOND" | bc)
+  ESTIMATE_COST=$(printf "%02.03f\n" "$ESTIMATE_COST")
 fi
 msg "Done."
 echo -e "------------------------------------------------------------------------------"
