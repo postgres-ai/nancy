@@ -902,7 +902,7 @@ function determine_history_ec2_spot_price() {
   AWS_ZONE=${region:$((${#region}-1)):1}
   AWS_REGION=${region:0:$((${#region}-1))}
   msg "Min price from history: $price in $AWS_REGION (zone: $AWS_ZONE)"
-  multiplier="1.2"
+  multiplier="1.1"
   price=$(echo "$price * $multiplier" | bc -l)
   msg "Increased price: $price"
   EC2_PRICE=$price
@@ -1371,8 +1371,11 @@ function apply_sql_before_db_restore() {
 function restore_dump() {
   local op_start_time=$(date +%s)
   msg "Restore database dump"
+  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'drop database if exists test;'"
+  docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'create database test;'"
   if ([ ! -z ${DB_PGBENCH+x} ]); then
     docker_exec bash -c "pgbench -i $DB_PGBENCH -U postgres $DB_NAME" || true
+    docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c \"SELECT pg_size_pretty( pg_database_size('test') );\""
   else
     case "$DB_DUMP_EXT" in
       sql)
@@ -1806,12 +1809,12 @@ done
 sleep 10 # wait for postgres up&running
 ## Apply machine features
 apply_commands_after_container_init;
+apply_initial_postgres_configuration;
 apply_sql_before_db_restore;
 if ([[ ! -z ${DB_DUMP+x} ]] || [[ ! -z ${DB_PGBENCH+x} ]]) && [[ -z ${DB_EBS_VOLUME_ID+x} ]]; then
   restore_dump
 fi
 apply_sql_after_db_restore;
-apply_initial_postgres_configuration;
 
 msg "Start runs..."
 runs_count=${#RUNS[*]}
@@ -1829,14 +1832,14 @@ while : ; do
 
   #restore database if not first run
   if [[ "$i" -gt "0" ]]; then
-    docker_exec bash -c "sudo /etc/init.d/postgresql stop"
     sleep 10
     if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]]; then
+      docker_exec bash -c "sudo /etc/init.d/postgresql stop"
       _rsync
+      docker_exec bash -c "sudo /etc/init.d/postgresql start"
     else
       restore_dump;
     fi
-    docker_exec bash -c "sudo /etc/init.d/postgresql start"
     sleep 10
   fi
 
