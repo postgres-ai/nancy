@@ -1561,6 +1561,13 @@ apply_ddl_undo_code
 
 END_TIME=$(date +%s)
 DURATION=$(echo $((END_TIME-START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+let SECONDS_DURATION=$END_TIME-$START_TIME
+if [[ ! -z ${EC2_PRICE+x} ]]; then
+  PRICE_PER_SECOND=$(echo "scale=10; $EC2_PRICE / 3600" | bc)
+  let DURATION_SECONDS=$END_TIME-$START_TIME
+  ESTIMATE_COST=$(echo "scale=10; $DURATION_SECONDS * $PRICE_PER_SECOND" | bc)
+  ESTIMATE_COST=$(printf "%02.03f\n" "$ESTIMATE_COST")
+fi
 msg "Done."
 echo -e "------------------------------------------------------------------------------"
 echo -e "Artifacts (collected in \"$ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/\"):"
@@ -1573,6 +1580,9 @@ echo -e "  Stat stapshots:     pg_stat_statements.csv,"
 echo -e "                      pg_stat_***.csv"
 echo -e "------------------------------------------------------------------------------"
 echo -e "Total execution time: $DURATION"
+if [[ ! -z "${ESTIMATE_COST+x}" ]]; then
+echo -e "Estimated AWS cost: \$$ESTIMATE_COST"
+fi
 echo -e "------------------------------------------------------------------------------"
 echo -e "Workload:"
 echo -e "  Execution time:     $DURATION_WRKLD"
