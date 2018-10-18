@@ -1343,7 +1343,9 @@ function pg_config_init() {
     if [[ $CPU_CNT > 1 ]]; then # Only for postgres 9.6+!
       local max_worker_processes="$CPU_CNT"
       local max_parallel_workers_per_gather="$(echo "print round($CPU_CNT / 2)" | python | awk -F '.' '{print $1}')"
-      local max_parallel_workers="$CPU_CNT"
+      if [[ ! "$PG_VERSION" = "9.6" ]]; then # the following is only for 10+ (and we don't support 9.5 and older)
+        local max_parallel_workers="$CPU_CNT"
+      fi
     fi
 
     docker_exec bash -c "echo '# AUTO-TUNED KNOBS:' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
