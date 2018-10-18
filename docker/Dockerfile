@@ -10,28 +10,36 @@ ADD ./tsearch_data /usr/share/postgresql/$PG_SERVER_VERSION/tsearch_data
 # logging ON; memory setting – for 2CPU/4096MB/SSD
 ADD ./postgresql_${PG_SERVER_VERSION}_tweak.conf /postgresql.tweak.conf
 
+RUN if [ "$PG_SERVER_VERSION" = "11" ]; then \
+      export PG_CLIENT_VERSION=11; \
+    else \
+      export PG_CLIENT_VERSION=10; \
+    fi
+
+RUN if [ "$PG_SERVER_VERSION" = "11" ]; then \
+      export PG_EXOTIC="postgresql-$PG_SERVER_VERSION-rum postgresql-$PG_SERVER_VERSION-powa"; \
+    else \
+      export PG_EXOTIC="postgresql-$PG_SERVER_VERSION-rum postgresql-$PG_SERVER_VERSION-powa postgresql-$PG_SERVER_VERSION-plsh"; \
+    fi
+
 # install Postgres and postgres-specific software:
 #   - desired version of Postgres server,
-#   - psql version 10
+#   - psql version 10+ (required by postgres_dba toolset)
 #   - postgres_dba and pspg
-#   - pgbadger (modified, not lowercasing DB object names, auto_explain compatibility)
+#   - pgbadger 10+
+#   - postgres_dba toolset
 RUN apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8 \
-      && echo "deb http://apt.postgresql.org/pub/repos/apt/ xenial-pgdg main"> /etc/apt/sources.list.d/pgdg.list \
-      && apt-get update && apt-get install -y sudo postgresql-$PG_SERVER_VERSION \
-      && apt-get install -y postgresql-contrib-$PG_SERVER_VERSION postgresql-plpython-$PG_SERVER_VERSION \
-      && apt-get install -y postgresql-$PG_SERVER_VERSION-plsh postgresql-server-dev-$PG_SERVER_VERSION \
-      && apt-get install -y postgresql-$PG_SERVER_VERSION-rum \
-      && apt-get install -y git postgresql-client-10 pspg pgreplay jq etcd libjson-xs-perl \
-      && perl -MCPAN -e'install Text::CSV_XS' \
+      && echo "deb http://apt.postgresql.org/pub/repos/apt/ xenial-pgdg main $PG_SERVER_VERSION" > /etc/apt/sources.list.d/pgdg.list \
+      && apt-get update \
+      && apt-get install -y sudo postgresql-$PG_SERVER_VERSION \
+      && apt-get install -y postgresql-contrib-$PG_SERVER_VERSION postgresql-plpython-$PG_SERVER_VERSION postgresql-server-dev-$PG_SERVER_VERSION \
+      && apt-get install -y "$PG_EXOTIC" \
+      && apt-get install -y git postgresql-client-$PG_CLIENT_VERSION pspg pgreplay jq etcd libjson-xs-perl vim \
       && git clone https://github.com/NikolayS/postgres_dba.git /root/postgres_dba \
-      && git clone https://github.com/darold/pgbadger.git /root/pgbadger
+      && git clone https://github.com/darold/pgbadger.git /root/pgbadger && cd /root/pgbadger && git checkout "tags/v10.1"
 
-# additionally, install newer NodeJS, npm, Sqitch, and more
-RUN wget -q -S -O - https://deb.nodesource.com/setup_8.x | sudo bash \
-      && apt-get install -y s3cmd sudo bzip2 python-software-properties software-properties-common \
-      && apt-get install -y build-essential cpanminus libdbd-pg-perl nginx netcat npm \
-      && npm install -g newman ava \
-      && sudo cpanm --quiet --notest App::Sqitch
+# additional software
+RUN apt-get install -y s3cmd sudo bzip2 python-software-properties software-properties-common
 
 # configure psql, configure postgres & check postgres start & stop & prepare start script
 RUN echo "\\set dba '\\\\\\\\i /root/postgres_dba/start.psql'" >> ~/.psqlrc \

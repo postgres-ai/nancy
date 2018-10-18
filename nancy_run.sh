@@ -931,13 +931,13 @@ if [[ "$RUN_ON" == "localhost" ]]; then
     if [[ -z ${DB_LOCAL_PGDATA+x} ]]; then
       CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
         -v $TMP_PATH:/machine_home \
-        -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}" \
+        -dit "postgresmen/postgres-nancy:${PG_VERSION}" \
       )
     else
       CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
         -v $TMP_PATH:/machine_home \
         -v $DB_LOCAL_PGDATA:/pgdata \
-        -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}" \
+        -dit "postgresmen/postgres-nancy:${PG_VERSION}" \
       )
     fi
   else
@@ -998,7 +998,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
       -v /home/ubuntu:/machine_home \
       -v /home/storage:/storage \
       -v /home/backup:/backup \
-      -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}"
+      -dit "postgresmen/postgres-nancy:${PG_VERSION}"
   )
   DOCKER_CONFIG=$(docker-machine config $DOCKER_MACHINE)
   msg "  To connect container machine use:"
@@ -1343,7 +1343,9 @@ function pg_config_init() {
     if [[ $CPU_CNT > 1 ]]; then # Only for postgres 9.6+!
       local max_worker_processes="$CPU_CNT"
       local max_parallel_workers_per_gather="$(echo "print round($CPU_CNT / 2)" | python | awk -F '.' '{print $1}')"
-      local max_parallel_workers="$CPU_CNT"
+      if [[ ! "$PG_VERSION" = "9.6" ]]; then # the following is only for 10+ (and we don't support 9.5 and older)
+        local max_parallel_workers="$CPU_CNT"
+      fi
     fi
 
     docker_exec bash -c "echo '# AUTO-TUNED KNOBS:' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
@@ -1354,7 +1356,9 @@ function pg_config_init() {
     docker_exec bash -c "echo 'effective_io_concurrency = $effective_io_concurrency' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
     docker_exec bash -c "echo 'max_worker_processes = $max_worker_processes' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
     docker_exec bash -c "echo 'max_parallel_workers_per_gather = $max_parallel_workers_per_gather' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
-    docker_exec bash -c "echo 'max_parallel_workers = $max_parallel_workers' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    if [[ ! "$PG_VERSION" = "9.6" ]]; then # the following is only for 10+ (and we don't support 9.5 and older)
+      docker_exec bash -c "echo 'max_parallel_workers = $max_parallel_workers' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    fi
     restart_needed=true
   fi
   if [[ ! -z ${DELTA_CONFIG+x} ]]; then # if DELTA_CONFIG is not empty, restart will be done later
