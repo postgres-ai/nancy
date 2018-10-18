@@ -51,260 +51,14 @@ function attach_db_ebs_drive() {
 #   None
 #######################################
 function help() {
-  echo -e "\033[1mCOMMAND\033[22m
-
-  run
-
-\033[1mDESCRIPTION\033[22m
-
-  Use 'nancy run' to perform a single run for a database experiment.
-
-  A DB experiment consists of one or more 'runs'. For example, if Nancy is being
-  used to verify  that a new index  will affect  performance only in a positive
-  way, two runs are needed. If one needs to only  collect query plans for each
-  query group, a single run is enough. And finally, if there is  a goal to find
-  an optimal value for some PostgreSQL setting, multiple runs will be needed to
-  check how various values of the specified setting affect performance of the
-  specified database and workload.
-
-  An experimental run needs the following 4 items to be provided as an input:
-    - environment: hardware or cloud instance type, PostgreSQL version, etc;
-    - database: copy or clone of the database;
-    - workload: 'real' workload or custom SQL;
-    - (optional) delta (a.k.a. target): some DB change to be evaluated:
-      * PostgreSQL config changes, or
-      * some DDL (or arbitrary SQL) such as 'CREATE INDEX ...', or
-      * theoretically, anything else.
-
-\033[1mOPTIONS\033[22m
-
-  NOTICE: A value for a string option that starts with 'file://' is treated as
-          a path to a local file. A string value starting with 's3://' is
-          treated as a path to remote file located in S3 (AWS S3 or analog).
-          Otherwise, a string values is considered as 'content', not a link to
-          a file.
-
-  \033[1m--debug\033[22m (boolean)
-
-  Turn on debug logging. This significantly increases the level of verbosity
-  of messages being sent to STDOUT.
-
-  \033[1m--keep-alive\033[22m (integer)
-
-  How many seconds the entity (Docker container, Docker machine) will remain
-  alive after the main activity of the run is finished. Useful for
-  debugging (using ssh access to the container), for serialization of
-  multiple experimental runs, for optimization of resource (re-)usage.
-
-  WARNING: in clouds, use it with care to avoid unexpected expenses.
-
-  \033[1m--run-on\033[22m (string)
-
-  Where the experimental run will be performed. Allowed values:
-
-    * 'localhost' (default)
-
-    * 'aws'
-
-    * 'gcp' (WIP, not yet implemented)
-
-  If 'localhost' is specified (or --run-on is omitted), Nancy will perform the
-  run on the localhost in a Docker container so ('docker run' must work
-  locally).
-
-  If 'aws' is specified, Nancy will use a Docker machine (EC2 Spot Instance)
-  with a single container on it.
-
-  \033[1m--tmp-path\033[22m (string)
-
-  Path to the temporary directory on the current machine (where 'nancy run' is
-  being invoked), to store various files while preparing them to be shipped to
-  the experimental container/machine. Default: '/tmp'.
-
-  \033[1m--container-id\033[22m (string)
-
-  If specified, new container/machine will not be created. Instead, the existing
-  one will be reused. This might be a significant optimization for a series of
-  experimental runs to be executed sequentially.
-
-  WARNING: This option is to be used only with read-only workloads.
-
-  WIP: Currently, this option works only with '--run-on localhost'.
-
-  \033[1m--pg-version\033[22m (string)
-
-  Specify the major version of PostgreSQL. Allowed values:
-
-    * '9.6'
-    * '10' (default)
-
-  Currently, there is no way to specify the minor version – it is always the
-  most recent version, available in the official PostgreSQL APT repository (see
-  https://www.postgresql.org/download/linux/ubuntu/).
-
-  \033[1m--pg-config\033[22m (string)
-
-  PostgreSQL config to be used (may be partial).
-
-  \033[1m--pg-config-auto\033[22m (enum: oltp|olap)
-
-  Perform \"auto-tuning\" for PostgreSQL config. Allowed values:
-
-    * \"oltp\" to auto-tune Postgres for OLTP workload,
-    * \"olap\" to auto-tune Postgres for OLAP (analytical) workload.
-
-  This option can be combined with \"--pg-config\" – in this case, it will be
-  applied *after* it (so \"auto-tuning\" values will be added to the end of
-  the postgresql.conf file).
-
-  \033[1m--db-prepared-snapshot\033[22m (string)
-
-  Reserved / Not yet implemented.
-
-  \033[1m--db-dump\033[22m (string)
-
-  Database dump (created by pg_dump) to be used as an input. May be:
-
-    * path to dump file (must start with 'file://' or 's3://'), may be:
-      - plain dump made with 'pg_dump',
-      - gzip-compressed plain dump ('*.gz'),
-      - bzip2-compressed plain dump ('*.bz2'),
-      - dump in \"custom\" format, made with 'pg_dump -Fc ..' ('*.pgdmp'),
-    * sequence of SQL commands specified as in a form of plain text.
-
-  \033[1m--db-name\033[22m (string)
-
-  Name of database which must be tested. Name 'test' is internal used name,
-  so is not correct value.
-
-  \033[1m--db-ebs-volume-id\033[22m (string)
-
-  ID of an AWS EBS volume, containing the database backup (made with pg_basebackup).
-
-  In the volume's root directory, the following two files are expected:
-    - base.tar.gz
-    - pg_xlog.tar.gz for Postgres version up to 9.6 or pg_wal.tar.gz for Postgres 10+
-
-  The following command can be used to get such files:
-    'pg_basebackup -U postgres -zPFt -Z 5 -D /path/to/ebs/volume/root'
-  Here '-Z 5' means that level 5 to be used for compression, you can choose any value from 0 to 9.
-
-
-  \033[1m--db-pgbench\033[22m (string)
-
-  Initialize database for pgbench. Contains pgbench init arguments:
-
-    * Example nancy run --db-pgbench \"-s 100\"
-
-  \033[1m--commands-after-container-init\033[22m (string)
-
-  Shell commands to be executed after the container initialization. Can be used
-  to add additional software such as Postgres extensions not present in
-  the main contrib package.
-
-  \033[1m--sql-before-db-restore\033[22m (string)
-
-  Additional SQL queries to be executed before the database is initiated.
-  Applicable only when '--db-dump' is used.
-
-  \033[1m--sql-after-db-restore\033[22m (string)
-
-  Additional SQL queries to be executed once the experimental database is
-  initiated and ready to accept connections.
-
-  \033[1m--workload-real\033[22m (string)
-
-  'Real' workload – path to the file prepared by using 'nancy prepare-workload'.
-
-  \033[1m--workload-real-replay-speed\033[22m (integer)
-
-  The speed of replaying of the 'real workload'. Useful for stress-testing
-  and forecasting the performance of the database under heavier workloads.
-
-  \033[1m--workload-custom-sql\033[22m (string)
-
-  SQL queries to be used as workload. These queries will be executed in a signle
-  database session.
-
-  \033[1m--workload-pgbench\033[22m (string)
-
-  pgbench arguments to pass for tests.  Ex: \"-c 10 -j 4 -t 1000\"
-
-  \033[1m--workload-basis\033[22m (string)
-
-  Reserved / Not yet implemented.
-
-  \033[1m--delta-sql-do\033[22m (string)
-
-  SQL changing database somehow before running workload. For example, DDL:
-
-    create index i_t1_experiment on t1 using btree(col1);
-
-  \033[1m--delta-sql-undo\033[22m (string)
-
-  SQL reverting changes produced by those specified in the value of the
-  '--delta-sql-do' option. Reverting allows to serialize multiple runs, but it
-  might be not possible in some cases. 'UNDO SQL' example reverting index
-  creation:
-
-    drop index i_t1_experiment;
-
-  \033[1m--delta-config\033[22m (string)
-
-  Config changes to be applied to postgresql.conf before running workload.
-  Once configuration changes are made, PostgreSQL is restarted. Example:
-
-    random_page_cost = 1.1
-
-  \033[1m--artifacts-destination\033[22m (string)
-
-  Path to a local ('file://...') or S3 ('s3://...') directory where artifacts
-  of the experimental run will be placed. Among these artifacts:
-
-    * detailed performance report in JSON format
-    * whole PostgreSQL log, gzipped
-    * full PostgreSQL config used in this experimental run
-
-  \033[1m--aws-ec2-type\033[22m (string)
-
-  Type of EC2 instance to be used. To keep budgets low, EC2 Spot instances will
-  be utilized and automatic detections of the lowest price in the current AZ
-  will be performed.
-
-  WARNING: 'i3-metal' instances are not currently supported (WIP).
-
-  The option may be used only with '--run-on aws'.
-
-  \033[1m--aws-keypair-name\033[22m (string)
-
-  The name of key pair to be used on EC2 instance to allow ssh access. Must
-  correspond to SSH key file specified in the '--aws-ssh-key-path' option.
-
-  The option may be used only with '--run-on aws'.
-
-  \033[1m--aws-ssh-key-path\033[22m (string)
-
-  Path to SSH key file (usually, has '.pem' extension).
-
-  The option may be used only with '--run-on aws'.
-
-  \033[1m--aws-ebs-volume-size\033[22m (string)
-
-  Size (in gigabytes) of EBS volume to be attached to the EC2 instance.
-
-  \033[1m--s3cfg-path\033[22m
-
-  The path the '.s3cfg' configuration file to be used when accessing files in
-  S3. This file must be local and must be specified if some options' values are
-  in 's3://***' format.
-
-  See also: https://github.com/s3tools/s3cmd
-
-\033[1mSEE ALSO\033[22m
-
-  nancy help
-
-    " | less -RFX
+  local help=$(cat ${BASH_SOURCE%/*}/help/nancy_run.md)
+  help=${help//<b>/\\033[1m}
+  help=${help//<\/b>/\\033[22m}
+  help=${help//"\`\`\`"/"'"}
+  help=${help//"\`"/"'"}
+  help=${help//"==="/""}
+  help=${help//"=="/""}
+  echo -e "$help" | less -RFX
 }
 
 #######################################
@@ -377,6 +131,7 @@ function dbg_cli_parameters() {
     echo "AWS_EBS_VOLUME_SIZE: $AWS_EBS_VOLUME_SIZE"
     echo "AWS_REGION: ${AWS_REGION}"
     echo "AWS_ZONE: ${AWS_ZONE}"
+    echo "DB_LOCAL_PGDATA: ${DB_LOCAL_PGDATA}"
   fi
 }
 
@@ -461,6 +216,10 @@ function check_cli_parameters() {
       err "ERROR: Container ID may be specified only for local runs ('--run-on localhost')."
       exit 1
     fi
+    if [[ ! -z ${DB_LOCAL_PGDATA+x} ]]; then
+      err "ERROR: --db-local-pgdata may be specified only for local runs ('--run-on localhost')."
+      exit 1
+    fi
     if [[ -z ${AWS_KEYPAIR_NAME+x} ]] || [[ -z ${AWS_SSH_KEY_PATH+x} ]]; then
       err "ERROR: AWS keypair name and ssh key file must be specified to run on AWS EC2."
       exit 1
@@ -505,6 +264,10 @@ function check_cli_parameters() {
       fi
     fi
   elif [[ "$RUN_ON" == "localhost" ]]; then
+    if [[ ! -z ${CONTAINER_ID+x} ]] && [[ ! -z ${DB_LOCAL_PGDATA+x} ]]; then
+      err "ERROR: Both --container-id and --db-local-pgdata are provided. Cannot use --db-local-pgdata with existing container."
+      exit 1
+    fi
     if [[ ! -z ${AWS_KEYPAIR_NAME+x} ]] || [[ ! -z ${AWS_SSH_KEY_PATH+x} ]] ; then
       err "ERROR: options '--aws-keypair-name' and '--aws-ssh-key-path' must be used with '--run-on aws'."
       exit 1
@@ -560,7 +323,8 @@ function check_cli_parameters() {
   [[ ! -z ${WORKLOAD_PGBENCH+x} ]] && let workloads_count=$workloads_count+1
 
   if [[ -z ${DB_PREPARED_SNAPSHOT+x} ]]  &&  [[ -z ${DB_DUMP+x} ]] \
-    &&  [[ -z ${DB_PGBENCH+x} ]] && [[ -z ${DB_EBS_VOLUME_ID+x} ]]; then
+    && [[ -z ${DB_PGBENCH+x} ]] && [[ -z ${DB_EBS_VOLUME_ID+x} ]] \
+    && [[ -z ${DB_LOCAL_PGDATA+x} ]]; then
     err "ERROR: The object (database) is not defined."
     exit 1
   fi
@@ -606,8 +370,8 @@ function check_cli_parameters() {
     check_path PG_CONFIG
     if [[ "$?" -ne "0" ]]; then # TODO(NikolayS) support file:// and s3://
       #err "WARNING: Value given as pg_config: '$PG_CONFIG' not found as file will use as content"
-      echo "$PG_CONFIG" > $TMP_PATH/pg_config_tmp.sql
-      PG_CONFIG="$TMP_PATH/pg_config_tmp.sql"
+      echo "$PG_CONFIG" > $TMP_PATH/pg_config_tmp.conf
+      PG_CONFIG="$TMP_PATH/pg_config_tmp.conf"
     fi
   fi
 
@@ -1123,6 +887,8 @@ while [ $# -gt 0 ]; do
         AWS_BLOCK_DURATION=$2; shift 2 ;;
     --db-ebs-volume-id )
       DB_EBS_VOLUME_ID=$2; shift 2;;
+    --db-local-pgdata )
+      DB_LOCAL_PGDATA=$2; shift 2;;
 
     --s3cfg-path )
       S3_CFG_PATH="$2"; shift 2 ;;
@@ -1162,10 +928,18 @@ trap cleanup_and_exit EXIT
 
 if [[ "$RUN_ON" == "localhost" ]]; then
   if [[ -z ${CONTAINER_ID+x} ]]; then
-    CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
-      -v $TMP_PATH:/machine_home \
-      -dit "postgresmen/postgres-with-stuff:postgres${PG_VERSION}_pgbadger10" \
-    )
+    if [[ -z ${DB_LOCAL_PGDATA+x} ]]; then
+      CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
+        -v $TMP_PATH:/machine_home \
+        -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}" \
+      )
+    else
+      CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
+        -v $TMP_PATH:/machine_home \
+        -v $DB_LOCAL_PGDATA:/pgdata \
+        -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}" \
+      )
+    fi
   else
     CONTAINER_HASH="$CONTAINER_ID"
   fi
@@ -1251,7 +1025,7 @@ get_system_characteristics
 function cp_db_ebs_backup() {
   # Here we think what postgress stopped
   msg "Extract database backup from EBS volume"
-  docker_exec bash -c "rm -rf /var/lib/postgresql/9.6/main/*"
+  docker_exec bash -c "rm -rf /var/lib/postgresql/$PG_VERSION/main/*"
 
   local op_start_time=$(date +%s)
   docker_exec bash -c "rm -rf /var/lib/postgresql/$PG_VERSION/main/*"
@@ -1277,6 +1051,30 @@ function cp_db_ebs_backup() {
   docker_exec bash -c "chown -R postgres:postgres /storage/postgresql/$PG_VERSION/main"
   docker_exec bash -c "localedef -f UTF-8 -i en_US en_US.UTF-8"
   docker_exec bash -c "localedef -f UTF-8 -i ru_RU ru_RU.UTF-8"
+}
+
+#######################################
+# Copy pgdata to postgres localtion
+# Globals:
+#   PG_VERSION
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+
+function attach_pgdata() {
+  local op_start_time=$(date +%s)
+  docker_exec bash -c "sudo /etc/init.d/postgresql stop"
+  docker_exec bash -c "sudo rm -rf /var/lib/postgresql/$PG_VERSION/main"
+  docker_exec bash -c "ln -s /pgdata/ /var/lib/postgresql/$PG_VERSION/main"
+  docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql/$PG_VERSION/main"
+  docker_exec bash -c "chmod -R 0700 /var/lib/postgresql/$PG_VERSION/main/"
+  local end_time=$(date +%s);
+  local duration=$(echo $((end_time-op_start_time)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  msg "Time taken to attach PGDATA: $duration."
+  docker_exec bash -c "sudo /etc/init.d/postgresql start"
+  sleep 30 # wait for postgres started, may be will recover database
 }
 
 #######################################
@@ -1313,6 +1111,10 @@ if [[ "$RUN_ON" == "aws" ]]; then
 
   docker_exec bash -c "sudo /etc/init.d/postgresql start"
   sleep 2 # wait for postgres started
+else
+  if [[ ! -z ${DB_LOCAL_PGDATA+x} ]]; then
+    attach_pgdata
+  fi
 fi
 
 #######################################
@@ -1602,8 +1404,10 @@ function apply_postgres_configuration() {
 #   None
 #######################################
 function prepare_start_workload() {
-  msg "Execute vacuumdb..."
-  docker_exec vacuumdb -U postgres $DB_NAME -j $CPU_CNT --analyze
+  if [[ -z ${WORKLOAD_PGBENCH+x} ]]; then
+    msg "Execute vacuumdb..."
+    docker_exec vacuumdb -U postgres $DB_NAME -j $CPU_CNT --analyze
+  fi
 
   msg "Save prepaparation log"
   logpath=$( \
@@ -1615,7 +1419,9 @@ function prepare_start_workload() {
   docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.prepare.log.gz"
 
   msg "Reset pg_stat_*** and Postgres log"
-  docker_exec psql -U postgres $DB_NAME -c 'select pg_stat_reset(), pg_stat_statements_reset();' >/dev/null
+  >/dev/null docker_exec psql -U postgres $DB_NAME -f - <<EOF
+    select pg_stat_reset(), pg_stat_statements_reset(), pg_stat_reset_shared('archiver'), pg_stat_reset_shared('bgwriter');
+EOF
   docker_exec bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
 }
 
@@ -1736,11 +1542,11 @@ fi
 
 ## Apply machine features
 # Dump
-sleep 2 # wait for postgres up&running
+sleep 10 # wait for postgres up&running
 
 apply_commands_after_container_init
 apply_sql_before_db_restore
-if [[ -z ${DB_EBS_VOLUME_ID+x} ]]; then
+if [[ ! -z ${DB_DUMP+x} ]] || [[ ! -z ${DB_PGBENCH+x} ]]; then
   restore_dump
 fi
 apply_sql_after_db_restore
@@ -1755,6 +1561,13 @@ apply_ddl_undo_code
 
 END_TIME=$(date +%s)
 DURATION=$(echo $((END_TIME-START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+let SECONDS_DURATION=$END_TIME-$START_TIME
+if [[ ! -z ${EC2_PRICE+x} ]]; then
+  PRICE_PER_SECOND=$(echo "scale=10; $EC2_PRICE / 3600" | bc)
+  let DURATION_SECONDS=$END_TIME-$START_TIME
+  ESTIMATE_COST=$(echo "scale=10; $DURATION_SECONDS * $PRICE_PER_SECOND" | bc)
+  ESTIMATE_COST=$(printf "%02.03f\n" "$ESTIMATE_COST")
+fi
 msg "Done."
 echo -e "------------------------------------------------------------------------------"
 echo -e "Artifacts (collected in \"$ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/\"):"
@@ -1768,6 +1581,9 @@ echo -e "                      pg_stat_***.csv"
 echo -e "  pgreplay report:    pgreplay.txt"
 echo -e "------------------------------------------------------------------------------"
 echo -e "Total execution time: $DURATION"
+if [[ ! -z "${ESTIMATE_COST+x}" ]]; then
+echo -e "Estimated AWS cost: \$$ESTIMATE_COST"
+fi
 echo -e "------------------------------------------------------------------------------"
 echo -e "Workload:"
 echo -e "  Execution time:     $DURATION_WRKLD"
