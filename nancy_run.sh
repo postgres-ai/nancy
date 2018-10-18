@@ -1356,7 +1356,9 @@ function pg_config_init() {
     docker_exec bash -c "echo 'effective_io_concurrency = $effective_io_concurrency' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
     docker_exec bash -c "echo 'max_worker_processes = $max_worker_processes' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
     docker_exec bash -c "echo 'max_parallel_workers_per_gather = $max_parallel_workers_per_gather' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
-    docker_exec bash -c "echo 'max_parallel_workers = $max_parallel_workers' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    if [[ ! "$PG_VERSION" = "9.6" ]]; then # the following is only for 10+ (and we don't support 9.5 and older)
+      docker_exec bash -c "echo 'max_parallel_workers = $max_parallel_workers' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    fi
     restart_needed=true
   fi
   if [[ ! -z ${DELTA_CONFIG+x} ]]; then # if DELTA_CONFIG is not empty, restart will be done later
