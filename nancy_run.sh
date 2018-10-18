@@ -71,7 +71,7 @@ function help() {
 #   None
 #######################################
 function err() {
-  echo -e "[$(date +'%Y-%m-%dT%H:%M:%S%z')] $@" >&2
+  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] $@" >&2
 }
 
 #######################################
@@ -145,7 +145,7 @@ function dbg_cli_parameters() {
 #   None
 #######################################
 function msg() {
-  echo -e "[$(date +'%Y-%m-%dT%H:%M:%S%z')] $@"
+  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] $@"
 }
 
 #######################################
@@ -1553,7 +1553,7 @@ function docker_cleanup_and_exit {
   if [[ -z "${DONE+x}" ]]; then
     docker_exec bash -c "mkdir -p $MACHINE_HOME/$ARTIFACTS_FILENAME"
     docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.abnormal.log.gz"
-    err "\033[1mAbnormal termination\033[22m. Check artifacts to understand the reasons."
+    err "Abnormal termination. Check artifacts to understand the reasons."
     save_artifacts
   fi
   cleanup_and_exit
