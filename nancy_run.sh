@@ -1117,10 +1117,20 @@ else
   fi
 fi
 
+LOG_PATH=$( \
+  docker_exec bash -c "psql -XtU postgres \
+    -c \"select string_agg(setting, '/' order by name) from pg_settings where name in ('log_directory', 'log_filename');\" \
+    | grep / | sed -e 's/^[ \t]*//'"
+)
+if [[ -z "$LOG_PATH" ]]; then
+  LOG_PATH=/var/log/postgresql/postgresql-$PG_VERSION-main.log
+fi
+
+
 #######################################
 # Copy file to container
 # Globals:
-#   MACHINE_HOME, CONTAINER_HASH, docker_exec alias
+#   MACHINE_HOME, CONTAINER_HASH
 # Arguments:
 #   None
 # Returns:
@@ -1148,7 +1158,7 @@ function copy_file() {
 #######################################
 # Execute shell commands in container after it was started
 # Globals:
-#   COMMANDS_AFTER_CONTAINER_INIT, MACHINE_HOME,docker_exec alias
+#   COMMANDS_AFTER_CONTAINER_INIT, MACHINE_HOME
 # Arguments:
 #   None
 # Returns:
@@ -1172,7 +1182,7 @@ function apply_commands_after_container_init() {
 #######################################
 # Execute sql code before restore database
 # Globals:
-#   SQL_BEFORE_DB_RESTORE, MACHINE_HOME, docker_exec alias
+#   SQL_BEFORE_DB_RESTORE, MACHINE_HOME
 # Arguments:
 #   None
 # Returns:
@@ -1230,7 +1240,7 @@ function restore_dump() {
 #######################################
 # Execute sql code after db restore
 # Globals:
-#   SQL_AFTER_DB_RESTORE, DB_NAME, MACHINE_HOME, VERBOSE_OUTPUT_REDIRECT, docker_exec alias
+#   SQL_AFTER_DB_RESTORE, DB_NAME, MACHINE_HOME, VERBOSE_OUTPUT_REDIRECT
 # Arguments:
 #   None
 # Returns:
@@ -1253,7 +1263,7 @@ function apply_sql_after_db_restore() {
 #######################################
 # Apply DDL code
 # Globals:
-#   DELTA_SQL_DO, DB_NAME, MACHINE_HOME, VERBOSE_OUTPUT_REDIRECT, docker_exec alias
+#   DELTA_SQL_DO, DB_NAME, MACHINE_HOME, VERBOSE_OUTPUT_REDIRECT
 # Arguments:
 #   None
 # Returns:
@@ -1275,7 +1285,7 @@ function apply_ddl_do_code() {
 #######################################
 # Apply DDL undo code
 # Globals:
-#   DELTA_SQL_UNDO, DB_NAME, MACHINE_HOME, VERBOSE_OUTPUT_REDIRECT, docker_exec alias
+#   DELTA_SQL_UNDO, DB_NAME, MACHINE_HOME, VERBOSE_OUTPUT_REDIRECT
 # Arguments:
 #   None
 # Returns:
@@ -1296,7 +1306,7 @@ function apply_ddl_undo_code() {
 #######################################
 # Apply initial postgres configuration
 # Globals:
-#   PG_CONFIG, MACHINE_HOME, docker_exec alias
+#   PG_CONFIG, MACHINE_HOME
 # Arguments:
 #   None
 # Returns:
@@ -1372,7 +1382,7 @@ function pg_config_init() {
 #######################################
 # Apply Postgres "delta" configuration
 # Globals:
-#   DELTA_CONFIG, MACHINE_HOME, docker_exec alias
+#   DELTA_CONFIG, MACHINE_HOME
 # Arguments:
 #   None
 # Returns:
@@ -1397,7 +1407,7 @@ function apply_postgres_configuration() {
 # Prepare to start workload.
 # Save restore db log, vacuumdb, clear log
 # Globals:
-#   ARTIFACTS_FILENAME, MACHINE_HOME, DB_NAME, docker_exec alias
+#   ARTIFACTS_FILENAME, MACHINE_HOME, DB_NAME
 # Arguments:
 #   None
 # Returns:
@@ -1410,26 +1420,21 @@ function prepare_start_workload() {
   fi
 
   msg "Save prepaparation log"
-  logpath=$( \
-    docker_exec bash -c "psql -XtU postgres \
-      -c \"select string_agg(setting, '/' order by name) from pg_settings where name in ('log_directory', 'log_filename');\" \
-      | grep / | sed -e 's/^[ \t]*//'"
-  )
   docker_exec bash -c "mkdir $MACHINE_HOME/$ARTIFACTS_FILENAME"
-  docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.prepare.log.gz"
+  docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.prepare.log.gz"
 
   msg "Reset pg_stat_*** and Postgres log"
   >/dev/null docker_exec psql -U postgres $DB_NAME -f - <<EOF
     select pg_stat_reset(), pg_stat_statements_reset(), pg_stat_reset_shared('archiver'), pg_stat_reset_shared('bgwriter');
 EOF
-  docker_exec bash -c "echo '' > $logpath"
+  docker_exec bash -c "echo '' > $LOG_PATH"
 }
 
 #######################################
 # Execute workload.
 # Globals:
 #   WORKLOAD_REAL, WORKLOAD_REAL_REPLAY_SPEED, WORKLOAD_CUSTOM_SQL, MACHINE_HOME,
-#   DURATION_WRKLD, DB_NAME, VERBOSE_OUTPUT_REDIRECT, docker_exec alias
+#   DURATION_WRKLD, DB_NAME, VERBOSE_OUTPUT_REDIRECT
 # Arguments:
 #   None
 # Returns:
@@ -1466,7 +1471,7 @@ function execute_workload() {
 #######################################
 # Save artifacts to artifact destination
 # Globals:
-#   CONTAINER_HASH, MACHINE_HOME, ARTIFACTS_DESTINATION, docker_exec alias
+#   CONTAINER_HASH, MACHINE_HOME, ARTIFACTS_DESTINATION, ARTIFACTS_FILENAME
 # Arguments:
 #   None
 # Returns:
@@ -1492,7 +1497,7 @@ function save_artifacts() {
 #######################################
 # Collect results of workload execution
 # Globals:
-#   CONTAINER_HASH, MACHINE_HOME, ARTIFACTS_DESTINATION, docker_exec alias
+#   CONTAINER_HASH, MACHINE_HOME, ARTIFACTS_DESTINATION
 # Arguments:
 #   None
 # Returns:
@@ -1528,7 +1533,7 @@ function collect_results() {
   docker_exec bash -c "psql -U postgres $DB_NAME -b -c \"copy (select * from $table2export) to stdout with csv header delimiter ',';\" > /$MACHINE_HOME/$ARTIFACTS_FILENAME/\$(echo \"$table2export\" | awk '{print \$1}').csv"
   done
 
-  docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.workload.log.gz"
+  docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.workload.log.gz"
   docker_exec bash -c "cp /etc/postgresql/$PG_VERSION/main/postgresql.conf $MACHINE_HOME/$ARTIFACTS_FILENAME/"
   END_TIME=$(date +%s)
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
@@ -1538,7 +1543,7 @@ function collect_results() {
 #######################################
 # Collect artifacts in case of abnormal termination
 # Globals:
-#   MACHINE_HOME, docker_exec alias
+#   MACHINE_HOME
 # Arguments:
 #   None
 # Returns:
@@ -1546,17 +1551,9 @@ function collect_results() {
 #######################################
 function docker_cleanup_and_exit {
   if [[ -z "${DONE+x}" ]]; then
-    logpath=$( \
-      docker_exec bash -c "psql -XtU postgres \
-        -c \"select string_agg(setting, '/' order by name) from pg_settings where name in ('log_directory', 'log_filename');\" \
-        | grep / | sed -e 's/^[ \t]*//'" || true
-    )
-    if [[ -z "$logpath" ]]; then
-      logpath=/var/log/postgresql/postgresql-$PG_VERSION-main.log
-    fi
     docker_exec bash -c "mkdir -p $MACHINE_HOME/$ARTIFACTS_FILENAME"
-    docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.abnormal.log.gz"
-    err "\033[1mExperiment abnormal terminated\033[22m. Abnormal artifacts saved to artifact destination."
+    docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.abnormal.log.gz"
+    err "\033[1mAbnormal termination\033[22m. Check artifacts to understand the reasons."
     save_artifacts
   fi
   cleanup_and_exit
