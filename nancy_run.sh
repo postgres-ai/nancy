@@ -747,7 +747,7 @@ function cleanup_and_exit {
   rm -rf "$TMP_PATH"
   if [[ "$RUN_ON" == "localhost" ]]; then
     msg "Stop Postgres"
-    docker_exec bash -c "sudo /etc/init.d/postgresql start"
+    sudo docker $DOCKER_CONFIG exec -i ${CONTAINER_HASH} bash -c "sudo /etc/init.d/postgresql stop" 2>/dev/null
     msg "Remove docker container"
     sudo docker container rm -f $CONTAINER_HASH
   elif [[ "$RUN_ON" == "aws" ]]; then
