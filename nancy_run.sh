@@ -182,7 +182,7 @@ function check_path() {
     fi
   else
     dbg "Value of $1 is not a file path. Use its value as a content."
-    return -1 #
+    return 100 #
   fi
 }
 
@@ -742,12 +742,14 @@ function cleanup_and_exit {
   fi
   msg "Remove temp files..." # if exists
   if [[ ! -z "${DOCKER_CONFIG+x}" ]]; then
-    docker $DOCKER_CONFIG exec -i ${CONTAINER_HASH} bash -c "sudo rm -rf $MACHINE_HOME"
+    sudo docker $DOCKER_CONFIG exec -i ${CONTAINER_HASH} bash -c "sudo rm -rf $MACHINE_HOME"
   fi
   rm -rf "$TMP_PATH"
   if [[ "$RUN_ON" == "localhost" ]]; then
+    msg "Stop Postgres"
+    docker_exec bash -c "sudo /etc/init.d/postgresql start"
     msg "Remove docker container"
-    docker container rm -f $CONTAINER_HASH
+    sudo docker container rm -f $CONTAINER_HASH
   elif [[ "$RUN_ON" == "aws" ]]; then
     destroy_docker_machine $DOCKER_MACHINE
     if [ ! -z ${VOLUME_ID+x} ]; then
@@ -929,12 +931,12 @@ trap cleanup_and_exit EXIT
 if [[ "$RUN_ON" == "localhost" ]]; then
   if [[ -z ${CONTAINER_ID+x} ]]; then
     if [[ -z ${DB_LOCAL_PGDATA+x} ]]; then
-      CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
+      CONTAINER_HASH=$(sudo docker run --name="pg_nancy_${CURRENT_TS}" \
         -v $TMP_PATH:/machine_home \
         -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}" \
       )
     else
-      CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
+      CONTAINER_HASH=$(sudo docker run --name="pg_nancy_${CURRENT_TS}" \
         -v $TMP_PATH:/machine_home \
         -v $DB_LOCAL_PGDATA:/pgdata \
         -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}" \
@@ -992,7 +994,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
   fi
 
   CONTAINER_HASH=$( \
-    docker `docker-machine config $DOCKER_MACHINE` run \
+    sudo docker `docker-machine config $DOCKER_MACHINE` run \
       --name="pg_nancy_${CURRENT_TS}" \
       --privileged \
       -v /home/ubuntu:/machine_home \
@@ -1010,7 +1012,7 @@ fi
 
 MACHINE_HOME="/machine_home/nancy_${CONTAINER_HASH}"
 
-alias docker_exec='docker $DOCKER_CONFIG exec -i ${CONTAINER_HASH} '
+alias docker_exec='sudo docker $DOCKER_CONFIG exec -i ${CONTAINER_HASH} '
 get_system_characteristics
 
 #######################################
@@ -1065,15 +1067,24 @@ function cp_db_ebs_backup() {
 
 function attach_pgdata() {
   local op_start_time=$(date +%s)
+  docker_exec bash -c "sudo -u postgres psql -c \"alter system set log_destination = 'csvlog,stderr'\""
   docker_exec bash -c "sudo /etc/init.d/postgresql stop"
+  docker_exec bash -c "usermod -u 26 postgres"
   docker_exec bash -c "sudo rm -rf /var/lib/postgresql/$PG_VERSION/main"
   docker_exec bash -c "ln -s /pgdata/ /var/lib/postgresql/$PG_VERSION/main"
   docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql/$PG_VERSION/main"
+  docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql/$PG_VERSION/main/*"
+  docker_exec bash -c "chown -R postgres:postgres /etc/postgresql/$PG_VERSION/*"
+  docker_exec bash -c "chown -R postgres:postgres /var/log/postgresql"
   docker_exec bash -c "chmod -R 0700 /var/lib/postgresql/$PG_VERSION/main/"
+  docker_exec bash -c "chmod a+w /var/run/postgresql/$PG_VERSION-main.pg_stat_tmp/"
+  #docker_exec bash -c "cat /postgresql.tweak.conf >> /etc/postgresql/$PG_VERSION/main/postgresql.conf" # is presented in Dockerfile, but is lost here
+  docker_exec bash -c "echo 'statement_timeout = 0' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
   local end_time=$(date +%s);
   local duration=$(echo $((end_time-op_start_time)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Time taken to attach PGDATA: $duration."
   docker_exec bash -c "sudo /etc/init.d/postgresql start"
+  #docker_exec bash -c "sudo -u postgres /usr/lib/postgresql/9.6/bin/pg_ctl -D /var/lib/postgresql/9.6/main -l /var/log/postgresql/postgresql-9.6-main.log start"
   sleep 30 # wait for postgres started, may be will recover database
 }
 
@@ -1134,7 +1145,7 @@ function copy_file() {
       if [[ "$RUN_ON" == "localhost" ]]; then
         #ln ${1/file:\/\//} "$TMP_PATH/nancy_$CONTAINER_HASH/"
         # TODO: option – hard links OR regular `cp`
-        docker cp ${1/file:\/\//} $CONTAINER_HASH:$MACHINE_HOME/
+        sudo docker cp ${1/file:\/\//} $CONTAINER_HASH:$MACHINE_HOME/
       elif [[ "$RUN_ON" == "aws" ]]; then
         docker-machine scp $1 $DOCKER_MACHINE:/home/storage
       else
@@ -1406,23 +1417,18 @@ function apply_postgres_configuration() {
 function prepare_start_workload() {
   if [[ -z ${WORKLOAD_PGBENCH+x} ]]; then
     msg "Execute vacuumdb..."
-    docker_exec vacuumdb -U postgres $DB_NAME -j $CPU_CNT --analyze
+#####    docker_exec vacuumdb -U postgres $DB_NAME -j $CPU_CNT --analyze
   fi
 
   msg "Save prepaparation log"
-  logpath=$( \
-    docker_exec bash -c "psql -XtU postgres \
-      -c \"select string_agg(setting, '/' order by name) from pg_settings where name in ('log_directory', 'log_filename');\" \
-      | grep / | sed -e 's/^[ \t]*//'"
-  )
   docker_exec bash -c "mkdir $MACHINE_HOME/$ARTIFACTS_FILENAME"
-  docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.prepare.log.gz"
+  docker_exec bash -c "tar czvf $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.prepare.log.tar.gz /var/log/postgresql/*"
 
   msg "Reset pg_stat_*** and Postgres log"
   >/dev/null docker_exec psql -U postgres $DB_NAME -f - <<EOF
     select pg_stat_reset(), pg_stat_statements_reset(), pg_stat_reset_shared('archiver'), pg_stat_reset_shared('bgwriter');
 EOF
-  docker_exec bash -c "echo '' > /var/log/postgresql/postgresql-$PG_VERSION-main.log"
+  docker_exec bash -c "for f in \$(ls /var/log/postgresql); do truncate -s 0 \"/var/log/postgresql/\$f\"; done"
 }
 
 #######################################
@@ -1480,6 +1486,7 @@ function collect_results() {
     docker_exec bash -c "/root/pgbadger/pgbadger \
       -j $CPU_CNT \
       --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr \
+      /var/log/postgresql/*.log -f stderr \
       -o $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.$report_type" \
       2> >(grep -v "install the Text::CSV_XS" >&2)
   done
@@ -1502,7 +1509,7 @@ function collect_results() {
   docker_exec bash -c "psql -U postgres $DB_NAME -b -c \"copy (select * from $table2export) to stdout with csv header delimiter ',';\" > /$MACHINE_HOME/$ARTIFACTS_FILENAME/\$(echo \"$table2export\" | awk '{print \$1}').csv"
   done
 
-  docker_exec bash -c "gzip -c $logpath > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.workload.log.gz"
+  docker_exec bash -c "tar czvf $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.workload.log.tar.gz /var/log/postgresql/*"
   docker_exec bash -c "cp /etc/postgresql/$PG_VERSION/main/postgresql.conf $MACHINE_HOME/$ARTIFACTS_FILENAME/"
 
   msg "Save artifacts..."
@@ -1510,7 +1517,7 @@ function collect_results() {
     docker_exec s3cmd --recursive put /$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/
   else
     if [[ "$RUN_ON" == "localhost" ]]; then
-      docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/
+      sudo docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/
     elif [[ "$RUN_ON" == "aws" ]]; then
       mkdir -p $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME
       docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME/* $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/
@@ -1572,8 +1579,8 @@ msg "Done."
 echo -e "------------------------------------------------------------------------------"
 echo -e "Artifacts (collected in \"$ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/\"):"
 echo -e "  Postgres config:    postgresql.conf"
-echo -e "  Postgres logs:      postgresql.prepare.log.gz (preparation),"
-echo -e "                      postgresql.workload.log.gz (workload)"
+echo -e "  Postgres logs:      postgresql.prepare.log.tar.gz (preparation),"
+echo -e "                      postgresql.workload.log.tar.gz (workload)"
 echo -e "  pgBadger reports:   pgbadger.html (for humans),"
 echo -e "                      pgbadger.json (for robots)"
 echo -e "  Stat stapshots:     pg_stat_statements.csv,"
