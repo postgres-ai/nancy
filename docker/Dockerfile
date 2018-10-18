@@ -38,6 +38,9 @@ RUN apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys B97
       && git clone https://github.com/NikolayS/postgres_dba.git /root/postgres_dba \
       && git clone https://github.com/darold/pgbadger.git /root/pgbadger && cd /root/pgbadger && git checkout "tags/v10.1"
 
+# additional software
+RUN apt-get install -y s3cmd sudo bzip2 python-software-properties software-properties-common
+
 # configure psql, configure postgres & check postgres start & stop & prepare start script
 RUN echo "\\set dba '\\\\\\\\i /root/postgres_dba/start.psql'" >> ~/.psqlrc \
       && echo "\\setenv PAGER 'pspg -bX --no-mouse'" >> ~/.psqlrc \
