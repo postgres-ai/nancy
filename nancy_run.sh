@@ -931,13 +931,13 @@ if [[ "$RUN_ON" == "localhost" ]]; then
     if [[ -z ${DB_LOCAL_PGDATA+x} ]]; then
       CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
         -v $TMP_PATH:/machine_home \
-        -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}" \
+        -dit "postgresmen/postgres-nancy:${PG_VERSION}" \
       )
     else
       CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
         -v $TMP_PATH:/machine_home \
         -v $DB_LOCAL_PGDATA:/pgdata \
-        -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}" \
+        -dit "postgresmen/postgres-nancy:${PG_VERSION}" \
       )
     fi
   else
@@ -998,7 +998,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
       -v /home/ubuntu:/machine_home \
       -v /home/storage:/storage \
       -v /home/backup:/backup \
-      -dit "postgresmen/postgres-with-stuff:pg${PG_VERSION}"
+      -dit "postgresmen/postgres-nancy:${PG_VERSION}"
   )
   DOCKER_CONFIG=$(docker-machine config $DOCKER_MACHINE)
   msg "  To connect container machine use:"
