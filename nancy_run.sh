@@ -1409,7 +1409,7 @@ function prepare_start_workload() {
     docker_exec vacuumdb -U postgres $DB_NAME -j $CPU_CNT --analyze
   fi
 
-  msg "Save prepaparation log"
+  msg "Save preparation log"
   logpath=$( \
     docker_exec bash -c "psql -XtU postgres \
       -c \"select string_agg(setting, '/' order by name) from pg_settings where name in ('log_directory', 'log_filename');\" \
