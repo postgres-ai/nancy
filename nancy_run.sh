@@ -1080,6 +1080,7 @@ function attach_pgdata() {
   docker_exec bash -c "chmod a+w /var/run/postgresql/$PG_VERSION-main.pg_stat_tmp/"
   #docker_exec bash -c "cat /postgresql.tweak.conf >> /etc/postgresql/$PG_VERSION/main/postgresql.conf" # is presented in Dockerfile, but is lost here
   docker_exec bash -c "echo 'statement_timeout = 0' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+  docker_exec bash -c "echo 'max_connections = 1000' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
   local end_time=$(date +%s);
   local duration=$(echo $((end_time-op_start_time)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Time taken to attach PGDATA: $duration."
@@ -1447,6 +1448,7 @@ function execute_workload() {
   msg "Execute workload..."
   if [[ ! -z ${WORKLOAD_REAL+x} ]] && [[ "$WORKLOAD_REAL" != '' ]]; then
     msg "Execute pgreplay queries..."
+    docker_exec psql -U postgres $DB_NAME -c 'drop role if exists testuser;'
     docker_exec psql -U postgres $DB_NAME -c 'create role testuser superuser login;'
     WORKLOAD_FILE_NAME=$(basename $WORKLOAD_REAL)
     if [[ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ]] && [[ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]]; then
