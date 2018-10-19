@@ -1460,7 +1460,7 @@ function execute_workload() {
     if [[ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ]] && [[ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]]; then
       docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED  $MACHINE_HOME/$WORKLOAD_FILE_NAME"
     else
-      for i in {1..15}; do
+      for i in {1..1}; do
         docker_exec bash -c "pgreplay -r $MACHINE_HOME/$WORKLOAD_FILE_NAME"
       done
     fi
@@ -1519,7 +1519,7 @@ function collect_results() {
   docker_exec bash -c "psql -U postgres $DB_NAME -b -c \"copy (select * from $table2export) to stdout with csv header delimiter ',';\" > /$MACHINE_HOME/$ARTIFACTS_FILENAME/\$(echo \"$table2export\" | awk '{print \$1}').csv"
   done
 
-  docker_exec bash -c "gzip -c /var/log/postgresql/*.log $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.workload.log.gz"
+  docker_exec bash -c "gzip -c /var/log/postgresql/*.log > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.workload.log.gz"
   docker_exec bash -c "cp /etc/postgresql/$PG_VERSION/main/postgresql.conf $MACHINE_HOME/$ARTIFACTS_FILENAME/"
 
   msg "Save artifacts..."
