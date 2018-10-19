@@ -1067,7 +1067,6 @@ function cp_db_ebs_backup() {
 
 function attach_pgdata() {
   local op_start_time=$(date +%s)
-  docker_exec bash -c "sudo -u postgres psql -c \"alter system set log_destination = 'csvlog,stderr'\""
   docker_exec bash -c "sudo /etc/init.d/postgresql stop"
   docker_exec bash -c "usermod -u 26 postgres"
   docker_exec bash -c "sudo rm -rf /var/lib/postgresql/$PG_VERSION/main"
@@ -1322,6 +1321,9 @@ function pg_config_init() {
     docker_exec bash -c "cat /postgresql.tweak.conf >> /etc/postgresql/$PG_VERSION/main/postgresql.conf" # is presented in Dockerfile, but is lost here
     docker_exec bash -c "echo 'statement_timeout = 0' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
     docker_exec bash -c "echo 'max_connections = 1000' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "echo \"log_destination = 'stderr'\" >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "echo \"auto_explain.log_min_duration = -1\" >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "echo \"log_min_duration_statement = 0\" >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
     restart_needed=true
   fi
   if [[ ! -z ${PG_CONFIG_AUTO+x} ]]; then
@@ -1427,7 +1429,7 @@ function prepare_start_workload() {
 
   msg "Save prepaparation log"
   docker_exec bash -c "mkdir $MACHINE_HOME/$ARTIFACTS_FILENAME"
-  docker_exec bash -c "tar czvf $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.prepare.log.tar.gz /var/log/postgresql/*"
+  docker_exec bash -c "gzip -c /var/log/postgresql/*.log > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.prepare.log.tar.gz"
 
   msg "Reset pg_stat_*** and Postgres log"
   >/dev/null docker_exec psql -U postgres $DB_NAME -f - <<EOF
@@ -1517,7 +1519,7 @@ function collect_results() {
   docker_exec bash -c "psql -U postgres $DB_NAME -b -c \"copy (select * from $table2export) to stdout with csv header delimiter ',';\" > /$MACHINE_HOME/$ARTIFACTS_FILENAME/\$(echo \"$table2export\" | awk '{print \$1}').csv"
   done
 
-  docker_exec bash -c "tar czvf $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.workload.log.tar.gz /var/log/postgresql/*"
+  docker_exec bash -c "gzip -c /var/log/postgresql/*.log $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.workload.log.gz"
   docker_exec bash -c "cp /etc/postgresql/$PG_VERSION/main/postgresql.conf $MACHINE_HOME/$ARTIFACTS_FILENAME/"
 
   msg "Save artifacts..."
