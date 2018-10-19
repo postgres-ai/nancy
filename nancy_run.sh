@@ -1078,9 +1078,6 @@ function attach_pgdata() {
   docker_exec bash -c "chown -R postgres:postgres /var/log/postgresql"
   docker_exec bash -c "chmod -R 0700 /var/lib/postgresql/$PG_VERSION/main/"
   docker_exec bash -c "chmod a+w /var/run/postgresql/$PG_VERSION-main.pg_stat_tmp/"
-  #docker_exec bash -c "cat /postgresql.tweak.conf >> /etc/postgresql/$PG_VERSION/main/postgresql.conf" # is presented in Dockerfile, but is lost here
-  docker_exec bash -c "echo 'statement_timeout = 0' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
-  docker_exec bash -c "echo 'max_connections = 1000' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
   local end_time=$(date +%s);
   local duration=$(echo $((end_time-op_start_time)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Time taken to attach PGDATA: $duration."
@@ -1322,6 +1319,9 @@ function pg_config_init() {
     msg "Initialize Postgres config (postgresql.conf)."
     PG_CONFIG_FILENAME=$(basename $PG_CONFIG)
     docker_exec bash -c "cat $MACHINE_HOME/$PG_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "cat /postgresql.tweak.conf >> /etc/postgresql/$PG_VERSION/main/postgresql.conf" # is presented in Dockerfile, but is lost here
+    docker_exec bash -c "echo 'statement_timeout = 0' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "echo 'max_connections = 1000' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
     restart_needed=true
   fi
   if [[ ! -z ${PG_CONFIG_AUTO+x} ]]; then
@@ -1458,7 +1458,9 @@ function execute_workload() {
     if [[ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ]] && [[ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]]; then
       docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED  $MACHINE_HOME/$WORKLOAD_FILE_NAME"
     else
-      docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
+      for i in {1..15}; do
+        docker_exec bash -c "pgreplay -r $MACHINE_HOME/$WORKLOAD_FILE_NAME"
+      done
     fi
   elif [ ! -z ${WORKLOAD_PGBENCH+x} ]; then
       docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME"
