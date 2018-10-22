@@ -1596,17 +1596,17 @@ echo -e "  Query groups:       "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILEN
 echo -e "  Errors:             "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.overall_stat.errors_number')
 echo -e "  Errors groups:      "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.error_info | length')
 if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
-  string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt | grep "including connections establishing")
-  tps=${string//[!0-9,.]/}
+  tps_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt | grep "including connections establishing")
+  tps=${tps_string//[!0-9.]/}
   if [[ ! -z "$tps" ]]; then
     echo -e "  TPS:                $tps (including connections establishing)"
   fi
 fi
 if [[ ! -z ${WORKLOAD_REAL+x} ]]; then
-  string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt | grep "Average number of concurrent connections")
-  ancc=${string//[!0-9,.]/}
-  if [[ ! -z "$ancc" ]]; then
-    echo -e "  Connections:        $ancc (average number of concurrent connections)"
+  avg_num_con_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt | grep "Average number of concurrent connections")
+  avg_num_con=${avg_num_con_string//[!0-9.]/}
+  if [[ ! -z "$avg_num_con" ]]; then
+    echo -e "  Avg. connection number: $avg_num_con"
   fi
 fi
 echo -e "------------------------------------------------------------------------------"
