@@ -1450,12 +1450,12 @@ function execute_workload() {
     docker_exec psql -U postgres $DB_NAME -c 'create role testuser superuser login;'
     WORKLOAD_FILE_NAME=$(basename $WORKLOAD_REAL)
     if [[ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ]] && [[ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]]; then
-      docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED  $MACHINE_HOME/$WORKLOAD_FILE_NAME"
+      docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED  $MACHINE_HOME/$WORKLOAD_FILE_NAME | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt"
     else
-      docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME"
+      docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt"
     fi
-  elif [ ! -z ${WORKLOAD_PGBENCH+x} ]; then
-      docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME"
+  elif [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
+      docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt"
   else
     if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
       WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
@@ -1602,5 +1602,19 @@ if [[ -z ${NO_PGBADGER+x} ]]; then
   echo -e "  Query groups:       "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.normalyzed_info | length')
   echo -e "  Errors:             "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.overall_stat.errors_number')
   echo -e "  Errors groups:      "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.error_info | length')
+  if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
+    tps_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt | grep "including connections establishing")
+    tps=${tps_string//[!0-9.]/}
+    if [[ ! -z "$tps" ]]; then
+      echo -e "  TPS:                $tps (including connections establishing)"
+    fi
+  fi
+  if [[ ! -z ${WORKLOAD_REAL+x} ]]; then
+    avg_num_con_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt | grep "Average number of concurrent connections")
+    avg_num_con=${avg_num_con_string//[!0-9.]/}
+    if [[ ! -z "$avg_num_con" ]]; then
+      echo -e "  Avg. connection number: $avg_num_con"
+    fi
+  fi
 fi
 echo -e "------------------------------------------------------------------------------"
