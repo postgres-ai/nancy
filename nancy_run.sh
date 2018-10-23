@@ -1570,12 +1570,12 @@ apply_sql_before_db_restore
 if [[ ! -z ${DB_DUMP+x} ]] || [[ ! -z ${DB_PGBENCH+x} ]]; then
   restore_dump
 fi
-apply_sql_after_db_restore
 docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not exists pg_stat_statements;' $VERBOSE_OUTPUT_REDIRECT"
 pg_config_init
 apply_ddl_do_code
 apply_postgres_configuration
 prepare_start_workload
+apply_sql_after_db_restore
 execute_workload
 collect_results
 apply_ddl_undo_code
