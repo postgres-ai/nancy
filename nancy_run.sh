@@ -145,7 +145,9 @@ function dbg_cli_parameters() {
 #   None
 #######################################
 function msg() {
-  echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] $@"
+  if [[ -z ${NO_OUTPUT+x} ]] && [[ ! -z "$@" ]]; then
+    echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] $@"
+  fi
 }
 
 #######################################
@@ -231,14 +233,14 @@ function check_cli_parameters() {
       exit 1
     fi
     if [[ -z ${AWS_REGION+x} ]]; then
-      err "NOTICE: AWS EC2 region not given. Will use us-east-1."
+      msg "NOTICE: AWS EC2 region not given. Will use us-east-1."
       AWS_REGION='us-east-1'
     fi
     if [[ -z ${AWS_ZONE+x} ]]; then
-      err "NOTICE: AWS EC2 zone not given. Will be determined by min price."
+      msg "NOTICE: AWS EC2 zone not given. Will be determined by min price."
     fi
     if [[ -z ${AWS_BLOCK_DURATION+x} ]]; then
-      err "NOTICE: Container live time duration is not given. Will use 60 minutes."
+      msg "NOTICE: Container live time duration is not given. Will use 60 minutes."
       AWS_BLOCK_DURATION=60
     else
       case $AWS_BLOCK_DURATION in
@@ -259,8 +261,8 @@ function check_cli_parameters() {
       fi
     else
       if [[ ! ${AWS_EC2_TYPE:0:2} == 'i3' ]]; then
-        err "NOTICE: EBS volume size is not given, will be calculated based on the dump file size (might be not enough)."
-        err "WARNING: It is recommended to specify EBS volume size explicitly (CLI option '--ebs-volume-size')."
+        msg "NOTICE: EBS volume size is not given, will be calculated based on the dump file size (might be not enough)."
+        msg "WARNING: It is recommended to specify EBS volume size explicitly (CLI option '--ebs-volume-size')."
       fi
     fi
   elif [[ "$RUN_ON" == "localhost" ]]; then
@@ -298,13 +300,13 @@ function check_cli_parameters() {
   fi
 
   if [[ -z ${PG_VERSION+x} ]]; then
-    err "NOTICE: Postgres version is not specified. Will use version $POSTGRES_VERSION_DEFAULT."
+    msg "NOTICE: Postgres version is not specified. Will use version $POSTGRES_VERSION_DEFAULT."
     PG_VERSION="$POSTGRES_VERSION_DEFAULT"
   fi
 
   if [[ -z ${TMP_PATH+x} ]]; then
     TMP_PATH="/tmp"
-    err "NOTICE: Path to tmp directory is not specified. Will use $TMP_PATH"
+    msg "NOTICE: Path to tmp directory is not specified. Will use $TMP_PATH"
   fi
   # create $TMP_PATH directory if not found, then create a subdirectory
   if [[ ! -d $TMP_PATH ]]; then
@@ -314,7 +316,7 @@ function check_cli_parameters() {
   if [[ ! -d $TMP_PATH ]]; then
     mkdir $TMP_PATH
   fi
-  err "NOTICE: Switched to a new sub-directory in the temp path: $TMP_PATH"
+  msg "NOTICE: Switched to a new sub-directory in the temp path: $TMP_PATH"
 
   workloads_count=0
   [[ ! -z ${WORKLOAD_BASIS+x} ]] && let workloads_count=$workloads_count+1
@@ -362,7 +364,7 @@ function check_cli_parameters() {
 
   if [[ -z ${PG_CONFIG+x} ]]; then
     if [[ -z ${PG_CONFIG_AUTO+x}} ]]; then
-      err "NOTICE: No PostgreSQL config is provided. Will use default."
+      msg "NOTICE: No PostgreSQL config is provided. Will use default."
     else
       msg "Postgres config will be auto-tuned."
     fi
@@ -384,7 +386,7 @@ function check_cli_parameters() {
   fi
 
   if [[ -z ${ARTIFACTS_DESTINATION+x} ]]; then
-    err "NOTICE: Artifacts destination is not given. Will use ./"
+    msg "NOTICE: Artifacts destination is not given. Will use ./"
     ARTIFACTS_DESTINATION="."
   fi
 
@@ -747,7 +749,7 @@ function cleanup_and_exit {
   rm -rf "$TMP_PATH"
   if [[ "$RUN_ON" == "localhost" ]]; then
     msg "Remove docker container"
-    docker container rm -f $CONTAINER_HASH
+    out=$(docker container rm -f $CONTAINER_HASH)
   elif [[ "$RUN_ON" == "aws" ]]; then
     destroy_docker_machine $DOCKER_MACHINE
     if [ ! -z ${VOLUME_ID+x} ]; then
@@ -889,6 +891,11 @@ while [ $# -gt 0 ]; do
       DB_EBS_VOLUME_ID=$2; shift 2;;
     --db-local-pgdata )
       DB_LOCAL_PGDATA=$2; shift 2;;
+    --no-output )
+      DEBUG=false
+      NO_OUTPUT=true
+      VERBOSE_OUTPUT_REDIRECT=" > /dev/null 2>&1"
+      shift ;;
 
     --s3cfg-path )
       S3_CFG_PATH="$2"; shift 2 ;;
@@ -1073,7 +1080,8 @@ function attach_pgdata() {
   local end_time=$(date +%s);
   local duration=$(echo $((end_time-op_start_time)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Time taken to attach PGDATA: $duration."
-  docker_exec bash -c "sudo /etc/init.d/postgresql start"
+  out=$(docker_exec bash -c "sudo /etc/init.d/postgresql restart")
+  msg $out
   sleep 30 # wait for postgres started, may be will recover database
 }
 
@@ -1099,7 +1107,8 @@ if [[ "$RUN_ON" == "aws" ]]; then
   docker_exec bash -c "ln -s /storage/ $MACHINE_HOME"
 
   msg "Move posgresql to a separate volume"
-  docker_exec bash -c "sudo /etc/init.d/postgresql stop"
+  out=$(docker_exec bash -c "sudo /etc/init.d/postgresql stop")
+  msg $out
   sleep 2 # wait for postgres stopped
   docker_exec bash -c "sudo mv /var/lib/postgresql /storage/"
   docker_exec bash -c "ln -s /storage/postgresql /var/lib/postgresql"
@@ -1109,7 +1118,8 @@ if [[ "$RUN_ON" == "aws" ]]; then
     dettach_db_ebs_drive
   fi
 
-  docker_exec bash -c "sudo /etc/init.d/postgresql start"
+  out=$(docker_exec bash -c "sudo /etc/init.d/postgresql start")
+  msg $out
   sleep 2 # wait for postgres started
 else
   if [[ ! -z ${DB_LOCAL_PGDATA+x} ]]; then
@@ -1127,21 +1137,23 @@ fi
 #   None
 #######################################
 function copy_file() {
+  local out
   if [[ "$1" != '' ]]; then
     if [[ "$1" =~ "s3://" ]]; then # won't work for .s3cfg!
-      docker_exec s3cmd sync $1 $MACHINE_HOME/
+      out=$(docker_exec s3cmd sync $1 $MACHINE_HOME/)
     else
       if [[ "$RUN_ON" == "localhost" ]]; then
         #ln ${1/file:\/\//} "$TMP_PATH/nancy_$CONTAINER_HASH/"
         # TODO: option – hard links OR regular `cp`
-        docker cp ${1/file:\/\//} $CONTAINER_HASH:$MACHINE_HOME/
+        out=$(docker cp ${1/file:\/\//} $CONTAINER_HASH:$MACHINE_HOME/)
       elif [[ "$RUN_ON" == "aws" ]]; then
-        docker-machine scp $1 $DOCKER_MACHINE:/home/storage
+        out=$(docker-machine scp $1 $DOCKER_MACHINE:/home/storage)
       else
         err "ASSERT: must not reach this point"
         exit 1
       fi
     fi
+    msg $out
   fi
 }
 
@@ -1162,7 +1174,7 @@ function apply_commands_after_container_init() {
     COMMANDS_AFTER_CONTAINER_INIT_FILENAME=$(basename $COMMANDS_AFTER_CONTAINER_INIT)
     copy_file $COMMANDS_AFTER_CONTAINER_INIT
     docker_exec bash -c "chmod +x $MACHINE_HOME/$COMMANDS_AFTER_CONTAINER_INIT_FILENAME"
-    docker_exec sh $MACHINE_HOME/$COMMANDS_AFTER_CONTAINER_INIT_FILENAME
+    output=$(docker_exec sh $MACHINE_HOME/$COMMANDS_AFTER_CONTAINER_INIT_FILENAME)
     END_TIME=$(date +%s)
     DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
     msg "Time taken to apply \"after-docker-init code\": $DURATION."
@@ -1205,7 +1217,7 @@ function restore_dump() {
   OP_START_TIME=$(date +%s)
   msg "Restore database dump"
   if ([ ! -z ${DB_PGBENCH+x} ]); then
-      docker_exec bash -c "pgbench -i $DB_PGBENCH -U postgres $DB_NAME" || true
+      docker_exec bash -c "pgbench -i $DB_PGBENCH -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT" || true
   else
     case "$DB_DUMP_EXT" in
       sql)
@@ -1365,7 +1377,8 @@ function pg_config_init() {
     local restart_needed=false
   fi
   if [[ $restart_needed == true ]]; then
-    docker_exec bash -c "sudo /etc/init.d/postgresql restart"
+    out=$(docker_exec bash -c "sudo /etc/init.d/postgresql restart")
+    msg $out
     sleep 10
   fi
   END_TIME=$(date +%s)
@@ -1410,7 +1423,7 @@ function apply_postgres_configuration() {
 function prepare_start_workload() {
   if [[ -z ${WORKLOAD_PGBENCH+x} ]]; then
     msg "Execute vacuumdb..."
-    docker_exec vacuumdb -U postgres $DB_NAME -j $CPU_CNT --analyze
+    out=$(docker_exec vacuumdb -U postgres $DB_NAME -j $CPU_CNT --analyze)
   fi
 
   msg "Save preparation log"
@@ -1445,15 +1458,18 @@ function execute_workload() {
   msg "Execute workload..."
   if [[ ! -z ${WORKLOAD_REAL+x} ]] && [[ "$WORKLOAD_REAL" != '' ]]; then
     msg "Execute pgreplay queries..."
-    docker_exec psql -U postgres $DB_NAME -c 'create role testuser superuser login;'
+    out=$(docker_exec psql -U postgres $DB_NAME -c "create role testuser superuser login;")
     WORKLOAD_FILE_NAME=$(basename $WORKLOAD_REAL)
     if [[ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ]] && [[ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]]; then
-      docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED  $MACHINE_HOME/$WORKLOAD_FILE_NAME | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt"
+      docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED $MACHINE_HOME/$WORKLOAD_FILE_NAME 2>&1 \
+      | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt $VERBOSE_OUTPUT_REDIRECT"
     else
-      docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt"
+      docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME 2>&1 \
+      | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt $VERBOSE_OUTPUT_REDIRECT"
     fi
   elif [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
-      docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt"
+    docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME 2>&1 \
+    | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt $VERBOSE_OUTPUT_REDIRECT"
   else
     if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
       WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
@@ -1484,7 +1500,7 @@ function collect_results() {
     docker_exec bash -c "/root/pgbadger/pgbadger \
       -j $CPU_CNT \
       --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr \
-      -o $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.$report_type" \
+      -o $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.$report_type $VERBOSE_OUTPUT_REDIRECT" \
       2> >(grep -v "install the Text::CSV_XS" >&2)
   done
 
@@ -1510,19 +1526,21 @@ function collect_results() {
   docker_exec bash -c "cp /etc/postgresql/$PG_VERSION/main/postgresql.conf $MACHINE_HOME/$ARTIFACTS_FILENAME/"
 
   msg "Save artifacts..."
+  local out
   if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
     docker_exec s3cmd --recursive put /$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/
   else
     if [[ "$RUN_ON" == "localhost" ]]; then
-      docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/
+      out=$(docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/)
     elif [[ "$RUN_ON" == "aws" ]]; then
       mkdir -p $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME
-      docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME/* $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/
+      out=$(docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME/* $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/)
     else
       err "ASSERT: must not reach this point"
       exit 1
     fi
   fi
+  msg $out
   END_TIME=$(date +%s)
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Time taken to generate and collect artifacts: $DURATION."
@@ -1572,7 +1590,7 @@ if [[ ! -z ${EC2_PRICE+x} ]]; then
   ESTIMATE_COST=$(echo "scale=10; $DURATION_SECONDS * $PRICE_PER_SECOND" | bc)
   ESTIMATE_COST=$(printf "%02.03f\n" "$ESTIMATE_COST")
 fi
-msg "Done."
+echo "Done."
 echo -e "------------------------------------------------------------------------------"
 echo -e "Artifacts (collected in \"$ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/\"):"
 echo -e "  Postgres config:    postgresql.conf"
