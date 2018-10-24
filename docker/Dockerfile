@@ -7,6 +7,7 @@ ENV PG_SERVER_VERSION=${PG_SERVER_VERSION:-11} \
 
 # add custom FTS dictionaries
 ADD ./tsearch_data /usr/share/postgresql/$PG_SERVER_VERSION/tsearch_data
+
 # logging ON; memory setting – for 2CPU/4096MB/SSD
 ADD ./postgresql_${PG_SERVER_VERSION}_tweak.conf /postgresql.tweak.conf
 
