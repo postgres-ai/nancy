@@ -1472,7 +1472,7 @@ function execute_workload() {
 #######################################
 # Collect results of workload execution and save to artifact destination
 # Globals:
-#   CONTAINER_HASH, MACHINE_HOME, ARTIFACTS_DESTINATION, docker_exec alias
+#   CONTAINER_HASH, MACHINE_HOME, ARTIFACTS_DESTINATION, PG_STAT_TOTAL_TIME
 # Arguments:
 #   None
 # Returns:
@@ -1491,6 +1491,9 @@ function collect_results() {
         2> >(grep -v "install the Text::CSV_XS" >&2)
     done
   fi
+
+  out=$(docker_exec psql -U postgres $DB_NAME -c "select sum(total_time) from pg_stat_statements where query not like 'copy%' and query not like '%reset%';")
+  PG_STAT_TOTAL_TIME=${out//[!0-9.]/}
 
   for table2export in \
     "pg_stat_statements order by total_time desc" \
@@ -1615,6 +1618,10 @@ if [[ -z ${NO_PGBADGER+x} ]]; then
     if [[ ! -z "$avg_num_con" ]]; then
       echo -e "  Avg. connection number: $avg_num_con"
     fi
+  fi
+else
+  if [[ ! -z ${PG_STAT_TOTAL_TIME+x} ]]; then
+    echo -e "  Total query time:   $PG_STAT_TOTAL_TIME ms"
   fi
 fi
 echo -e "------------------------------------------------------------------------------"
