@@ -891,7 +891,7 @@ while [ $# -gt 0 ]; do
       DB_EBS_VOLUME_ID=$2; shift 2;;
     --db-local-pgdata )
       DB_LOCAL_PGDATA=$2; shift 2;;
-    --no-output )
+    --less-output )
       DEBUG=false
       NO_OUTPUT=true
       VERBOSE_OUTPUT_REDIRECT=" > /dev/null 2>&1"
@@ -1441,9 +1441,9 @@ function prepare_start_workload() {
   docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.prepare.log.gz"
 
   msg "Reset pg_stat_*** and Postgres log"
-  >/dev/null docker_exec psql -U postgres $DB_NAME -f - <<EOF
-    select pg_stat_reset(), pg_stat_statements_reset(), pg_stat_reset_shared('archiver'), pg_stat_reset_shared('bgwriter');
-EOF
+  docker_exec psql -U postgres $DB_NAME -c "select pg_stat_reset(), \
+    pg_stat_statements_reset(), pg_stat_reset_shared('archiver'), \
+    pg_stat_reset_shared('bgwriter');" > /dev/null
   docker_exec bash -c "echo '' > $LOG_PATH"
 }
 
