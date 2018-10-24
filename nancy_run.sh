@@ -335,11 +335,6 @@ function check_cli_parameters() {
     exit 1
   fi
 
-  if  [[ "$workloads_count" -gt "1" ]]; then
-    err "ERROR: 2 or more workload sources are given."
-    exit 1
-  fi
-
   if [[ ! -z ${DB_PREPARED_SNAPSHOT+x} ]]  &&  [[ ! -z ${DB_DUMP+x} ]]; then
     err "ERROR: Both snapshot and dump sources are given."
     exit 1
@@ -1448,23 +1443,23 @@ function execute_workload() {
   # Execute workload
   OP_START_TIME=$(date +%s)
   msg "Execute workload..."
+  if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
+      docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt"
+  fi
   if [[ ! -z ${WORKLOAD_REAL+x} ]] && [[ "$WORKLOAD_REAL" != '' ]]; then
     msg "Execute pgreplay queries..."
     docker_exec psql -U postgres $DB_NAME -c 'create role testuser superuser login;'
     WORKLOAD_FILE_NAME=$(basename $WORKLOAD_REAL)
     if [[ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ]] && [[ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]]; then
-      docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED  $MACHINE_HOME/$WORKLOAD_FILE_NAME | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt"
+      docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED  $MACHINE_HOME/$WORKLOAD_FILE_NAME | tee -a $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt"
     else
-      docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt"
+      docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME | tee -a $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt"
     fi
-  elif [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
-      docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt"
-  else
-    if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
-      WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
-      msg "Execute custom sql queries..."
-      docker_exec bash -c "psql -U postgres $DB_NAME -E -f $MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME $VERBOSE_OUTPUT_REDIRECT"
-    fi
+  fi
+  if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
+    WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
+    msg "Execute custom sql queries..."
+    docker_exec bash -c "psql -U postgres $DB_NAME -E -f $MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME $VERBOSE_OUTPUT_REDIRECT"
   fi
   END_TIME=$(date +%s)
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
