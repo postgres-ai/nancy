@@ -10,6 +10,7 @@
 # Globals (some of them can be modified below)
 KB=1024
 DEBUG=false
+NO_OUTPUT=false
 CURRENT_TS=$(date +%Y%m%d_%H%M%S%N_%Z)
 DOCKER_MACHINE="nancy-$CURRENT_TS"
 DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
@@ -146,7 +147,7 @@ function dbg_cli_parameters() {
 #   None
 #######################################
 function msg() {
-  if [[ -z ${NO_OUTPUT+x} ]]; then
+  if [[ ! $NO_OUTPUT ]]; then
     echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] $@"
   fi
 }
