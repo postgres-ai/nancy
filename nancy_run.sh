@@ -5,6 +5,7 @@
 #
 # Perform a single run of a database experiment
 # Usage: use 'nancy run help' or see the corresponding code below.
+#
 
 # Globals (some of them can be modified below)
 KB=1024
@@ -1095,7 +1096,7 @@ if [[ "$RUN_ON" == "aws" ]]; then
   MACHINE_HOME="$MACHINE_HOME/storage"
   docker_exec bash -c "ln -s /storage/ $MACHINE_HOME"
 
-  msg "Move posgresql to a separate volume"
+  msg "Move PGDATA to /storage (machine's /home/storage)..."
   docker_exec bash -c "sudo /etc/init.d/postgresql stop"
   sleep 2 # wait for postgres stopped
   docker_exec bash -c "sudo mv /var/lib/postgresql /storage/"
