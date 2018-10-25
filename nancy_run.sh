@@ -234,14 +234,14 @@ function check_cli_parameters() {
       exit 1
     fi
     if [[ -z ${AWS_REGION+x} ]]; then
-      msg "NOTICE: AWS EC2 region not given. Will use us-east-1."
+      err "NOTICE: AWS EC2 region not given. Will use us-east-1."
       AWS_REGION='us-east-1'
     fi
     if [[ -z ${AWS_ZONE+x} ]]; then
-      msg "NOTICE: AWS EC2 zone not given. Will be determined by min price."
+      err "NOTICE: AWS EC2 zone not given. Will be determined by min price."
     fi
     if [[ -z ${AWS_BLOCK_DURATION+x} ]]; then
-      msg "NOTICE: Container live time duration is not given. Will use 60 minutes."
+      err "NOTICE: Container live time duration is not given. Will use 60 minutes."
       AWS_BLOCK_DURATION=60
     else
       case $AWS_BLOCK_DURATION in
@@ -262,7 +262,7 @@ function check_cli_parameters() {
       fi
     else
       if [[ ! ${AWS_EC2_TYPE:0:2} == 'i3' ]]; then
-        msg "NOTICE: EBS volume size is not given, will be calculated based on the dump file size (might be not enough)."
+        err "NOTICE: EBS volume size is not given, will be calculated based on the dump file size (might be not enough)."
         msg "WARNING: It is recommended to specify EBS volume size explicitly (CLI option '--ebs-volume-size')."
       fi
     fi
@@ -301,13 +301,13 @@ function check_cli_parameters() {
   fi
 
   if [[ -z ${PG_VERSION+x} ]]; then
-    msg "NOTICE: Postgres version is not specified. Will use version $POSTGRES_VERSION_DEFAULT."
+    err "NOTICE: Postgres version is not specified. Will use version $POSTGRES_VERSION_DEFAULT."
     PG_VERSION="$POSTGRES_VERSION_DEFAULT"
   fi
 
   if [[ -z ${TMP_PATH+x} ]]; then
     TMP_PATH="/tmp"
-    msg "NOTICE: Path to tmp directory is not specified. Will use $TMP_PATH"
+    err "NOTICE: Path to tmp directory is not specified. Will use $TMP_PATH"
   fi
   # create $TMP_PATH directory if not found, then create a subdirectory
   if [[ ! -d $TMP_PATH ]]; then
@@ -317,7 +317,7 @@ function check_cli_parameters() {
   if [[ ! -d $TMP_PATH ]]; then
     mkdir $TMP_PATH
   fi
-  msg "NOTICE: Switched to a new sub-directory in the temp path: $TMP_PATH"
+  err "NOTICE: Switched to a new sub-directory in the temp path: $TMP_PATH"
 
   workloads_count=0
   [[ ! -z ${WORKLOAD_BASIS+x} ]] && let workloads_count=$workloads_count+1
@@ -360,7 +360,7 @@ function check_cli_parameters() {
 
   if [[ -z ${PG_CONFIG+x} ]]; then
     if [[ -z ${PG_CONFIG_AUTO+x}} ]]; then
-      msg "NOTICE: No PostgreSQL config is provided. Will use default."
+      err "NOTICE: No PostgreSQL config is provided. Will use default."
     else
       msg "Postgres config will be auto-tuned."
     fi
@@ -382,7 +382,7 @@ function check_cli_parameters() {
   fi
 
   if [[ -z ${ARTIFACTS_DESTINATION+x} ]]; then
-    msg "NOTICE: Artifacts destination is not given. Will use ./"
+    err "NOTICE: Artifacts destination is not given. Will use ./"
     ARTIFACTS_DESTINATION="."
   fi
 
@@ -1461,7 +1461,8 @@ function execute_workload() {
   OP_START_TIME=$(date +%s)
   msg "Execute workload..."
   if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
-      docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt"
+      out=$(docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME 2>&1 | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt")
+      msg $out
   fi
   if [[ ! -z ${WORKLOAD_REAL+x} ]] && [[ "$WORKLOAD_REAL" != '' ]]; then
     msg "Execute pgreplay queries..."
