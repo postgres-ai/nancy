@@ -44,26 +44,6 @@ function attach_db_ebs_drive() {
 }
 
 #######################################
-# Print a help
-# Globals:
-#   None
-# Arguments:
-#   None
-# Returns:
-#   None
-#######################################
-function help() {
-  local help=$(cat ${BASH_SOURCE%/*}/help/nancy_run.md)
-  help=${help//<b>/\\033[1m}
-  help=${help//<\/b>/\\033[22m}
-  help=${help//"\`\`\`"/"'"}
-  help=${help//"\`"/"'"}
-  help=${help//"==="/""}
-  help=${help//"=="/""}
-  echo -e "$help" | less -RFX
-}
-
-#######################################
 # Print an error/warning/notice message to STDERR
 # Globals:
 #   None
@@ -805,7 +785,7 @@ function get_system_characteristics() {
 while [ $# -gt 0 ]; do
   case "$1" in
     help )
-      help
+      source ${BASH_SOURCE%/*}/help/help.sh "nancy_run"
     exit ;;
     -d | --debug )
       DEBUG=true

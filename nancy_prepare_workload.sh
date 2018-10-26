@@ -2,30 +2,11 @@
 
 DEBUG=0
 
-#######################################
-# Print a help
-# Globals:
-#   None
-# Arguments:
-#   None
-# Returns:
-#   None
-#######################################
-function help() {
-  local help=$(cat ${BASH_SOURCE%/*}/help/nancy.md)
-  help=${help//<b>/\\033[1m}
-  help=${help//<\/b>/\\033[22m}
-  help=${help//"\`\`\`"/"'"}
-  help=${help//"\`"/"'"}
-  help=${help//"==="/""}
-  echo -e "$help" | less -RFX
-}
-
 ## Get command line params
 while true; do
   case "$1" in
     help )
-      help
+      source ${BASH_SOURCE%/*}/help/help.sh "nancy_prepare_workload"
       exit ;;
     -d | --debug ) DEBUG=1; shift ;;
     --db-name )
