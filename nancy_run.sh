@@ -20,6 +20,7 @@ VERBOSE_OUTPUT_REDIRECT=" > /dev/null"
 EBS_SIZE_MULTIPLIER=5
 POSTGRES_VERSION_DEFAULT=10
 AWS_BLOCK_DURATION=0
+declare -a RUNS # i - delta_config  i+1 delta_ddl_do i+2 delta_ddl_undo
 
 #######################################
 # Attach an EBS volume containing the database backup (made with pg_basebackup)
@@ -134,6 +135,7 @@ function dbg_cli_parameters() {
     echo "AWS_REGION: ${AWS_REGION}"
     echo "AWS_ZONE: ${AWS_ZONE}"
     echo "DB_LOCAL_PGDATA: ${DB_LOCAL_PGDATA}"
+    echo "CONFIG: $CONFIG"
   fi
 }
 
@@ -147,7 +149,7 @@ function dbg_cli_parameters() {
 #   None
 #######################################
 function msg() {
-  if [[ ! $NO_OUTPUT ]]; then
+  if ! $NO_OUTPUT; then
     echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] $@"
   fi
 }
@@ -214,6 +216,7 @@ function check_cli_parameters() {
   ([[ ! -z ${SQL_BEFORE_DB_RESTORE+x} ]] && [[ -z $SQL_BEFORE_DB_RESTORE ]]) && unset -v SQL_BEFORE_DB_RESTORE
   ([[ ! -z ${SQL_AFTER_DB_RESTORE+x} ]] && [[ -z $SQL_AFTER_DB_RESTORE ]]) && unset -v SQL_AFTER_DB_RESTORE
   ([[ ! -z ${AWS_ZONE+x} ]] && [[ -z $AWS_ZONE ]]) && unset -v AWS_ZONE
+  ([[ ! -z ${CONFIG+x} ]] && [[ -z $CONFIG ]]) && unset -v CONFIG
   ### CLI parameters checks ###
   if [[ "$RUN_ON" == "aws" ]]; then
     if [ ! -z ${CONTAINER_ID+x} ]; then
@@ -360,7 +363,7 @@ function check_cli_parameters() {
   fi
 
   if [[ -z ${PG_CONFIG+x} ]]; then
-    if [[ -z ${PG_CONFIG_AUTO+x}} ]]; then
+    if [[ -z ${PG_CONFIG_AUTO+x} ]]; then
       err "NOTICE: No PostgreSQL config is provided. Will use default."
     else
       msg "Postgres config will be auto-tuned."
@@ -374,12 +377,116 @@ function check_cli_parameters() {
     fi
   fi
 
-  if ( \
-    ([[ -z ${DELTA_SQL_UNDO+x} ]] && [[ ! -z ${DELTA_SQL_DO+x} ]]) \
-    || ([[ -z ${DELTA_SQL_DO+x} ]] && [[ ! -z ${DELTA_SQL_UNDO+x} ]])
-  ); then
-    err "ERROR: if '--delta-sql-do' is specified, '--delta-sql-undo' must be also specified, and vice versa."
-    exit 1
+  if [[ ! -z ${CONFIG+x} ]]; then # get config options from yml config file
+    #fill runs config
+    check_path CONFIG
+    if [[ "$?" -ne "0" ]]; then
+      err "ERROR: Runs config YML file not found."
+      exit 1;
+    fi
+    # load and parse file
+    source ${BASH_SOURCE%/*}/tools/parse_yaml.sh $CONFIG "yml_"
+    # preload runs config data
+    i=0
+    while : ; do
+      var_name_config="yml_run_"$i"_delta_config"
+      delta_config=$(eval echo \$$var_name_config)
+      delta_config=$(echo $delta_config | tr ";" "\n")
+      var_name_ddl_do="yml_run_"$i"_delta_ddl_do"
+      delta_ddl_do=$(eval echo \$$var_name_ddl_do)
+      var_name_ddl_undo="yml_run_"$i"_delta_ddl_undo"
+      delta_ddl_undo=$(eval echo \$$var_name_ddl_undo)
+      [[ -z $delta_config ]] && [[ -z $delta_ddl_do ]] && [[ -z $delta_ddl_undo ]] && break;
+      let j=$i*3
+      RUNS[$j]="$delta_config"
+      [[ -z $delta_config ]] && RUNS[$j]=""
+      RUNS[$j+1]="$delta_ddl_do"
+      [[ -z $delta_ddl_do ]] && RUNS[$j+1]=""
+      RUNS[$j+2]="$delta_ddl_undo"
+      [[ -z $delta_ddl_undo ]] && RUNS[$j+2]=""
+      let i=i+1
+    done
+    # validate runs config
+    runs_count=${#RUNS[*]}
+    let runs_count=runs_count/3
+    dbg "YML runs config count: $runs_count"
+    if [[ "$runs_count" -eq "0" ]] ; then
+      err "ERROR: Runs config YML file do not content valid configs."
+      exit 1;
+    fi
+    i=0
+    while : ; do
+      let j=$i*3
+      let d=$j+1
+      let u=$j+2
+      delta_config=${RUNS[$j]}
+      delta_ddl_do=${RUNS[$d]}
+      delta_ddl_undo=${RUNS[$u]}
+      if (\
+        ([[ -z $delta_ddl_do ]] && [[ ! -z $delta_ddl_undo ]]) \
+        || ([[ ! -z $delta_ddl_do ]] && [[ -z $delta_ddl_undo ]])
+      ); then
+        err "ERROR: if 'delta_ddl_do' is specified in YML run config, 'delta_ddl_undo' must be also specified, and vice versa."
+        exit 1;
+      fi
+      if [[ ! -z "$delta_config" ]]; then
+        check_path delta_config
+        if [[ "$?" -ne "0" ]]; then
+          echo "$delta_config" > $TMP_PATH/target_config_tmp_$i.conf
+          RUNS[$j]="$TMP_PATH/target_config_tmp_$i.conf"
+        fi
+      fi
+      if [[ ! -z "$delta_ddl_do" ]]; then
+        check_path delta_ddl_do
+        if [[ "$?" -ne "0" ]]; then
+          echo "$delta_ddl_do" > $TMP_PATH/target_ddl_do_tmp_$i.sql
+          RUNS[$d]="$TMP_PATH/target_ddl_do_tmp_$i.sql"
+        fi
+      fi
+      if [[ ! -z "$delta_ddl_undo" ]]; then
+        check_path delta_ddl_undo
+        if [[ "$?" -ne "0" ]]; then
+          echo "$delta_ddl_undo" > $TMP_PATH/target_ddl_undo_tmp_$i.sql
+          RUNS[$u]="$TMP_PATH/target_ddl_undo_tmp_$i.sql"
+        fi
+      fi
+      let i=$i+1
+      [[ "$i" -eq "$runs_count" ]] && break;
+    done
+  else # get config params from options
+    if ( \
+      ([[ -z ${DELTA_SQL_UNDO+x} ]] && [[ ! -z ${DELTA_SQL_DO+x} ]]) \
+      || ([[ -z ${DELTA_SQL_DO+x} ]] && [[ ! -z ${DELTA_SQL_UNDO+x} ]])
+    ); then
+      err "ERROR: if '--delta-sql-do' is specified, '--delta-sql-undo' must be also specified, and vice versa."
+      exit 1;
+    fi
+    if [[ ! -z ${DELTA_SQL_DO+x} ]]; then
+      check_path DELTA_SQL_DO
+      if [[ "$?" -ne "0" ]]; then
+        echo "$DELTA_SQL_DO" > $TMP_PATH/target_ddl_do_tmp.sql
+        DELTA_SQL_DO="$TMP_PATH/target_ddl_do_tmp.sql"
+      fi
+    fi
+
+    if [[ ! -z ${DELTA_SQL_UNDO+x} ]]; then
+      check_path DELTA_SQL_UNDO
+      if [[ "$?" -ne "0" ]]; then
+        echo "$DELTA_SQL_UNDO" > $TMP_PATH/target_ddl_undo_tmp.sql
+        DELTA_SQL_UNDO="$TMP_PATH/target_ddl_undo_tmp.sql"
+      fi
+    fi
+
+    if [[ ! -z ${DELTA_CONFIG+x} ]]; then
+      check_path DELTA_CONFIG
+      if [[ "$?" -ne "0" ]]; then
+        echo "$DELTA_CONFIG" > $TMP_PATH/target_config_tmp.conf
+        DELTA_CONFIG="$TMP_PATH/target_config_tmp.conf"
+      fi
+    fi
+    RUNS[0]=$DELTA_CONFIG
+    RUNS[1]=$DELTA_SQL_DO
+    RUNS[2]=$DELTA_SQL_UNDO
   fi
 
   if [[ -z ${ARTIFACTS_DESTINATION+x} ]]; then
@@ -434,30 +541,6 @@ function check_cli_parameters() {
       dbg "WARNING: Value given as before_db_init_code: '$SQL_BEFORE_DB_RESTORE' not found as file will use as content"
       echo "$SQL_BEFORE_DB_RESTORE" > $TMP_PATH/before_db_init_code_tmp.sql
       SQL_BEFORE_DB_RESTORE="$TMP_PATH/before_db_init_code_tmp.sql"
-    fi
-  fi
-
-  if [[ ! -z ${DELTA_SQL_DO+x} ]]; then
-    check_path DELTA_SQL_DO
-    if [[ "$?" -ne "0" ]]; then
-      echo "$DELTA_SQL_DO" > $TMP_PATH/target_ddl_do_tmp.sql
-      DELTA_SQL_DO="$TMP_PATH/target_ddl_do_tmp.sql"
-    fi
-  fi
-
-  if [[ ! -z ${DELTA_SQL_UNDO+x} ]]; then
-    check_path DELTA_SQL_UNDO
-    if [[ "$?" -ne "0" ]]; then
-      echo "$DELTA_SQL_UNDO" > $TMP_PATH/target_ddl_undo_tmp.sql
-      DELTA_SQL_UNDO="$TMP_PATH/target_ddl_undo_tmp.sql"
-    fi
-  fi
-
-  if [[ ! -z ${DELTA_CONFIG+x} ]]; then
-    check_path DELTA_CONFIG
-    if [[ "$?" -ne "0" ]]; then
-      echo "$DELTA_CONFIG" > $TMP_PATH/target_config_tmp.conf
-      DELTA_CONFIG="$TMP_PATH/target_config_tmp.conf"
     fi
   fi
   ### End of CLI parameters checks ###
@@ -895,9 +978,10 @@ while [ $# -gt 0 ]; do
       shift ;;
     --no-pgbadger )
       NO_PGBADGER=1;  shift;;
-
     --s3cfg-path )
       S3_CFG_PATH="$2"; shift 2 ;;
+    --config )
+      CONFIG=$2; shift 2;;
     * )
       option=$1
       option="${option##*( )}"
@@ -1024,39 +1108,128 @@ get_system_characteristics
 # Globals:
 #   PG_VERSION
 # Arguments:
-#   None
+#   target directory
 # Returns:
 #   None
 #######################################
 function cp_db_ebs_backup() {
+  local target=$1
+  if [[ -z "$target" ]]; then
+    target="/storage/postgresql/$PG_VERSION/main"
+  fi
+
   # Here we think what postgress stopped
   msg "Extract database backup from EBS volume"
-  docker_exec bash -c "rm -rf /var/lib/postgresql/$PG_VERSION/main/*"
+  docker_exec bash -c "rm -rf $target/*"
 
   local op_start_time=$(date +%s)
-  docker_exec bash -c "rm -rf /var/lib/postgresql/$PG_VERSION/main/*"
+  docker_exec bash -c "rm -rf $target/*"
   local result=$(docker_exec bash -c "([[ -f /backup/base.tar.gz ]] \
-    && tar -C /storage/postgresql/$PG_VERSION/main/ -xzvf /backup/base.tar.gz) || true")
+    && tar -C $target/ -xzvf /backup/base.tar.gz) || true")
   result=$(docker_exec bash -c "([[ -f /backup/base.tar ]] \
-    && tar -C /storage/postgresql/$PG_VERSION/main/ -xvf /backup/base.tar) || true")
+    && tar -C $target/ -xvf /backup/base.tar) || true")
 
   result=$(docker_exec bash -c "([[ -f /backup/pg_xlog.tar.gz ]] \
-    && tar -C /storage/postgresql/$PG_VERSION/main/pg_xlog -xzvf /backup/pg_xlog.tar.gz) || true")
+    && tar -C $target/pg_xlog -xzvf /backup/pg_xlog.tar.gz) || true")
   result=$(docker_exec bash -c "([[ -f /backup/pg_xlog.tar ]] \
-    && tar -C /storage/postgresql/$PG_VERSION/main/pg_xlog -xvf /backup/pg_xlog.tar) || true")
+    && tar -C $target/pg_xlog -xvf /backup/pg_xlog.tar) || true")
 
   result=$(docker_exec bash -c "([[ -f /backup/pg_wal.tar.gz ]] \
-    && tar -C /storage/postgresql/$PG_VERSION/main/pg_xlog -xzvf /backup/pg_wal.tar.gz) || true")
+    && tar -C $target/pg_xlog -xzvf /backup/pg_wal.tar.gz) || true")
   result=$(docker_exec bash -c "([[ -f /backup/pg_wal.tar ]] \
-    && tar -C /storage/postgresql/$PG_VERSION/main/pg_wal -xvf /backup/pg_wal.tar) || true")
+    && tar -C $target/pg_wal -xvf /backup/pg_wal.tar) || true")
 
   local end_time=$(date +%s)
   local duration=$(echo $((end_time-op_start_time)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Time taken to extract database backup from EBS volume: $duration."
 
-  docker_exec bash -c "chown -R postgres:postgres /storage/postgresql/$PG_VERSION/main"
+  docker_exec bash -c "chown -R postgres:postgres $target"
   docker_exec bash -c "localedef -f UTF-8 -i en_US en_US.UTF-8"
   docker_exec bash -c "localedef -f UTF-8 -i ru_RU ru_RU.UTF-8"
+}
+
+#######################################
+# Copy pgdata from temp location to postgres localtion
+# Globals:
+#   PG_VERSION
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function apply_backup(){
+  # Here we think what postgress stopped
+  msg "Restore(cp) database from backup."
+  docker_exec bash -c "rm -rf /var/lib/postgresql/9.6/main/*"
+
+  OP_START_TIME=$(date +%s);
+  docker_exec bash -c "rm -rf /var/lib/postgresql/$PG_VERSION/main/*" || true
+  docker_exec bash -c "cp -r -p -f /storage/backup/* /storage/postgresql/$PG_VERSION/main/" || true
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  msg "PGDATA applied copied for $DURATION."
+
+#docker_exec bash -c "mkdir /storage/postgresql_hdd" || true
+#docker_exec bash -c "ln -s /storage/postgresql_hdd/ /var/lib/postgresql_hdd" || true
+#docker_exec bash -c "rm -rf /storage/postgresql_hdd/*"
+#OP_START_TIME=$(date +%s);
+#docker_exec bash -c "cp -r -p -f /storage/backup/pg_base_tblspace/* /storage/postgresql_hdd/"
+#END_TIME=$(date +%s);
+#DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+#msg "pg_base_16418 copied for $DURATION."
+
+  OP_START_TIME=$(date +%s);
+  docker_exec bash -c "chown -R postgres:postgres /storage/postgresql/$PG_VERSION/main/*" || true
+  docker_exec bash -c "chown -R postgres:postgres /storage/postgresql/$PG_VERSION/main" || true
+  docker_exec bash -c "chmod 0700 /var/lib/postgresql/$PG_VERSION/main/" || true
+#  docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql" || true
+#docker_exec bash -c "chown -R postgres:postgres /storage/postgresql_hdd/*" || true
+#docker_exec bash -c "chown -R postgres:postgres /storage/postgresql_hdd" || true
+#docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql_hdd" || true
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  msg "Rights changed for $DURATION."
+}
+
+#######################################
+# Update pgdata from temp location to postgres localtion
+# Globals:
+#   PG_VERSION
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function rsync_backup(){
+  msg "Restore(rsync) database from backup."
+  docker_exec bash -c "sudo /etc/init.d/postgresql stop"
+  sleep 10
+  OP_START_TIME=$(date +%s);
+  docker_exec bash -c "rsync -av /storage/backup/pgdata/ /storage/postgresql/$PG_VERSION/main" || true
+  END_TIME=$(date +%s);
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  msg "pg_base main rsync done for $DURATION."
+#OP_START_TIME=$(date +%s);
+#docker_exec bash -c "rsync -av /storage/backup/pg_base_tblspace/ /storage/postgresql_hdd/" || true
+#END_TIME=$(date +%s);
+#DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+#msg "pg_base_tblspace rsync done for $DURATION."
+
+  docker_exec bash -c "chown -R postgres:postgres /storage/postgresql/$PG_VERSION/main/*" || true
+  docker_exec bash -c "chown -R postgres:postgres /storage/postgresql/$PG_VERSION/main" || true
+#docker_exec bash -c "chown -R postgres:postgres /storage/postgresql_hdd/*" || true
+#docker_exec bash -c "chown -R postgres:postgres /storage/postgresql_hdd" || true
+  docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql" || true
+#docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql_hdd" || true
+  docker_exec bash -c "chmod 0700 /var/lib/postgresql/$PG_VERSION/main/" || true
+
+  docker_exec bash -c "sudo /etc/init.d/postgresql start $VERBOSE_OUTPUT_REDIRECT"
+  sleep 10
+
+  if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]] && [[ ! -z ${ORIGINAL_DB_NAME+x} ]] && [[ ! "$ORIGINAL_DB_NAME" == "test" ]]; then
+    docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'drop database if exists test;'"
+    docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'alter database $ORIGINAL_DB_NAME rename to test;'"
+  fi
 }
 
 #######################################
@@ -1068,10 +1241,9 @@ function cp_db_ebs_backup() {
 # Returns:
 #   None
 #######################################
-
 function attach_pgdata() {
   local op_start_time=$(date +%s)
-  docker_exec bash -c "sudo /etc/init.d/postgresql stop"
+  docker_exec bash -c "sudo /etc/init.d/postgresql stop $VERBOSE_OUTPUT_REDIRECT"
   docker_exec bash -c "sudo rm -rf /var/lib/postgresql/$PG_VERSION/main"
   docker_exec bash -c "ln -s /pgdata/ /var/lib/postgresql/$PG_VERSION/main"
   docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql/$PG_VERSION/main"
@@ -1079,8 +1251,7 @@ function attach_pgdata() {
   local end_time=$(date +%s);
   local duration=$(echo $((end_time-op_start_time)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Time taken to attach PGDATA: $duration."
-  out=$(docker_exec bash -c "sudo /etc/init.d/postgresql restart")
-  msg $out
+  docker_exec bash -c "sudo /etc/init.d/postgresql restart $VERBOSE_OUTPUT_REDIRECT"
   sleep 30 # wait for postgres started, may be will recover database
 }
 
@@ -1106,20 +1277,26 @@ if [[ "$RUN_ON" == "aws" ]]; then
   docker_exec bash -c "ln -s /storage/ $MACHINE_HOME"
 
   msg "Move PGDATA to /storage (machine's /home/storage)..."
-  out=$(docker_exec bash -c "sudo /etc/init.d/postgresql stop")
+  out=$(docker_exec bash -c "sudo /etc/init.d/postgresql stop 2>&1")
   msg $out
-  sleep 2 # wait for postgres stopped
+  sleep 10 # wait for postgres stopped
   docker_exec bash -c "sudo mv /var/lib/postgresql /storage/"
   docker_exec bash -c "ln -s /storage/postgresql /var/lib/postgresql"
 
   if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]]; then
-    cp_db_ebs_backup
+    runs_count=${#RUNS[*]}
+    if  [ "$runs_count" -gt "3" ]; then
+      docker_exec bash -c "mkdir -p /storage/backup/pgdata"
+      cp_db_ebs_backup /storage/backup
+      apply_backup
+    else
+      cp_db_ebs_backup
+    fi
     dettach_db_ebs_drive
   fi
 
-  out=$(docker_exec bash -c "sudo /etc/init.d/postgresql start")
-  msg $out
-  sleep 2 # wait for postgres started
+  docker_exec bash -c "sudo /etc/init.d/postgresql start $VERBOSE_OUTPUT_REDIRECT"
+  sleep 10 # wait for postgres started
 else
   if [[ ! -z ${DB_LOCAL_PGDATA+x} ]]; then
     attach_pgdata
@@ -1135,7 +1312,6 @@ if [[ -z "$LOG_PATH" ]]; then
   LOG_PATH=/var/log/postgresql/postgresql-$PG_VERSION-main.log
 fi
 
-
 #######################################
 # Copy file to container
 # Globals:
@@ -1149,20 +1325,19 @@ function copy_file() {
   local out
   if [[ "$1" != '' ]]; then
     if [[ "$1" =~ "s3://" ]]; then # won't work for .s3cfg!
-      out=$(docker_exec s3cmd sync $1 $MACHINE_HOME/)
+      out=$(docker_exec s3cmd sync $1 $MACHINE_HOME/ 2>&1)
     else
       if [[ "$RUN_ON" == "localhost" ]]; then
         #ln ${1/file:\/\//} "$TMP_PATH/nancy_$CONTAINER_HASH/"
         # TODO: option – hard links OR regular `cp`
-        out=$(docker cp ${1/file:\/\//} $CONTAINER_HASH:$MACHINE_HOME/)
+        out=$(docker cp ${1/file:\/\//} $CONTAINER_HASH:$MACHINE_HOME/ 2>&1)
       elif [[ "$RUN_ON" == "aws" ]]; then
-        out=$(docker-machine scp $1 $DOCKER_MACHINE:/home/storage)
+        out=$(docker-machine scp $1 $DOCKER_MACHINE:/home/storage 2>&1)
       else
         err "ASSERT: must not reach this point"
         exit 1
       fi
     fi
-    msg $out
   fi
 }
 
@@ -1224,7 +1399,7 @@ function apply_sql_before_db_restore() {
 #######################################
 function restore_dump() {
   OP_START_TIME=$(date +%s)
-  msg "Restore database dump"
+  msg "Restore database"
   if ([ ! -z ${DB_PGBENCH+x} ]); then
       docker_exec bash -c "pgbench -i $DB_PGBENCH -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT" || true
   else
@@ -1281,13 +1456,14 @@ function apply_sql_after_db_restore() {
 #   None
 #######################################
 function apply_ddl_do_code() {
+  local delta_ddl_do=$1
   # Apply DDL code
-  OP_START_TIME=$(date +%s)
-  if ([ ! -z ${DELTA_SQL_DO+x} ] && [ "$DELTA_SQL_DO" != "" ]); then
+  OP_START_TIME=$(date +%s);
+  if ([[ ! -z "$delta_ddl_do" ]] && [[ "$delta_ddl_do" != "" ]]); then
     msg "Apply DDL SQL code"
-    DELTA_SQL_DO_FILENAME=$(basename $DELTA_SQL_DO)
-    docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -f $MACHINE_HOME/$DELTA_SQL_DO_FILENAME $VERBOSE_OUTPUT_REDIRECT"
-    END_TIME=$(date +%s)
+    delta_ddl_do_filename=$(basename $delta_ddl_do)
+    docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -f $MACHINE_HOME/$delta_ddl_do_filename $VERBOSE_OUTPUT_REDIRECT"
+    END_TIME=$(date +%s);
     DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
     msg "Time taken to apply delta SQL \"DO\" code: $DURATION."
   fi
@@ -1303,12 +1479,13 @@ function apply_ddl_do_code() {
 #   None
 #######################################
 function apply_ddl_undo_code() {
-  OP_START_TIME=$(date +%s)
-  if ([ ! -z ${DELTA_SQL_UNDO+x} ] && [ "$DELTA_SQL_UNDO" != "" ]); then
+  local delta_ddl_undo=$1
+  OP_START_TIME=$(date +%s);
+  if ([[ ! -z ${delta_ddl_undo+x} ]] && [[ "$delta_ddl_undo" != "" ]]); then
     msg "Apply DDL undo SQL code"
-    DELTA_SQL_UNDO_FILENAME=$(basename $DELTA_SQL_UNDO)
-    docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -f $MACHINE_HOME/$DELTA_SQL_UNDO_FILENAME $VERBOSE_OUTPUT_REDIRECT"
-    END_TIME=$(date +%s)
+    delta_ddl_undo_filename=$(basename $delta_ddl_undo)
+    docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -f $MACHINE_HOME/$delta_ddl_undo_filename $VERBOSE_OUTPUT_REDIRECT"
+    END_TIME=$(date +%s);
     DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
     msg "Time taken to apply delta SQL \"UNDO\" code: $DURATION."
   fi
@@ -1386,8 +1563,7 @@ function pg_config_init() {
     local restart_needed=false
   fi
   if [[ $restart_needed == true ]]; then
-    out=$(docker_exec bash -c "sudo /etc/init.d/postgresql restart")
-    msg $out
+    docker_exec bash -c "sudo /etc/init.d/postgresql restart $VERBOSE_OUTPUT_REDIRECT"
     sleep 10
   fi
   END_TIME=$(date +%s)
@@ -1405,15 +1581,18 @@ function pg_config_init() {
 #   None
 #######################################
 function apply_postgres_configuration() {
-  OP_START_TIME=$(date +%s)
-  if ([ ! -z ${DELTA_CONFIG+x} ] && [ "$DELTA_CONFIG" != "" ]); then
-    msg "Apply configuration delta..."
-    DELTA_CONFIG_FILENAME=$(basename $DELTA_CONFIG)
+  local delta_config=$1
+  # Apply postgres configuration
+  OP_START_TIME=$(date +%s);
+  if ([[ ! -z "$delta_config" ]] && [[ "$delta_config" != "" ]]); then
+    msg "Apply postgres configuration"
+    delta_config_filename=$(basename $delta_config)
     docker_exec bash -c "echo '# DELTA:' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
-    docker_exec bash -c "cat $MACHINE_HOME/$DELTA_CONFIG_FILENAME >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
-    docker_exec bash -c "sudo /etc/init.d/postgresql restart"
+    docker_exec bash -c "cat $MACHINE_HOME/$delta_config_filename >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "sudo /etc/init.d/postgresql restart $VERBOSE_OUTPUT_REDIRECT"
+    #msg $out
     sleep 10
-    END_TIME=$(date +%s)
+    END_TIME=$(date +%s);
     DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
     msg "Time taken to apply Postgres configuration delta: $DURATION."
   fi
@@ -1430,14 +1609,18 @@ function apply_postgres_configuration() {
 #   None
 #######################################
 function prepare_start_workload() {
+  local run_number=$1
+  let run_number=run_number+1
   if [[ -z ${WORKLOAD_PGBENCH+x} ]]; then
     msg "Execute vacuumdb..."
     out=$(docker_exec vacuumdb -U postgres $DB_NAME -j $CPU_CNT --analyze)
   fi
 
-  msg "Save prepaparation log"
-  docker_exec bash -c "mkdir $MACHINE_HOME/$ARTIFACTS_FILENAME"
-  docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.prepare.log.gz"
+  if [[ "$run_number" -eq "1" ]]; then
+    msg "Save prepaparation log"
+    docker_exec bash -c "mkdir $MACHINE_HOME/$ARTIFACTS_FILENAME"
+    docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.prepare.log.gz"
+  fi
 
   msg "Reset pg_stat_*** and Postgres log"
   (docker_exec psql -U postgres $DB_NAME -f - <<EOF
@@ -1458,12 +1641,17 @@ EOF
 #   None
 #######################################
 function execute_workload() {
+  local run_number=$1
+  local verbose_output=""
+  let run_number=run_number+1
+  if $NO_OUTPUT; then
+    verbose_output=$VERBOSE_OUTPUT_REDIRECT
+  fi
   # Execute workload
   OP_START_TIME=$(date +%s)
   msg "Execute workload..."
   if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
-      out=$(docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME 2>&1 | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt")
-      msg $out
+      docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME 2>&1 | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.$run_number.txt $verbose_output"
   fi
   if [[ ! -z ${WORKLOAD_REAL+x} ]] && [[ "$WORKLOAD_REAL" != '' ]]; then
     msg "Execute pgreplay queries..."
@@ -1471,16 +1659,16 @@ function execute_workload() {
     WORKLOAD_FILE_NAME=$(basename $WORKLOAD_REAL)
     if [[ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ]] && [[ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]]; then
       docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED $MACHINE_HOME/$WORKLOAD_FILE_NAME 2>&1 \
-      | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt $VERBOSE_OUTPUT_REDIRECT"
+      | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.$run_number.txt $verbose_output"
     else
       docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME 2>&1 \
-      | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt $VERBOSE_OUTPUT_REDIRECT"
+      | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.$run_number.txt $verbose_output"
     fi
   fi
   if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
     WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
     msg "Execute custom sql queries..."
-    docker_exec bash -c "psql -U postgres $DB_NAME -E -f $MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME $VERBOSE_OUTPUT_REDIRECT"
+    docker_exec bash -c "psql -U postgres $DB_NAME -E -f $MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME $verbose_output"
   fi
   END_TIME=$(date +%s)
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
@@ -1501,10 +1689,10 @@ function save_artifacts() {
   msg "Save artifacts..."
   local out
   if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
-    docker_exec s3cmd --recursive put /$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/
+    $out=$(docker_exec s3cmd --recursive put /$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/ 2>&1)
   else
     if [[ "$RUN_ON" == "localhost" ]]; then
-      out=$(docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/)
+      out=$(docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/ 2>&1)
     elif [[ "$RUN_ON" == "aws" ]]; then
       mkdir -p $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME
       out=$(docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_FILENAME/* $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/)
@@ -1513,7 +1701,7 @@ function save_artifacts() {
       exit 1
     fi
   fi
-  msg $out
+  msg $out "Artifacts saved"
 }
 
 #######################################
@@ -1526,6 +1714,8 @@ function save_artifacts() {
 #   None
 #######################################
 function collect_results() {
+  local run_number=$1
+  let run_number=run_number+1
   ## Get statistics
   OP_START_TIME=$(date +%s)
   if [[ -z ${NO_PGBADGER+x} ]]; then
@@ -1534,7 +1724,7 @@ function collect_results() {
       docker_exec bash -c "/root/pgbadger/pgbadger \
         -j $CPU_CNT \
         --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr \
-        -o $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.$report_type $VERBOSE_OUTPUT_REDIRECT" \
+        -o $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.$run_number.$report_type $VERBOSE_OUTPUT_REDIRECT" \
         2> >(grep -v "install the Text::CSV_XS" >&2)
     done
   fi
@@ -1557,11 +1747,13 @@ function collect_results() {
     "pg_stat_user_functions order by schemaname, funcname" \
     "pg_stat_xact_user_functions order by schemaname, funcname" \
   ; do
-  docker_exec bash -c "psql -U postgres $DB_NAME -b -c \"copy (select * from $table2export) to stdout with csv header delimiter ',';\" > /$MACHINE_HOME/$ARTIFACTS_FILENAME/\$(echo \"$table2export\" | awk '{print \$1}').csv"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c \"copy (select * from $table2export) to stdout with csv header delimiter ',';\" > /$MACHINE_HOME/$ARTIFACTS_FILENAME/\$(echo \"$table2export\" | awk '{print \$1}').$run_number.csv"
   done
 
-  docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.workload.log.gz"
-  docker_exec bash -c "cp /etc/postgresql/$PG_VERSION/main/postgresql.conf $MACHINE_HOME/$ARTIFACTS_FILENAME/"
+  docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.workload.$run_number.log.gz"
+  docker_exec bash -c "cp /etc/postgresql/$PG_VERSION/main/postgresql.conf $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.$run_number.conf"
+
+  save_artifacts
 
   END_TIME=$(date +%s)
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
@@ -1592,6 +1784,7 @@ trap docker_cleanup_and_exit EXIT
 if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]] && [[ ! "$DB_NAME" == "test" ]]; then
   docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'drop database if exists test;'"
   docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'alter database $DB_NAME rename to test;'"
+  ORIGINAL_DB_NAME=$DB_NAME
   DB_NAME=test
 fi
 
@@ -1599,11 +1792,25 @@ fi
   && docker_exec cp $MACHINE_HOME/.s3cfg /root/.s3cfg
 [ ! -z ${DB_DUMP+x} ] && copy_file $DB_DUMP
 [ ! -z ${PG_CONFIG+x} ] && copy_file $PG_CONFIG
-[ ! -z ${DELTA_CONFIG+x} ] && copy_file $DELTA_CONFIG
-[ ! -z ${DELTA_SQL_DO+x} ] && copy_file $DELTA_SQL_DO
-[ ! -z ${DELTA_SQL_UNDO+x} ] && copy_file $DELTA_SQL_UNDO
 [ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && copy_file $WORKLOAD_CUSTOM_SQL
 [ ! -z ${WORKLOAD_REAL+x} ] && copy_file $WORKLOAD_REAL
+
+runs_count=${#RUNS[*]}
+let runs_count=runs_count/3
+i=0
+while : ; do
+  j=$i*3
+  d=$j+1
+  u=$j+2
+  delta_config=${RUNS[$j]}
+  delta_ddl_do=${RUNS[$d]}
+  delta_ddl_undo=${RUNS[$u]}
+  [[ ! -z "$delta_config" ]] && copy_file $delta_config
+  [[ ! -z "$delta_ddl_do" ]] && copy_file $delta_ddl_do
+  [[ ! -z "$delta_ddl_undo" ]] && copy_file $delta_ddl_undo
+  let i=$i+1
+  [[ "$i" -eq "$runs_count" ]] && break;
+done
 
 ## Apply machine features
 # Dump
@@ -1617,16 +1824,95 @@ if [[ ! -z ${DB_DUMP+x} ]] || [[ ! -z ${DB_PGBENCH+x} ]]; then
 fi
 apply_sql_after_db_restore
 docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not exists pg_stat_statements;' $VERBOSE_OUTPUT_REDIRECT"
-apply_ddl_do_code
-apply_postgres_configuration
-prepare_start_workload
-execute_workload
-collect_results
-apply_ddl_undo_code
-save_artifacts
+
+msg "Start runs..."
+runs_count=${#RUNS[*]}
+let runs_count=runs_count/3
+i=0
+while : ; do
+  j=$i*3
+  d=$j+1
+  u=$j+2
+  let num=$i+1
+  msg "Start run #$num."
+  delta_config=${RUNS[$j]}
+  delta_ddl_do=${RUNS[$d]}
+  delta_ddl_undo=${RUNS[$u]}
+
+  #restore database if not first run
+  if [[ "$i" -gt "0" ]]; then
+    sleep 10
+    if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]]; then
+      docker_exec bash -c "sudo /etc/init.d/postgresql stop $VERBOSE_OUTPUT_REDIRECT"
+      rsync_backup
+      docker_exec bash -c "sudo /etc/init.d/postgresql start $VERBOSE_OUTPUT_REDIRECT"
+    else
+      restore_dump;
+    fi
+    sleep 10
+  fi
+
+  # apply delta
+  [[ ! -z "$delta_config" ]] && apply_postgres_configuration $delta_config
+  [[ ! -z "$delta_ddl_do" ]] && apply_ddl_do_code $delta_ddl_do
+
+  prepare_start_workload $i;
+  execute_workload $i;
+  collect_results $i;
+
+  echo "Run #$num done."
+  echo -e "------------------------------------------------------------------------------"
+  echo -e "Artifacts (collected in \"$ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/\"):"
+  echo -e "  Postgres config:    postgresql.$num.conf"
+  echo -e "  Postgres logs:      postgresql.prepare.$num.log.gz (preparation),"
+  echo -e "                      postgresql.workload.$num.log.gz (workload)"
+  if [[ -z ${NO_PGBADGER+x} ]]; then
+    echo -e "  pgBadger reports:   pgbadger.$num.html (for humans),"
+    echo -e "                      pgbadger.$num.json (for robots)"
+  fi
+  echo -e "  Stat stapshots:     pg_stat_statements.$num.csv,"
+  echo -e "                      pg_stat_***.$num.csv"
+  echo -e "------------------------------------------------------------------------------"
+  echo -e "Total execution time: $DURATION"
+  echo -e "------------------------------------------------------------------------------"
+  echo -e "Workload:"
+  echo -e "  Execution time:     $DURATION_WRKLD"
+  if [[ -z ${NO_PGBADGER+x} ]]; then
+    echo -e "  Total query time:   "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.$num.json | jq '.overall_stat.queries_duration') " ms"
+    echo -e "  Queries:            "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.$num.json | jq '.overall_stat.queries_number')
+    echo -e "  Query groups:       "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.$num.json | jq '.normalyzed_info | length')
+    echo -e "  Errors:             "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.$num.json | jq '.overall_stat.errors_number')
+    echo -e "  Errors groups:      "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.$num.json | jq '.error_info | length')
+    if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
+      tps_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.$num.txt | grep "including connections establishing")
+      tps=${tps_string//[!0-9.]/}
+      if [[ ! -z "$tps" ]]; then
+        echo -e "  TPS:                $tps (including connections establishing)"
+      fi
+    fi
+    if [[ ! -z ${WORKLOAD_REAL+x} ]]; then
+      avg_num_con_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.$num.txt | grep "Average number of concurrent connections")
+      avg_num_con=${avg_num_con_string//[!0-9.]/}
+      if [[ ! -z "$avg_num_con" ]]; then
+        echo -e "  Avg. connection number: $avg_num_con"
+      fi
+    fi
+  else
+    if [[ ! -z ${PG_STAT_TOTAL_TIME+x} ]]; then
+      echo -e "  Total query time:   $PG_STAT_TOTAL_TIME ms"
+    fi
+  fi
+  echo -e "------------------------------------------------------------------------------"
+
+  # revert delta
+  [[ ! -z "$delta_ddl_undo" ]] && apply_ddl_undo_code $delta_ddl_undo
+  let i=$i+1
+  [[ "$i" -eq "$runs_count" ]] && break;
+done
 
 END_TIME=$(date +%s)
 DURATION=$(echo $((END_TIME-START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+echo "All runs done for $DURATION"
 let SECONDS_DURATION=$END_TIME-$START_TIME
 if [[ ! -z ${EC2_PRICE+x} ]]; then
   PRICE_PER_SECOND=$(echo "scale=10; $EC2_PRICE / 3600" | bc)
@@ -1634,51 +1920,7 @@ if [[ ! -z ${EC2_PRICE+x} ]]; then
   ESTIMATE_COST=$(echo "scale=10; $DURATION_SECONDS * $PRICE_PER_SECOND" | bc)
   ESTIMATE_COST=$(printf "%02.03f\n" "$ESTIMATE_COST")
 fi
-echo "Done."
-echo -e "------------------------------------------------------------------------------"
-echo -e "Artifacts (collected in \"$ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/\"):"
-echo -e "  Postgres config:    postgresql.conf"
-echo -e "  Postgres logs:      postgresql.prepare.log.gz (preparation),"
-echo -e "                      postgresql.workload.log.gz (workload)"
-if [[ -z ${NO_PGBADGER+x} ]]; then
-  echo -e "  pgBadger reports:   pgbadger.html (for humans),"
-  echo -e "                      pgbadger.json (for robots)"
-fi
-echo -e "  Stat stapshots:     pg_stat_statements.csv,"
-echo -e "                      pg_stat_***.csv"
-echo -e "------------------------------------------------------------------------------"
-echo -e "Total execution time: $DURATION"
 if [[ ! -z "${ESTIMATE_COST+x}" ]]; then
 echo -e "Estimated AWS cost: \$$ESTIMATE_COST"
 fi
-echo -e "------------------------------------------------------------------------------"
-echo -e "Workload:"
-echo -e "  Execution time:     $DURATION_WRKLD"
-if [[ -z ${NO_PGBADGER+x} ]]; then
-  echo -e "  Total query time:   "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.overall_stat.queries_duration') " ms"
-  echo -e "  Queries:            "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.overall_stat.queries_number')
-  echo -e "  Query groups:       "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.normalyzed_info | length')
-  echo -e "  Errors:             "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.overall_stat.errors_number')
-  echo -e "  Errors groups:      "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.json | jq '.error_info | length')
-  if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
-    tps_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt | grep "including connections establishing")
-    tps=${tps_string//[!0-9.]/}
-    if [[ ! -z "$tps" ]]; then
-      echo -e "  TPS:                $tps (including connections establishing)"
-    fi
-  fi
-  if [[ ! -z ${WORKLOAD_REAL+x} ]]; then
-    avg_num_con_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt | grep "Average number of concurrent connections")
-    avg_num_con=${avg_num_con_string//[!0-9.]/}
-    if [[ ! -z "$avg_num_con" ]]; then
-      echo -e "  Avg. connection number: $avg_num_con"
-    fi
-  fi
-else
-  if [[ ! -z ${PG_STAT_TOTAL_TIME+x} ]]; then
-    echo -e "  Total query time:   $PG_STAT_TOTAL_TIME ms"
-  fi
-fi
-echo -e "------------------------------------------------------------------------------"
-
 DONE=1
