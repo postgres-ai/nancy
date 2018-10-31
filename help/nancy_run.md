@@ -259,6 +259,31 @@
 
   See also: https://github.com/s3tools/s3cmd
 
+  <b>--config</b>
+
+  The path to configuration file with description of deltas for series experiments.
+  File expected as Yaml file, but without multiline values. File should describe
+  array of runs like follow:
+
+    run:
+      0:
+        delta_ddl_do: select now(); select now();
+        delta_ddl_undo: select now();
+    #    delta_config: max_wal_size = 2048MB
+      1:
+    #    delta_ddl_do: select now();
+    #    delta_ddl_undo: select now();
+        delta_config: max_wal_size = 4092MB
+    #  2:
+    #    delta_ddl_do: select now();
+    #    delta_ddl_undo: select now();
+    #    delta_config: max_wal_size = 4092MB
+
+  For every experinment can be set three fields: delta_ddl_do, delta_ddl_undo and
+  delta_config. If param delta_ddl_do is used then param delta_ddl_undo must be
+  given also and vise versa. If you need enumerate several configuration params
+  as delta_config value you should divide them by ';'
+
 <b>SEE ALSO</b>
 ==
     nancy help
