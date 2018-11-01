@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source ${BASH_SOURCE%/*}/../parse_yaml.sh "../../.circleci/run.yml" "yml_"
+source ${BASH_SOURCE%/*}/../parse_yaml.sh "${BASH_SOURCE%/*}/../../.circleci/run.yml" "yml_"
 
 i=0
 while : ; do
