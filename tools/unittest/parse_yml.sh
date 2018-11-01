@@ -24,7 +24,6 @@ done
 # validate runs config
 runs_count=${#RUNS[*]}
 let runs_count=runs_count/3
-echo "YML runs config count: $runs_count"
 
 if [[ "$runs_count" -eq "3" ]] ; then
   echo -e "\e[36mOK\e[39m"
