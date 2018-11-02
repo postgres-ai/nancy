@@ -1587,6 +1587,47 @@ function docker_cleanup_and_exit {
   cleanup_and_exit
 }
 
+#######################################
+# Run perf in background
+# Globals:
+#   MACHINE_HOME, ARTIFACTS_FILENAME
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function run_perf {
+  #TODO: fix linux-tools package version variable
+  msg "Install perf and FlameGraph..."
+  docker_exec bash -c "cd ${MACHINE_HOME} && \
+    apt-get install -y perf-tools-unstable linux-tools-4.4.0-1052-aws && \
+    git clone https://github.com/brendangregg/FlameGraph"
+  msg "Run perf in background..."
+  docker_exec bash -c "cd ${MACHINE_HOME}/FlameGraph/ && \
+    (nohup perf record -F 99 -a -g -o perf.data >/dev/null 2>&1 </dev/null & \
+    perf_pid=\$! && echo \$perf_pid > /tmp/perf_pid)"
+}
+
+#######################################
+# Stop perf and generate FlameGraph
+# Globals:
+#   MACHINE_HOME, ARTIFACTS_FILENAME
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function stop_perf {
+  msg "Stopping perf..."
+  docker_exec bash -c "test -f /tmp/perf_pid && kill \$(cat /tmp/perf_pid)" && \
+  dbg "Perf is probably stopped..."
+  msg "Generate FlameGraph..."
+  docker_exec bash -c "cd ${MACHINE_HOME} && cd FlameGraph && \
+    perf script --input perf.data | ./stackcollapse-perf.pl > out.perf-folded && \
+    ./flamegraph.pl out.perf-folded > perf-kernel.svg && \
+    cp perf-kernel.svg ${MACHINE_HOME}/${ARTIFACTS_FILENAME}/"
+}
+
 trap docker_cleanup_and_exit EXIT
 
 if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]] && [[ ! "$DB_NAME" == "test" ]]; then
@@ -1620,7 +1661,9 @@ docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not ex
 apply_ddl_do_code
 apply_postgres_configuration
 prepare_start_workload
+[[ "$RUN_ON" == "aws" ]] && run_perf
 execute_workload
+[[ "$RUN_ON" == "aws" ]] && stop_perf
 collect_results
 apply_ddl_undo_code
 save_artifacts
@@ -1643,6 +1686,9 @@ echo -e "                      postgresql.workload.log.gz (workload)"
 if [[ -z ${NO_PGBADGER+x} ]]; then
   echo -e "  pgBadger reports:   pgbadger.html (for humans),"
   echo -e "                      pgbadger.json (for robots)"
+fi
+if [[ -f "$ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/perf-kernel.svg" ]]; then
+  echo -e "  CPU FlameGraph:     perf-kernel.svg"
 fi
 echo -e "  Stat stapshots:     pg_stat_statements.csv,"
 echo -e "                      pg_stat_***.csv"
