@@ -955,7 +955,7 @@ if [[ "$RUN_ON" == "localhost" ]]; then
     CONTAINER_HASH="$CONTAINER_ID"
   fi
   DOCKER_CONFIG=""
-  msg "Docker $DOCKER_MACHINE is running."
+  msg "Docker $CONTAINER_HASH is running."
   msg "  To connect container machine use:"
   msg "    docker exec -it pg_nancy_${CURRENT_TS} bash"
 elif [[ "$RUN_ON" == "aws" ]]; then
