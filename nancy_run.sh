@@ -147,7 +147,7 @@ function dbg_cli_parameters() {
 #   None
 #######################################
 function msg() {
-  if [[ ! $NO_OUTPUT ]]; then
+  if ! $NO_OUTPUT; then
     echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] $@"
   fi
 }
@@ -733,10 +733,15 @@ function use_ec2_ebs_drive() {
 function cleanup_and_exit {
   if  [ "$KEEP_ALIVE" -gt "0" ]; then
     msg "Debug timeout is $KEEP_ALIVE seconds – started."
-    msg "  To connect docker machine use:"
-    msg "    docker-machine ssh $DOCKER_MACHINE"
-    msg "  To connect container machine use:"
-    msg "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
+    if [[ "$RUN_ON" == "aws" ]]; then
+      msg "  To connect docker machine use:"
+      msg "    docker-machine ssh $DOCKER_MACHINE"
+      msg "  To connect container machine use:"
+      msg "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
+    else
+      msg "  To connect container machine use:"
+      msg "    docker exec -it pg_nancy_${CURRENT_TS} bash"
+    fi
     sleep $KEEP_ALIVE
   fi
   msg "Remove temp files..." # if exists
@@ -950,6 +955,9 @@ if [[ "$RUN_ON" == "localhost" ]]; then
     CONTAINER_HASH="$CONTAINER_ID"
   fi
   DOCKER_CONFIG=""
+  msg "Docker $CONTAINER_HASH is running."
+  msg "  To connect container machine use:"
+  msg "    docker exec -it pg_nancy_${CURRENT_TS} bash"
 elif [[ "$RUN_ON" == "aws" ]]; then
   determine_history_ec2_spot_price
   create_ec2_docker_machine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
