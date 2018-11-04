@@ -142,6 +142,11 @@
 
   Example: `nancy run --db-pgbench "-s 100"`
 
+  <b>--db-local-pgdata</b>
+
+  Path of Postgres pgdata placed on local storage to use in experiments. All changes at database,
+  which done during experiment will be stored.
+
   <b>--commands-after-container-init</b> (string)
 
   Shell commands to be executed after the container initialization. Can be used
@@ -258,6 +263,15 @@
   in 's3://***' format.
 
   See also: https://github.com/s3tools/s3cmd
+
+  <b>--no-pgbadger</b>
+
+  Turn off use pgbadger to prepare reports.
+
+  <b>--less-output</b>
+
+  Turn off all output besides errors and results statistic.
+
 
 <b>SEE ALSO</b>
 ==
