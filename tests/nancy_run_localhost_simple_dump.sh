@@ -1,4 +1,5 @@
 #!/bin/bash
+test_passed=true
 
 realpath() {
   [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
@@ -14,7 +15,18 @@ output=$(
 )
 
 regex="Errors:[[:blank:]]*0"
-if [[ $output =~ $regex ]]; then
+if [[ ! $output =~ $regex ]]; then
+  test_passed=false
+fi
+
+artifacts_location=$(
+  echo "$output" | grep "Artifacts location:" | awk -F': ' '{print $2}'
+)
+if [[ ! $(grep Linux "$artifacts_location/system_info.txt") =~ ^Linux ]]; then
+  test_passed=false
+fi
+
+if [[ $test_passed ]]; then
   echo -e "\e[36mOK\e[39m"
 else
   >&2 echo -e "\e[31mFAILED\e[39m"
