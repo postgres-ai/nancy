@@ -1597,14 +1597,13 @@ function docker_cleanup_and_exit {
 #   None
 #######################################
 function run_perf {
-  #TODO: fix linux-tools package version variable
   msg "Install perf and FlameGraph..."
-  docker_exec bash -c "cd ${MACHINE_HOME} && \
-    apt-get install -y perf-tools-unstable linux-tools-4.4.0-1052-aws && \
-    git clone https://github.com/brendangregg/FlameGraph"
+  docker_exec bash -c "cd ${MACHINE_HOME} \
+    && apt-get install -y perf-tools-unstable linux-tools-\$(uname -r) \
+    && git clone https://github.com/brendangregg/FlameGraph"
   msg "Run perf in background..."
-  docker_exec bash -c "cd ${MACHINE_HOME}/FlameGraph/ && \
-    (nohup perf record -F 99 -a -g -o perf.data >/dev/null 2>&1 </dev/null & \
+  docker_exec bash -c "cd ${MACHINE_HOME}/FlameGraph/ \
+    && (nohup perf record -F 99 -a -g -o perf.data >/dev/null 2>&1 </dev/null & \
     perf_pid=\$! && echo \$perf_pid > /tmp/perf_pid)"
 }
 
@@ -1661,9 +1660,9 @@ docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not ex
 apply_ddl_do_code
 apply_postgres_configuration
 prepare_start_workload
-[[ "$RUN_ON" == "aws" ]] && run_perf
+run_perf
 execute_workload
-[[ "$RUN_ON" == "aws" ]] && stop_perf
+stop_perf
 collect_results
 apply_ddl_undo_code
 save_artifacts
