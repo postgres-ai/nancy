@@ -142,6 +142,11 @@
 
   Example: `nancy run --db-pgbench "-s 100"`
 
+  <b>--db-local-pgdata</b>
+
+  Path of Postgres pgdata placed on local storage to use in experiments. All changes at database,
+  which done during experiment will be stored.
+
   <b>--commands-after-container-init</b> (string)
 
   Shell commands to be executed after the container initialization. Can be used
@@ -283,6 +288,14 @@
   delta_config. If param delta_ddl_do is used then param delta_ddl_undo must be
   given also and vise versa. If you need enumerate several configuration params
   as delta_config value you should divide them by ';'
+
+  <b>--no-pgbadger</b>
+
+  Turn off use pgbadger to prepare reports.
+
+  <b>--less-output</b>
+
+  Turn off all output besides errors and results statistic.
 
 <b>SEE ALSO</b>
 ==
