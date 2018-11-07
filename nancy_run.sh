@@ -1645,7 +1645,7 @@ function run_perf {
 function stop_perf {
   msg "Stopping perf..."
   docker_exec bash -c "test -f /tmp/perf_pid && kill \$(cat /tmp/perf_pid)" \
-  && dbg "Perf is probably stopped."
+    && dbg "Perf is probably stopped."
   msg "Generate FlameGraph."
   docker_exec bash -c "cd ${MACHINE_HOME} && cd FlameGraph \
     && perf script --input perf.data | ./stackcollapse-perf.pl > out.perf-folded \
