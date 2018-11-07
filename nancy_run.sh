@@ -1622,7 +1622,7 @@ function run_perf {
   msg "Run perf in background."
   docker_exec bash -c "cd ${MACHINE_HOME}/FlameGraph/ \
     && (nohup perf record -F 99 -a -g -o perf.data >/dev/null 2>&1 </dev/null & \
-    echo \$! > /tmp/perf_pid)"
+    perf_pid=\$! && echo \$perf_pid > /tmp/perf_pid)"
 }
 
 #######################################
