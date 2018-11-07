@@ -1690,9 +1690,13 @@ docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not ex
 apply_ddl_do_code
 apply_postgres_configuration
 prepare_start_workload
+set +e
 [[ "$is_perf_installed" -eq "0" ]] && run_perf
+set -e
 execute_workload
+set +e
 [[ "$is_perf_installed" -eq "0" ]] && stop_perf
+set -e
 collect_results
 apply_ddl_undo_code
 save_artifacts
