@@ -1588,19 +1588,37 @@ function docker_cleanup_and_exit {
 }
 
 #######################################
+# Install perf and FlameGraph
+# Globals:
+#   MACHINE_HOME
+# Arguments:
+#   None
+# Returns:
+#   (integer) ret_code
+#     A docker_exec return code
+#######################################
+function install_perf {
+  msg "Trying to install perf and FlameGraph..."
+  docker_exec bash -c "cd ${MACHINE_HOME} \
+    && apt-get install -y perf-tools-unstable linux-tools-\$(uname -r) \
+    && git clone https://github.com/brendangregg/FlameGraph"
+  local ret_code="$?"
+  if [ "$ret_code" -ne "0" ]; then
+    msg "WARNING: Can't install perf or FlameGraph"
+  fi
+  return $ret_code
+}
+
+#######################################
 # Run perf in background
 # Globals:
-#   MACHINE_HOME, ARTIFACTS_FILENAME
+#   MACHINE_HOME
 # Arguments:
 #   None
 # Returns:
 #   None
 #######################################
 function run_perf {
-  msg "Install perf and FlameGraph..."
-  docker_exec bash -c "cd ${MACHINE_HOME} \
-    && apt-get install -y perf-tools-unstable linux-tools-\$(uname -r) \
-    && git clone https://github.com/brendangregg/FlameGraph"
   msg "Run perf in background..."
   docker_exec bash -c "cd ${MACHINE_HOME}/FlameGraph/ \
     && (nohup perf record -F 99 -a -g -o perf.data >/dev/null 2>&1 </dev/null & \
@@ -1608,7 +1626,7 @@ function run_perf {
 }
 
 #######################################
-# Stop perf and generate FlameGraph
+# Stop perf and generate FlameGraph artifacts
 # Globals:
 #   MACHINE_HOME, ARTIFACTS_FILENAME
 # Arguments:
@@ -1650,6 +1668,7 @@ fi
 sleep 10 # wait for postgres up&running
 
 apply_commands_after_container_init
+install_perf ; is_perf_installed=$?
 pg_config_init
 apply_sql_before_db_restore
 if [[ ! -z ${DB_DUMP+x} ]] || [[ ! -z ${DB_PGBENCH+x} ]]; then
@@ -1660,9 +1679,9 @@ docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not ex
 apply_ddl_do_code
 apply_postgres_configuration
 prepare_start_workload
-run_perf
+[[ "$is_perf_installed" -eq "0" ]] && run_perf
 execute_workload
-stop_perf
+[[ "$is_perf_installed" -eq "0" ]] && stop_perf
 collect_results
 apply_ddl_undo_code
 save_artifacts
