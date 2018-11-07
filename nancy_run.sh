@@ -1622,7 +1622,7 @@ function run_perf {
   msg "Run perf in background."
   docker_exec bash -c "cd ${MACHINE_HOME}/FlameGraph/ \
     && (nohup perf record -F 99 -a -g -o perf.data >/dev/null 2>&1 </dev/null & \
-    perf_pid=\$! && echo \$perf_pid > /tmp/perf_pid)"
+    echo \$! > /tmp/perf_pid)"
 }
 
 #######################################
@@ -1636,13 +1636,13 @@ function run_perf {
 #######################################
 function stop_perf {
   msg "Stopping perf..."
-  docker_exec bash -c "test -f /tmp/perf_pid && kill \$(cat /tmp/perf_pid)" && \
-  dbg "Perf is probably stopped..."
-  msg "Generate FlameGraph..."
-  docker_exec bash -c "cd ${MACHINE_HOME} && cd FlameGraph && \
-    perf script --input perf.data | ./stackcollapse-perf.pl > out.perf-folded && \
-    ./flamegraph.pl out.perf-folded > perf-kernel.svg && \
-    cp perf-kernel.svg ${MACHINE_HOME}/${ARTIFACTS_FILENAME}/"
+  docker_exec bash -c "test -f /tmp/perf_pid && kill \$(cat /tmp/perf_pid)" \
+  && dbg "Perf is probably stopped."
+  msg "Generate FlameGraph."
+  docker_exec bash -c "cd ${MACHINE_HOME} && cd FlameGraph \
+    && perf script --input perf.data | ./stackcollapse-perf.pl > out.perf-folded \
+    && ./flamegraph.pl out.perf-folded > perf-kernel.svg \
+    && cp perf-kernel.svg ${MACHINE_HOME}/${ARTIFACTS_FILENAME}/"
 }
 
 trap docker_cleanup_and_exit EXIT
