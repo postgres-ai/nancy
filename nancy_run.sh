@@ -44,26 +44,6 @@ function attach_db_ebs_drive() {
 }
 
 #######################################
-# Print a help
-# Globals:
-#   None
-# Arguments:
-#   None
-# Returns:
-#   None
-#######################################
-function help() {
-  local help=$(cat ${BASH_SOURCE%/*}/help/nancy_run.md)
-  help=${help//<b>/\\033[1m}
-  help=${help//<\/b>/\\033[22m}
-  help=${help//"\`\`\`"/"'"}
-  help=${help//"\`"/"'"}
-  help=${help//"==="/""}
-  help=${help//"=="/""}
-  echo -e "$help" | less -RFX
-}
-
-#######################################
 # Print an error/warning/notice message to STDERR
 # Globals:
 #   None
@@ -733,10 +713,15 @@ function use_ec2_ebs_drive() {
 function cleanup_and_exit {
   if  [ "$KEEP_ALIVE" -gt "0" ]; then
     msg "Debug timeout is $KEEP_ALIVE seconds – started."
-    msg "  To connect docker machine use:"
-    msg "    docker-machine ssh $DOCKER_MACHINE"
-    msg "  To connect container machine use:"
-    msg "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
+    if [[ "$RUN_ON" == "aws" ]]; then
+      msg "  To connect docker machine use:"
+      msg "    docker-machine ssh $DOCKER_MACHINE"
+      msg "  To connect container machine use:"
+      msg "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
+    else
+      msg "  To connect container machine use:"
+      msg "    docker exec -it pg_nancy_${CURRENT_TS} bash"
+    fi
     sleep $KEEP_ALIVE
   fi
   msg "Remove temp files..." # if exists
@@ -795,7 +780,36 @@ function get_system_characteristics() {
     DISK_ROTATIONAL=false
   fi
 
-  msg "CPU_CNT: $CPU_CNT, RAM_MB: $RAM_MB, DISK_ROTATIONAL: $DISK_ROTATIONAL"
+  local system_info="CPU_CNT: $CPU_CNT, RAM_MB: $RAM_MB, DISK_ROTATIONAL: $DISK_ROTATIONAL"
+  msg "${system_info}"
+
+  system_info="${system_info}
+
+
+=== System ===
+$(docker_exec bash -c "uname -a")
+
+$(docker_exec bash -c "lsb_release -a ")
+
+=== glibc ===
+$(docker_exec bash -c "ldd --version | head -n1")
+
+=== bash ===
+$(docker_exec bash -c "bash --version | head -n1")
+
+=== CPU ===
+$(docker_exec bash -c "lscpu")
+
+=== Memory ===
+$(docker_exec bash -c "free")
+
+=== Storage ===
+$(docker_exec bash -c "df -hT")
+
+$(docker_exec bash -c "lsblk -a")
+  "
+
+  echo "${system_info}" > "${TMP_PATH}/system_info.txt"
 }
 
 #######################################
@@ -805,7 +819,7 @@ function get_system_characteristics() {
 while [ $# -gt 0 ]; do
   case "$1" in
     help )
-      help
+      source ${BASH_SOURCE%/*}/help/help.sh "nancy_run"
     exit ;;
     -d | --debug )
       DEBUG=true
@@ -950,6 +964,9 @@ if [[ "$RUN_ON" == "localhost" ]]; then
     CONTAINER_HASH="$CONTAINER_ID"
   fi
   DOCKER_CONFIG=""
+  msg "Docker $CONTAINER_HASH is running."
+  msg "  To connect container machine use:"
+  msg "    docker exec -it pg_nancy_${CURRENT_TS} bash"
 elif [[ "$RUN_ON" == "aws" ]]; then
   determine_history_ec2_spot_price
   create_ec2_docker_machine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
@@ -998,7 +1015,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
   fi
 
   CONTAINER_HASH=$( \
-    docker `docker-machine config $DOCKER_MACHINE` run \
+    docker $(docker-machine config $DOCKER_MACHINE) run \
       --name="pg_nancy_${CURRENT_TS}" \
       --privileged \
       -v /home/ubuntu:/machine_home \
@@ -1226,17 +1243,17 @@ function restore_dump() {
   else
     case "$DB_DUMP_EXT" in
       sql)
-	docker_exec bash -c "cat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
-	;;
+  docker_exec bash -c "cat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
+  ;;
       bz2)
-	docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
-	;;
+  docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
+  ;;
       gz)
-	docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
-	;;
+  docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
+  ;;
       pgdmp)
-	docker_exec bash -c "pg_restore -j $CPU_CNT --no-owner --no-privileges -U postgres -d $DB_NAME $MACHINE_HOME/$DB_DUMP_FILENAME" || true
-	;;
+  docker_exec bash -c "pg_restore -j $CPU_CNT --no-owner --no-privileges -U postgres -d $DB_NAME $MACHINE_HOME/$DB_DUMP_FILENAME" || true
+  ;;
     esac
   fi
   END_TIME=$(date +%s)
@@ -1498,6 +1515,10 @@ function execute_workload() {
 function save_artifacts() {
   msg "Save artifacts..."
   local out
+
+  copy_file "${TMP_PATH}/system_info.txt"
+  docker_exec bash -c "cp $MACHINE_HOME/system_info.txt $MACHINE_HOME/$ARTIFACTS_FILENAME/"
+
   if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
     docker_exec s3cmd --recursive put /$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/
   else
@@ -1634,7 +1655,7 @@ if [[ ! -z ${EC2_PRICE+x} ]]; then
 fi
 echo "Done."
 echo -e "------------------------------------------------------------------------------"
-echo -e "Artifacts (collected in \"$ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/\"):"
+echo -e "Artifacts location: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME"
 echo -e "  Postgres config:    postgresql.conf"
 echo -e "  Postgres logs:      postgresql.prepare.log.gz (preparation),"
 echo -e "                      postgresql.workload.log.gz (workload)"
