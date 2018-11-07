@@ -1668,7 +1668,10 @@ fi
 sleep 10 # wait for postgres up&running
 
 apply_commands_after_container_init
-install_perf ; is_perf_installed=$?
+set +e
+install_perf
+is_perf_installed="$?"
+set -e
 pg_config_init
 apply_sql_before_db_restore
 if [[ ! -z ${DB_DUMP+x} ]] || [[ ! -z ${DB_PGBENCH+x} ]]; then
