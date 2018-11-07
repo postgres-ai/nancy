@@ -935,12 +935,12 @@ trap cleanup_and_exit EXIT
 if [[ "$RUN_ON" == "localhost" ]]; then
   if [[ -z ${CONTAINER_ID+x} ]]; then
     if [[ -z ${DB_LOCAL_PGDATA+x} ]]; then
-      CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
+      CONTAINER_HASH=$(docker run --cap-add SYS_ADMIN --name="pg_nancy_${CURRENT_TS}" \
         -v $TMP_PATH:/machine_home \
         -dit "postgresmen/postgres-nancy:${PG_VERSION}" \
       )
     else
-      CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
+      CONTAINER_HASH=$(docker run --cap-add SYS_ADMIN --name="pg_nancy_${CURRENT_TS}" \
         -v $TMP_PATH:/machine_home \
         -v $DB_LOCAL_PGDATA:/pgdata \
         -dit "postgresmen/postgres-nancy:${PG_VERSION}" \
