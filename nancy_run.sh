@@ -1604,7 +1604,7 @@ function install_perf {
     && git clone https://github.com/brendangregg/FlameGraph"
   local ret_code="$?"
   if [ "$ret_code" -ne "0" ]; then
-    msg "WARNING: Can't install perf or FlameGraph"
+    msg "WARNING: Can't install perf or FlameGraph."
   fi
   return $ret_code
 }
@@ -1619,7 +1619,7 @@ function install_perf {
 #   None
 #######################################
 function run_perf {
-  msg "Run perf in background..."
+  msg "Run perf in background."
   docker_exec bash -c "cd ${MACHINE_HOME}/FlameGraph/ \
     && (nohup perf record -F 99 -a -g -o perf.data >/dev/null 2>&1 </dev/null & \
     perf_pid=\$! && echo \$perf_pid > /tmp/perf_pid)"
