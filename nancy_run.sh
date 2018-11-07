@@ -923,6 +923,12 @@ START_TIME=$(date +%s); #save start time
 
 determine_ebs_drive_size
 
+if [ -n "$CIRCLE_JOB" ]; then
+  IS_CIRCLE_CI=true
+else
+  IS_CIRCLE_CI=false
+fi	
+
 if $DEBUG ; then
   set -xueo pipefail
 else
@@ -1599,6 +1605,8 @@ function docker_cleanup_and_exit {
 #######################################
 function install_perf {
   msg "Trying to install perf and FlameGraph..."
+  # TODO: fix perf on CircleCI
+  [[ $IS_CIRCLE_CI == true ]] && return 15
   docker_exec bash -c "cd ${MACHINE_HOME} \
     && apt-get install -y perf-tools-unstable linux-tools-\$(uname -r) \
     && git clone https://github.com/brendangregg/FlameGraph"
@@ -1622,7 +1630,7 @@ function run_perf {
   msg "Run perf in background."
   docker_exec bash -c "cd ${MACHINE_HOME}/FlameGraph/ \
     && (nohup perf record -F 99 -a -g -o perf.data >/dev/null 2>&1 </dev/null & \
-    perf_pid=\$! && echo \$perf_pid > /tmp/perf_pid)"
+    echo \$! > /tmp/perf_pid)"
 }
 
 #######################################
