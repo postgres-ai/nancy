@@ -255,7 +255,7 @@ function check_cli_parameters() {
     else
       if [[ ! ${AWS_EC2_TYPE:0:2} == 'i3' ]]; then
         err "NOTICE: EBS volume size is not given, will be calculated based on the dump file size (might be not enough)."
-        msg "WARNING: It is recommended to specify EBS volume size explicitly (CLI option '--ebs-volume-size')."
+        msg "WARNING: It is recommended to specify EBS volume size explicitly (CLI option '--aws-ebs-volume-size')."
       fi
     fi
   elif [[ "$RUN_ON" == "localhost" ]]; then
