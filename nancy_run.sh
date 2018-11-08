@@ -44,26 +44,6 @@ function attach_db_ebs_drive() {
 }
 
 #######################################
-# Print a help
-# Globals:
-#   None
-# Arguments:
-#   None
-# Returns:
-#   None
-#######################################
-function help() {
-  local help=$(cat ${BASH_SOURCE%/*}/help/nancy_run.md)
-  help=${help//<b>/\\033[1m}
-  help=${help//<\/b>/\\033[22m}
-  help=${help//"\`\`\`"/"'"}
-  help=${help//"\`"/"'"}
-  help=${help//"==="/""}
-  help=${help//"=="/""}
-  echo -e "$help" | less -RFX
-}
-
-#######################################
 # Print an error/warning/notice message to STDERR
 # Globals:
 #   None
@@ -101,39 +81,50 @@ function dbg() {
 #   None
 #######################################
 function dbg_cli_parameters() {
+  START_PARAMS="--run-on: ${RUN_ON}
+--container-id: ${CONTAINER_ID}
+
+--pg-version: ${PG_VERSION}
+--pg-config: ${PG_CONFIG}
+--pg-config_auto: ${PG_CONFIG_AUTO}
+
+--db-prepared-snapshot: ${DB_PREPARED_SNAPSHOT}
+--db-dump: ${DB_DUMP}
+--db-pgbench: '${DB_PGBENCH}'
+--db-ebs-volume-id: ${DB_EBS_VOLUME_ID}
+--db-local-pgdata: ${DB_LOCAL_PGDATA}
+--db-name: ${DB_NAME}
+
+--commands-after-container-init: ${COMMANDS_AFTER_CONTAINER_INIT}
+--sql-before-db-restore: ${SQL_BEFORE_DB_RESTORE}
+--sql-after-db-restore: ${SQL_AFTER_DB_RESTORE}
+--workload-custom-sql: ${WORKLOAD_CUSTOM_SQL}
+--workload-pgbench: '${WORKLOAD_PGBENCH}'
+--workload-real: ${WORKLOAD_REAL}
+--workload-real-replay-speed: ${WORKLOAD_REAL_REPLAY_SPEED}
+--workload-basis: ${WORKLOAD_BASIS}
+--delta-sql_do: ${DELTA_SQL_DO}
+--delta-sql_undo: ${DELTA_SQL_UNDO}
+--delta-config: ${DELTA_CONFIG}
+
+--aws-ec2-type: ${AWS_EC2_TYPE}
+--aws-keypair-name: $AWS_KEYPAIR_NAME
+--aws-ssh-key-path: $AWS_SSH_KEY_PATH
+--aws-ebs_volume_size: ${AWS_EBS_VOLUME_SIZE}
+--aws-region: ${AWS_REGION}
+--aws-zone: ${AWS_ZONE}
+--aws-block-duration: ${AWS_BLOCK_DURATION}
+--s3-cfg-path: ${S3_CFG_PATH}
+
+--debug: ${DEBUG}
+--keep-alive: ${KEEP_ALIVE}
+--tmp-path: ${TMP_PATH}
+--artifacts-destination: ${ARTIFACTS_DESTINATION}
+--artifacts-filename: ${ARTIFACTS_FILENAME}
+"
   if $DEBUG ; then
-    echo "DEBUG: ${DEBUG}"
-    echo "KEEP_ALIVE: ${KEEP_ALIVE}"
-    echo "RUN_ON: ${RUN_ON}"
-    echo "CONTAINER_ID: ${CONTAINER_ID}"
-    echo "AWS_EC2_TYPE: ${AWS_EC2_TYPE}"
-    echo "AWS_KEYPAIR_NAME: $AWS_KEYPAIR_NAME"
-    echo "AWS_SSH_KEY_PATH: $AWS_SSH_KEY_PATH"
-    echo "PG_VERSION: ${PG_VERSION}"
-    echo "PG_CONFIG: ${PG_CONFIG}"
-    echo "PG_CONFIG_AUTO: ${PG_CONFIG_AUTO}"
-    echo "DB_PREPARED_SNAPSHOT: ${DB_PREPARED_SNAPSHOT}"
-    echo "DB_DUMP: $DB_DUMP"
-    echo "DB_NAME: $DB_NAME"
-    echo "DB_PGBENCH: $DB_PGBENCH"
-    echo "COMMANDS_AFTER_CONTAINER_INIT: $COMMANDS_AFTER_CONTAINER_INIT"
-    echo "SQL_BEFORE_DB_RESTORE: $SQL_BEFORE_DB_RESTORE"
-    echo "SQL_AFTER_DB_RESTORE: $SQL_AFTER_DB_RESTORE"
-    echo "WORKLOAD_REAL: $WORKLOAD_REAL"
-    echo "WORKLOAD_BASIS: $WORKLOAD_BASIS"
-    echo "WORKLOAD_CUSTOM_SQL: $WORKLOAD_CUSTOM_SQL"
-    echo "WORKLOAD_PGBENCH: $WORKLOAD_PGBENCH"
-    echo "WORKLOAD_REAL_REPLAY_SPEED: $WORKLOAD_REAL_REPLAY_SPEED"
-    echo "DELTA_SQL_DO: $DELTA_SQL_DO"
-    echo "DELTA_SQL_UNDO: $DELTA_SQL_UNDO"
-    echo "DELTA_CONFIG: $DELTA_CONFIG"
-    echo "ARTIFACTS_DESTINATION: $ARTIFACTS_DESTINATION"
-    echo "S3_CFG_PATH: $S3_CFG_PATH"
-    echo "TMP_PATH: $TMP_PATH"
-    echo "AWS_EBS_VOLUME_SIZE: $AWS_EBS_VOLUME_SIZE"
-    echo "AWS_REGION: ${AWS_REGION}"
-    echo "AWS_ZONE: ${AWS_ZONE}"
-    echo "DB_LOCAL_PGDATA: ${DB_LOCAL_PGDATA}"
+    echo -e "Run params:
+$START_PARAMS"
   fi
 }
 
@@ -147,7 +138,7 @@ function dbg_cli_parameters() {
 #   None
 #######################################
 function msg() {
-  if [[ ! $NO_OUTPUT ]]; then
+  if ! $NO_OUTPUT; then
     echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] $@"
   fi
 }
@@ -264,7 +255,7 @@ function check_cli_parameters() {
     else
       if [[ ! ${AWS_EC2_TYPE:0:2} == 'i3' ]]; then
         err "NOTICE: EBS volume size is not given, will be calculated based on the dump file size (might be not enough)."
-        msg "WARNING: It is recommended to specify EBS volume size explicitly (CLI option '--ebs-volume-size')."
+        msg "WARNING: It is recommended to specify EBS volume size explicitly (CLI option '--aws-ebs-volume-size')."
       fi
     fi
   elif [[ "$RUN_ON" == "localhost" ]]; then
@@ -360,7 +351,7 @@ function check_cli_parameters() {
   fi
 
   if [[ -z ${PG_CONFIG+x} ]]; then
-    if [[ -z ${PG_CONFIG_AUTO+x}} ]]; then
+    if [[ -z ${PG_CONFIG_AUTO+x} ]]; then
       err "NOTICE: No PostgreSQL config is provided. Will use default."
     else
       msg "Postgres config will be auto-tuned."
@@ -733,10 +724,15 @@ function use_ec2_ebs_drive() {
 function cleanup_and_exit {
   if  [ "$KEEP_ALIVE" -gt "0" ]; then
     msg "Debug timeout is $KEEP_ALIVE seconds – started."
-    msg "  To connect docker machine use:"
-    msg "    docker-machine ssh $DOCKER_MACHINE"
-    msg "  To connect container machine use:"
-    msg "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
+    if [[ "$RUN_ON" == "aws" ]]; then
+      msg "  To connect docker machine use:"
+      msg "    docker-machine ssh $DOCKER_MACHINE"
+      msg "  To connect container machine use:"
+      msg "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
+    else
+      msg "  To connect container machine use:"
+      msg "    docker exec -it pg_nancy_${CURRENT_TS} bash"
+    fi
     sleep $KEEP_ALIVE
   fi
   msg "Remove temp files..." # if exists
@@ -795,7 +791,37 @@ function get_system_characteristics() {
     DISK_ROTATIONAL=false
   fi
 
-  msg "CPU_CNT: $CPU_CNT, RAM_MB: $RAM_MB, DISK_ROTATIONAL: $DISK_ROTATIONAL"
+  local system_info="CPU_CNT: $CPU_CNT, RAM_MB: $RAM_MB, DISK_ROTATIONAL: $DISK_ROTATIONAL"
+  msg "${system_info}"
+
+  system_info="${system_info}
+
+
+=== System ===
+$(docker_exec bash -c "uname -a")
+
+$(docker_exec bash -c "lsb_release -a ")
+
+=== glibc ===
+$(docker_exec bash -c "ldd --version | head -n1")
+
+=== bash ===
+$(docker_exec bash -c "bash --version | head -n1")
+
+=== CPU ===
+$(docker_exec bash -c "lscpu")
+
+=== Memory ===
+$(docker_exec bash -c "free")
+
+=== Storage ===
+$(docker_exec bash -c "df -hT")
+
+$(docker_exec bash -c "lsblk -a")
+  "
+
+  echo "${system_info}" > "${TMP_PATH}/system_info.txt"
+  echo "${START_PARAMS}" > "${TMP_PATH}/nancy_start_params.txt"
 }
 
 #######################################
@@ -805,7 +831,7 @@ function get_system_characteristics() {
 while [ $# -gt 0 ]; do
   case "$1" in
     help )
-      help
+      source ${BASH_SOURCE%/*}/help/help.sh "nancy_run"
     exit ;;
     -d | --debug )
       DEBUG=true
@@ -956,6 +982,9 @@ if [[ "$RUN_ON" == "localhost" ]]; then
     CONTAINER_HASH="$CONTAINER_ID"
   fi
   DOCKER_CONFIG=""
+  msg "Docker $CONTAINER_HASH is running."
+  msg "  To connect container machine use:"
+  msg "    docker exec -it pg_nancy_${CURRENT_TS} bash"
 elif [[ "$RUN_ON" == "aws" ]]; then
   determine_history_ec2_spot_price
   create_ec2_docker_machine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
@@ -1004,7 +1033,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
   fi
 
   CONTAINER_HASH=$( \
-    docker `docker-machine config $DOCKER_MACHINE` run \
+    docker $(docker-machine config $DOCKER_MACHINE) run \
       --name="pg_nancy_${CURRENT_TS}" \
       --privileged \
       -v /home/ubuntu:/machine_home \
@@ -1077,16 +1106,15 @@ function cp_db_ebs_backup() {
 
 function attach_pgdata() {
   local op_start_time=$(date +%s)
-  docker_exec bash -c "sudo /etc/init.d/postgresql stop"
-  docker_exec bash -c "sudo rm -rf /var/lib/postgresql/$PG_VERSION/main"
-  docker_exec bash -c "ln -s /pgdata/ /var/lib/postgresql/$PG_VERSION/main"
-  docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql/$PG_VERSION/main"
-  docker_exec bash -c "chmod -R 0700 /var/lib/postgresql/$PG_VERSION/main/"
+  docker_exec bash -c "sudo /etc/init.d/postgresql stop $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "sudo rm -rf /var/lib/postgresql/$PG_VERSION/main $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "ln -s /pgdata/ /var/lib/postgresql/$PG_VERSION/main $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql/$PG_VERSION/main $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "chmod -R 0700 /var/lib/postgresql/$PG_VERSION/main/ $VERBOSE_OUTPUT_REDIRECT"
   local end_time=$(date +%s);
   local duration=$(echo $((end_time-op_start_time)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Time taken to attach PGDATA: $duration."
-  out=$(docker_exec bash -c "sudo /etc/init.d/postgresql restart")
-  msg $out
+  docker_exec bash -c "sudo /etc/init.d/postgresql restart $VERBOSE_OUTPUT_REDIRECT"
   sleep 30 # wait for postgres started, may be will recover database
 }
 
@@ -1112,8 +1140,7 @@ if [[ "$RUN_ON" == "aws" ]]; then
   docker_exec bash -c "ln -s /storage/ $MACHINE_HOME"
 
   msg "Move PGDATA to /storage (machine's /home/storage)..."
-  out=$(docker_exec bash -c "sudo /etc/init.d/postgresql stop")
-  msg $out
+  docker_exec bash -c "sudo /etc/init.d/postgresql stop $VERBOSE_OUTPUT_REDIRECT"
   sleep 2 # wait for postgres stopped
   docker_exec bash -c "sudo mv /var/lib/postgresql /storage/"
   docker_exec bash -c "ln -s /storage/postgresql /var/lib/postgresql"
@@ -1123,8 +1150,7 @@ if [[ "$RUN_ON" == "aws" ]]; then
     dettach_db_ebs_drive
   fi
 
-  out=$(docker_exec bash -c "sudo /etc/init.d/postgresql start")
-  msg $out
+  docker_exec bash -c "sudo /etc/init.d/postgresql start $VERBOSE_OUTPUT_REDIRECT"
   sleep 2 # wait for postgres started
 else
   if [[ ! -z ${DB_LOCAL_PGDATA+x} ]]; then
@@ -1155,20 +1181,19 @@ function copy_file() {
   local out
   if [[ "$1" != '' ]]; then
     if [[ "$1" =~ "s3://" ]]; then # won't work for .s3cfg!
-      out=$(docker_exec s3cmd sync $1 $MACHINE_HOME/)
+      out=$(docker_exec s3cmd sync $1 $MACHINE_HOME/ 2>&1)
     else
       if [[ "$RUN_ON" == "localhost" ]]; then
         #ln ${1/file:\/\//} "$TMP_PATH/nancy_$CONTAINER_HASH/"
         # TODO: option – hard links OR regular `cp`
-        out=$(docker cp ${1/file:\/\//} $CONTAINER_HASH:$MACHINE_HOME/)
+        out=$(docker cp ${1/file:\/\//} $CONTAINER_HASH:$MACHINE_HOME/ 2>&1)
       elif [[ "$RUN_ON" == "aws" ]]; then
-        out=$(docker-machine scp $1 $DOCKER_MACHINE:/home/storage)
+        out=$(docker-machine scp $1 $DOCKER_MACHINE:/home/storage 2>&1)
       else
         err "ASSERT: must not reach this point"
         exit 1
       fi
     fi
-    msg $out
   fi
 }
 
@@ -1236,17 +1261,17 @@ function restore_dump() {
   else
     case "$DB_DUMP_EXT" in
       sql)
-	docker_exec bash -c "cat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
-	;;
+  docker_exec bash -c "cat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
+  ;;
       bz2)
-	docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
-	;;
+  docker_exec bash -c "bzcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
+  ;;
       gz)
-	docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
-	;;
+  docker_exec bash -c "zcat $MACHINE_HOME/$DB_DUMP_FILENAME | psql --set ON_ERROR_STOP=on -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT"
+  ;;
       pgdmp)
-	docker_exec bash -c "pg_restore -j $CPU_CNT --no-owner --no-privileges -U postgres -d $DB_NAME $MACHINE_HOME/$DB_DUMP_FILENAME" || true
-	;;
+  docker_exec bash -c "pg_restore -j $CPU_CNT --no-owner --no-privileges -U postgres -d $DB_NAME $MACHINE_HOME/$DB_DUMP_FILENAME" || true
+  ;;
     esac
   fi
   END_TIME=$(date +%s)
@@ -1392,8 +1417,7 @@ function pg_config_init() {
     local restart_needed=false
   fi
   if [[ $restart_needed == true ]]; then
-    out=$(docker_exec bash -c "sudo /etc/init.d/postgresql restart")
-    msg $out
+    docker_exec bash -c "sudo /etc/init.d/postgresql restart $VERBOSE_OUTPUT_REDIRECT"
     sleep 10
   fi
   END_TIME=$(date +%s)
@@ -1465,11 +1489,14 @@ EOF
 #######################################
 function execute_workload() {
   # Execute workload
+  local verbose_output=""
+  if $NO_OUTPUT; then
+    verbose_output=$VERBOSE_OUTPUT_REDIRECT
+  fi
   OP_START_TIME=$(date +%s)
   msg "Execute workload..."
   if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
-      out=$(docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME 2>&1 | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt")
-      msg $out
+      docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME 2>&1 | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt $verbose_output"
   fi
   if [[ ! -z ${WORKLOAD_REAL+x} ]] && [[ "$WORKLOAD_REAL" != '' ]]; then
     msg "Execute pgreplay queries..."
@@ -1477,16 +1504,16 @@ function execute_workload() {
     WORKLOAD_FILE_NAME=$(basename $WORKLOAD_REAL)
     if [[ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ]] && [[ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]]; then
       docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED $MACHINE_HOME/$WORKLOAD_FILE_NAME 2>&1 \
-      | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt $VERBOSE_OUTPUT_REDIRECT"
+      | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt $verbose_output"
     else
       docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME 2>&1 \
-      | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt $VERBOSE_OUTPUT_REDIRECT"
+      | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.txt $verbose_output"
     fi
   fi
   if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
     WORKLOAD_CUSTOM_FILENAME=$(basename $WORKLOAD_CUSTOM_SQL)
     msg "Execute custom sql queries..."
-    docker_exec bash -c "psql -U postgres $DB_NAME -E -f $MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME $VERBOSE_OUTPUT_REDIRECT"
+    docker_exec bash -c "psql -U postgres $DB_NAME -E -f $MACHINE_HOME/$WORKLOAD_CUSTOM_FILENAME $verbose_output"
   fi
   END_TIME=$(date +%s)
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
@@ -1506,6 +1533,12 @@ function execute_workload() {
 function save_artifacts() {
   msg "Save artifacts..."
   local out
+
+  copy_file "${TMP_PATH}/system_info.txt"
+  copy_file "${TMP_PATH}/nancy_start_params.txt"
+  docker_exec bash -c "cp $MACHINE_HOME/system_info.txt $MACHINE_HOME/$ARTIFACTS_FILENAME/"
+  docker_exec bash -c "cp $MACHINE_HOME/nancy_start_params.txt $MACHINE_HOME/$ARTIFACTS_FILENAME/"
+
   if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
     docker_exec s3cmd --recursive put /$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/
   else
@@ -1712,7 +1745,7 @@ if [[ ! -z ${EC2_PRICE+x} ]]; then
 fi
 echo "Done."
 echo -e "------------------------------------------------------------------------------"
-echo -e "Artifacts (collected in \"$ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/\"):"
+echo -e "Artifacts location: $ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME"
 echo -e "  Postgres config:    postgresql.conf"
 echo -e "  Postgres logs:      postgresql.prepare.log.gz (preparation),"
 echo -e "                      postgresql.workload.log.gz (workload)"
@@ -1725,6 +1758,7 @@ if [[ -f "$ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/perf-kernel.svg" ]]; then
 fi
 echo -e "  Stat stapshots:     pg_stat_statements.csv,"
 echo -e "                      pg_stat_***.csv"
+echo -e "  pgreplay report:    pgreplay.txt"
 echo -e "------------------------------------------------------------------------------"
 echo -e "Total execution time: $DURATION"
 if [[ ! -z "${ESTIMATE_COST+x}" ]]; then
