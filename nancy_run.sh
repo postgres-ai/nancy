@@ -81,39 +81,50 @@ function dbg() {
 #   None
 #######################################
 function dbg_cli_parameters() {
+  START_PARAMS="--run-on: ${RUN_ON}
+--container-id: ${CONTAINER_ID}
+
+--pg-version: ${PG_VERSION}
+--pg-config: ${PG_CONFIG}
+--pg-config_auto: ${PG_CONFIG_AUTO}
+
+--db-prepared-snapshot: ${DB_PREPARED_SNAPSHOT}
+--db-dump: ${DB_DUMP}
+--db-pgbench: '${DB_PGBENCH}'
+--db-ebs-volume-id: ${DB_EBS_VOLUME_ID}
+--db-local-pgdata: ${DB_LOCAL_PGDATA}
+--db-name: ${DB_NAME}
+
+--commands-after-container-init: ${COMMANDS_AFTER_CONTAINER_INIT}
+--sql-before-db-restore: ${SQL_BEFORE_DB_RESTORE}
+--sql-after-db-restore: ${SQL_AFTER_DB_RESTORE}
+--workload-custom-sql: ${WORKLOAD_CUSTOM_SQL}
+--workload-pgbench: '${WORKLOAD_PGBENCH}'
+--workload-real: ${WORKLOAD_REAL}
+--workload-real-replay-speed: ${WORKLOAD_REAL_REPLAY_SPEED}
+--workload-basis: ${WORKLOAD_BASIS}
+--delta-sql_do: ${DELTA_SQL_DO}
+--delta-sql_undo: ${DELTA_SQL_UNDO}
+--delta-config: ${DELTA_CONFIG}
+
+--aws-ec2-type: ${AWS_EC2_TYPE}
+--aws-keypair-name: $AWS_KEYPAIR_NAME
+--aws-ssh-key-path: $AWS_SSH_KEY_PATH
+--aws-ebs_volume_size: ${AWS_EBS_VOLUME_SIZE}
+--aws-region: ${AWS_REGION}
+--aws-zone: ${AWS_ZONE}
+--aws-block-duration: ${AWS_BLOCK_DURATION}
+--s3-cfg-path: ${S3_CFG_PATH}
+
+--debug: ${DEBUG}
+--keep-alive: ${KEEP_ALIVE}
+--tmp-path: ${TMP_PATH}
+--artifacts-destination: ${ARTIFACTS_DESTINATION}
+--artifacts-filename: ${ARTIFACTS_FILENAME}
+"
   if $DEBUG ; then
-    echo "DEBUG: ${DEBUG}"
-    echo "KEEP_ALIVE: ${KEEP_ALIVE}"
-    echo "RUN_ON: ${RUN_ON}"
-    echo "CONTAINER_ID: ${CONTAINER_ID}"
-    echo "AWS_EC2_TYPE: ${AWS_EC2_TYPE}"
-    echo "AWS_KEYPAIR_NAME: $AWS_KEYPAIR_NAME"
-    echo "AWS_SSH_KEY_PATH: $AWS_SSH_KEY_PATH"
-    echo "PG_VERSION: ${PG_VERSION}"
-    echo "PG_CONFIG: ${PG_CONFIG}"
-    echo "PG_CONFIG_AUTO: ${PG_CONFIG_AUTO}"
-    echo "DB_PREPARED_SNAPSHOT: ${DB_PREPARED_SNAPSHOT}"
-    echo "DB_DUMP: $DB_DUMP"
-    echo "DB_NAME: $DB_NAME"
-    echo "DB_PGBENCH: $DB_PGBENCH"
-    echo "COMMANDS_AFTER_CONTAINER_INIT: $COMMANDS_AFTER_CONTAINER_INIT"
-    echo "SQL_BEFORE_DB_RESTORE: $SQL_BEFORE_DB_RESTORE"
-    echo "SQL_AFTER_DB_RESTORE: $SQL_AFTER_DB_RESTORE"
-    echo "WORKLOAD_REAL: $WORKLOAD_REAL"
-    echo "WORKLOAD_BASIS: $WORKLOAD_BASIS"
-    echo "WORKLOAD_CUSTOM_SQL: $WORKLOAD_CUSTOM_SQL"
-    echo "WORKLOAD_PGBENCH: $WORKLOAD_PGBENCH"
-    echo "WORKLOAD_REAL_REPLAY_SPEED: $WORKLOAD_REAL_REPLAY_SPEED"
-    echo "DELTA_SQL_DO: $DELTA_SQL_DO"
-    echo "DELTA_SQL_UNDO: $DELTA_SQL_UNDO"
-    echo "DELTA_CONFIG: $DELTA_CONFIG"
-    echo "ARTIFACTS_DESTINATION: $ARTIFACTS_DESTINATION"
-    echo "S3_CFG_PATH: $S3_CFG_PATH"
-    echo "TMP_PATH: $TMP_PATH"
-    echo "AWS_EBS_VOLUME_SIZE: $AWS_EBS_VOLUME_SIZE"
-    echo "AWS_REGION: ${AWS_REGION}"
-    echo "AWS_ZONE: ${AWS_ZONE}"
-    echo "DB_LOCAL_PGDATA: ${DB_LOCAL_PGDATA}"
+    echo -e "Run params:
+$START_PARAMS"
   fi
 }
 
@@ -244,7 +255,7 @@ function check_cli_parameters() {
     else
       if [[ ! ${AWS_EC2_TYPE:0:2} == 'i3' ]]; then
         err "NOTICE: EBS volume size is not given, will be calculated based on the dump file size (might be not enough)."
-        msg "WARNING: It is recommended to specify EBS volume size explicitly (CLI option '--ebs-volume-size')."
+        msg "WARNING: It is recommended to specify EBS volume size explicitly (CLI option '--aws-ebs-volume-size')."
       fi
     fi
   elif [[ "$RUN_ON" == "localhost" ]]; then
@@ -340,7 +351,7 @@ function check_cli_parameters() {
   fi
 
   if [[ -z ${PG_CONFIG+x} ]]; then
-    if [[ -z ${PG_CONFIG_AUTO+x}} ]]; then
+    if [[ -z ${PG_CONFIG_AUTO+x} ]]; then
       err "NOTICE: No PostgreSQL config is provided. Will use default."
     else
       msg "Postgres config will be auto-tuned."
@@ -810,6 +821,7 @@ $(docker_exec bash -c "lsblk -a")
   "
 
   echo "${system_info}" > "${TMP_PATH}/system_info.txt"
+  echo "${START_PARAMS}" > "${TMP_PATH}/nancy_start_params.txt"
 }
 
 #######################################
@@ -1517,7 +1529,9 @@ function save_artifacts() {
   local out
 
   copy_file "${TMP_PATH}/system_info.txt"
+  copy_file "${TMP_PATH}/nancy_start_params.txt"
   docker_exec bash -c "cp $MACHINE_HOME/system_info.txt $MACHINE_HOME/$ARTIFACTS_FILENAME/"
+  docker_exec bash -c "cp $MACHINE_HOME/nancy_start_params.txt $MACHINE_HOME/$ARTIFACTS_FILENAME/"
 
   if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
     docker_exec s3cmd --recursive put /$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/
