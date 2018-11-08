@@ -1665,6 +1665,7 @@ if [[ -z ${NO_PGBADGER+x} ]]; then
 fi
 echo -e "  Stat stapshots:     pg_stat_statements.csv,"
 echo -e "                      pg_stat_***.csv"
+echo -e "  pgreplay report:    pgreplay.txt"
 echo -e "------------------------------------------------------------------------------"
 echo -e "Total execution time: $DURATION"
 if [[ ! -z "${ESTIMATE_COST+x}" ]]; then
