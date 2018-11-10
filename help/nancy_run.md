@@ -216,7 +216,7 @@
   * whole PostgreSQL log, gzipped
   * full PostgreSQL config used in this experimental run
 
-  <b>--artifacts-filename</b>
+  <b>--artifacts-dirname</b>
   
   Folder name where will be saved artifacts files.
   
