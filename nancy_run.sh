@@ -1644,6 +1644,7 @@ function install_perf {
   if [[ "$IS_CIRCLE_CI" == "true" ]]; then
      msg "Currently perf is not supported in the CircleCI"
      ret_code="15"
+     set -e
      return "$ret_code"
   fi
   docker_exec bash -c "cd ${MACHINE_HOME} \
@@ -1657,6 +1658,7 @@ function install_perf {
   else
     IS_PERF_INSTALLED="true"
   fi
+  set -e
   return "$ret_code"
 }
 
@@ -1674,6 +1676,7 @@ function run_perf {
   local ret_code="0"
   if [[ "${IS_PERF_INSTALLED}" != "true" ]]; then
     ret_code="15"
+    set -e
     return "$ret_code"
   fi
   msg "Run perf in background."
@@ -1681,6 +1684,7 @@ function run_perf {
     && (nohup perf record -F 99 -a -g -o perf.data >/dev/null 2>&1 </dev/null & \
     echo \$! > /tmp/perf_pid)"
   ret_code="$?"
+  set -e
   return "$ret_code"
 }
 
@@ -1698,6 +1702,7 @@ function stop_perf {
   local ret_code="0"
   if [[ "${IS_PERF_INSTALLED}" != "true" ]]; then
     ret_code="15"
+    set -e
     return "$ret_code"
   fi
   msg "Stopping perf..."
@@ -1709,6 +1714,7 @@ function stop_perf {
     && ./flamegraph.pl out.perf-folded > perf-kernel.svg \
     && cp perf-kernel.svg ${MACHINE_HOME}/${ARTIFACTS_FILENAME}/"
   ret_code="$?"
+  set -e
   return "$ret_code"
 }
 
