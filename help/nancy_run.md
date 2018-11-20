@@ -216,6 +216,10 @@
   * whole PostgreSQL log, gzipped
   * full PostgreSQL config used in this experimental run
 
+  <b>--artifacts-dirname</b>
+  
+  Folder name where will be saved artifacts files.
+  
   <b>--aws-ec2-type</b> (string)
 
   Type of EC2 instance to be used. To keep budgets low, EC2 Spot instances will
