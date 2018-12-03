@@ -1465,7 +1465,7 @@ function prepare_start_workload() {
 
   msg "Reset pg_stat_*** and Postgres log"
   (docker_exec psql -U postgres $DB_NAME -f - <<EOF
-    select pg_stat_reset(), pg_stat_statements_reset(), pg_stat_reset_shared('archiver'), pg_stat_reset_shared('bgwriter');
+    select pg_stat_reset(), pg_stat_statements_reset(), pg_stat_kcache_reset(), pg_stat_reset_shared('archiver'), pg_stat_reset_shared('bgwriter');
 EOF
 ) > /dev/null
   docker_exec bash -c "echo '' > $LOG_PATH"
@@ -1577,6 +1577,7 @@ function collect_results() {
 
   for table2export in \
     "pg_stat_statements order by total_time desc" \
+    "pg_stat_kcache() order by reads desc" \
     "pg_stat_archiver" \
     "pg_stat_bgwriter" \
     "pg_stat_database order by datname" \
@@ -1590,7 +1591,7 @@ function collect_results() {
     "pg_stat_user_functions order by schemaname, funcname" \
     "pg_stat_xact_user_functions order by schemaname, funcname" \
   ; do
-  docker_exec bash -c "psql -U postgres $DB_NAME -b -c \"copy (select * from $table2export) to stdout with csv header delimiter ',';\" > /$MACHINE_HOME/$ARTIFACTS_DIRNAME/\$(echo \"$table2export\" | awk '{print \$1}').csv"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c \"copy (select * from $table2export) to stdout with csv header delimiter ',';\" > /$MACHINE_HOME/$ARTIFACTS_DIRNAME/\$(echo \"$table2export\" | awk -F '[ (]' '{print \$1}').csv"
   done
 
   docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_DIRNAME/postgresql.workload.log.gz"
@@ -1650,6 +1651,7 @@ if [[ ! -z ${DB_DUMP+x} ]] || [[ ! -z ${DB_PGBENCH+x} ]]; then
 fi
 apply_sql_after_db_restore
 docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not exists pg_stat_statements;' $VERBOSE_OUTPUT_REDIRECT"
+docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not exists pg_stat_kcache;' $VERBOSE_OUTPUT_REDIRECT"
 apply_ddl_do_code
 apply_postgres_configuration
 prepare_start_workload
@@ -1677,7 +1679,7 @@ if [[ -z ${NO_PGBADGER+x} ]]; then
   echo -e "  pgBadger reports:   pgbadger.html (for humans),"
   echo -e "                      pgbadger.json (for robots)"
 fi
-echo -e "  Stat stapshots:     pg_stat_statements.csv,"
+echo -e "  Stat stapshots:     pg_stat_statements.csv, pg_stat_kcache.csv,"
 echo -e "                      pg_stat_***.csv"
 echo -e "  pgreplay report:    pgreplay.txt"
 echo -e "------------------------------------------------------------------------------"
