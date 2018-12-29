@@ -95,7 +95,7 @@ Alternatively, see Docker's official [post-installation instructions for Linux](
 2) Clone this repo and adjust `$PATH`:
 ```bash
 git clone https://gitlab.com/postgres.ai/nancy.git
-echo "export PATH=\$PATH:"$(pwd)"/nancy" >> ~/.bash_profile
+echo "export PATH=\$PATH:"$(pwd)"/nancy" >> ~/.bashrc
 source ~/.bash_profile
 ```
 
