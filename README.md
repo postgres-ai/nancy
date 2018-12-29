@@ -99,13 +99,16 @@ echo "export PATH=\$PATH:"$(pwd)"/nancy" >> ~/.bash_profile
 source ~/.bash_profile
 ```
 
+3) Install jq
+- Ubuntu/Debian: `sudo apt-get install jq`
+- CentOS/RHEL: `sudo yum install jq`
+- MacOS: `brew install jq` (assuming that [Homebrew](https://brew.sh/) is installed)
+
 Additionally, to allow use of AWS EC2 instances:
 
-3) Follow instructions https://docs.aws.amazon.com/cli/latest/userguide/installing.html
+4) Install AWS CLI https://docs.aws.amazon.com/cli/latest/userguide/installing.html
 
-4) Follow instructions https://docs.docker.com/machine/install-machine/
-
-5) install jq (for Ubuntu/Debian: `sudo apt-get install jq`)
+5) Install Docker Machine tools https://docs.docker.com/machine/install-machine/
 
 Getting started
 ===
