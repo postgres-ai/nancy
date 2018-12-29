@@ -1,4 +1,10 @@
 #!/bin/bash
+#
+# 2018–2019 © Postgres.ai
+#
+# A wrapper for all Nancy CLI commands.
+# Usage: use 'nancy help' for help.
+#
 
 DEBUG=0
 cmd=""

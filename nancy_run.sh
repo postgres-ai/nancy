@@ -1,7 +1,7 @@
 #!/bin/bash
 #
-# 2018 © Nikolay Samokhvalov nikolay@samokhvalov.com
-# 2018 © Postgres.ai
+# 2018–2019 © Nikolay Samokhvalov nikolay@samokhvalov.com
+# 2018–2019 © Postgres.ai
 #
 # Perform a single run of a database experiment
 # Usage: use 'nancy run help' or see the corresponding code below.
@@ -177,7 +177,7 @@ function check_path() {
     fi
   else
     dbg "Value of $1 is not a file path. Use its value as a content."
-    return -1 #
+    return 1
   fi
 }
 
