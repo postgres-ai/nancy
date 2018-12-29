@@ -6,6 +6,7 @@
   &nbsp;
 [![CircleCI](https://circleci.com/gh/postgres-ai/nancy.svg?style=svg)](https://circleci.com/gh/postgres-ai/nancy)
 
+**IMPORTANT**: Nancy has migrated to GitLab.com. The official repository address: https://gitlab.com/postgres.ai/nancy
 
 About
 <img width="122" alt="screen shot 2018-09-18 at 03 04 09" src="https://user-images.githubusercontent.com/1345402/45656700-8a987f00-baef-11e8-87b6-cccf8f65ee8f.png" align="right">
@@ -85,11 +86,15 @@ Installation
 
 In the minimal configuration, only two steps are needed:
 
-1) Install Docker (for Ubuntu/Debian: `sudo apt-get install docker`)
+1) Install Docker (for Ubuntu/Debian: `sudo apt-get install docker`).
+
+NOTICE: The [Additional notes](#additional-notes)</a> section contains
+instructions useful in case of docker-related errors during `nancy run` calls.
+Alternatively, see Docker's official [post-installation instructions for Linux](https://docs.docker.com/install/linux/linux-postinstall/).
 
 2) Clone this repo and adjust `$PATH`:
 ```bash
-git clone https://github.com/postgres-ai/nancy
+git clone https://gitlab.com/postgres.ai/nancy.git
 echo "export PATH=\$PATH:"$(pwd)"/nancy" >> ~/.bash_profile
 source ~/.bash_profile
 ```
@@ -145,15 +150,21 @@ nancy run \
 
 Additional notes
 ===
-If you experience issues with running (locally) `nancy run` inside `screen` or
+On Linux, if you experience issues with running (locally) `nancy run` inside `screen` or
 `tmux`, double-check that Docker is running and add your user to the `docker`
-group:
+group, as described below. See also: https://docs.docker.com/install/linux/linux-postinstall/.
+
+Ubuntu/Debian:
 ```bash
 usermod -aG docker ${USER}
 newgrp docker
 ```
 
-(On some systems it may be `dockerroot` instead of `docker`)
+CentOS/RHEL:
+```bash
+usermod -aG dockerroot ${USER}
+newgrp dockerroot
+```
 
 On MacOS, it is recommended to specify `--tmp-path` explicitly, similar to this:
 ```
