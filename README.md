@@ -85,7 +85,21 @@ Installation
 
 In the minimal configuration, only two steps are needed:
 
-1) Install Docker (for Ubuntu/Debian: `sudo apt-get install docker`)
+1) Install Docker
+
+Ubuntu/Debian:
+```
+sudo apt-get install docker
+systemctl start docker
+```
+
+RHEL7:
+```
+yum install docker
+usermod -aG dockerroot ${USER}
+newgrp dockerroot
+systemctl start docker
+```
 
 2) Clone this repo and adjust `$PATH`:
 ```bash

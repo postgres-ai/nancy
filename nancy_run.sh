@@ -177,7 +177,7 @@ function check_path() {
     fi
   else
     dbg "Value of $1 is not a file path. Use its value as a content."
-    return -1 #
+    return 255
   fi
 }
 
