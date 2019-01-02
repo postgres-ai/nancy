@@ -96,8 +96,6 @@ systemctl start docker
 RHEL7:
 ```
 yum install docker
-usermod -aG dockerroot ${USER}
-newgrp dockerroot
 systemctl start docker
 ```
 
@@ -163,8 +161,13 @@ If you experience issues with running (locally) `nancy run` inside `screen` or
 `tmux`, double-check that Docker is running and add your user to the `docker`
 group:
 ```bash
+# Ubuntu/Debian
 usermod -aG docker ${USER}
 newgrp docker
+
+# RHEL7
+usermod -aG dockerroot ${USER}
+newgrp dockerroot
 ```
 
 (On some systems it may be `dockerroot` instead of `docker`)
