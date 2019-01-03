@@ -84,7 +84,7 @@ Requirements
 Installation
 ===
 
-In the minimal configuration, only 3 steps are needed:
+In the minimal configuration, only a few steps are needed:
 
 NOTICE: The [Additional notes](#additional-notes)</a> section contains
 instructions useful in case of docker-related errors during `nancy run` calls.
