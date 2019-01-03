@@ -94,6 +94,7 @@ function dbg_cli_parameters() {
 --db-ebs-volume-id: ${DB_EBS_VOLUME_ID}
 --db-local-pgdata: ${DB_LOCAL_PGDATA}
 --db-name: ${DB_NAME}
+--db-expose-port: ${DB_EXPOSE_PORT}
 
 --commands-after-container-init: ${COMMANDS_AFTER_CONTAINER_INIT}
 --sql-before-db-restore: ${SQL_BEFORE_DB_RESTORE}
@@ -348,6 +349,12 @@ function check_cli_parameters() {
   if [[ -z ${DB_NAME+x} ]]; then
     dbg "NOTICE: Database name is not given. Will use 'test'"
     DB_NAME='test'
+  fi
+
+  if [[ -z ${DB_EXPOSE_PORT+x} ]]; then
+    DB_EXPOSE_PORT=""
+  else
+    DB_EXPOSE_PORT="-p $DB_EXPOSE_PORT:5432"
   fi
 
   if [[ -z ${PG_CONFIG+x} ]]; then
@@ -860,6 +867,8 @@ while [ $# -gt 0 ]; do
       DB_PGBENCH="$2"; shift 2 ;;
     --db-name )
       DB_NAME="$2"; shift 2 ;;
+    --db-expose-port )
+      DB_EXPOSE_PORT="$2"; shift 2 ;;
     --commands-after-container-init )
       COMMANDS_AFTER_CONTAINER_INIT="$2"; shift 2 ;;
     --sql-before-db-restore )
@@ -962,11 +971,13 @@ if [[ "$RUN_ON" == "localhost" ]]; then
   if [[ -z ${CONTAINER_ID+x} ]]; then
     if [[ -z ${DB_LOCAL_PGDATA+x} ]]; then
       CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
+        ${DB_EXPOSE_PORT} \
         -v $TMP_PATH:/machine_home \
         -dit "postgresmen/postgres-nancy:${PG_VERSION}" \
       )
     else
       CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
+        ${DB_EXPOSE_PORT} \
         -v $TMP_PATH:/machine_home \
         -v $DB_LOCAL_PGDATA:/pgdata \
         -dit "postgresmen/postgres-nancy:${PG_VERSION}" \
