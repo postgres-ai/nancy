@@ -89,13 +89,15 @@ In the minimal configuration, only two steps are needed:
 
 Ubuntu/Debian:
 ```
-sudo apt-get install docker
-systemctl start docker
+sudo apt-get -y install docker
+sudo systemctl enable docker
+sudo systemctl start docker
 ```
 
 RHEL7:
 ```
 yum install docker
+systemctl enable docker
 systemctl start docker
 ```
 
