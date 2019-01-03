@@ -956,7 +956,7 @@ else
 fi
 shopt -s expand_aliases
 
-trap cleanup_and_exit EXIT
+trap cleanup_and_exit EXIT SIGINT
 
 if [[ "$RUN_ON" == "localhost" ]]; then
   if [[ -z ${CONTAINER_ID+x} ]]; then
@@ -1621,7 +1621,7 @@ function docker_cleanup_and_exit {
   cleanup_and_exit
 }
 
-trap docker_cleanup_and_exit EXIT
+trap docker_cleanup_and_exit EXIT SIGINT
 
 if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]] && [[ ! "$DB_NAME" == "test" ]]; then
   docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'drop database if exists test;'"
