@@ -85,7 +85,21 @@ Installation
 
 In the minimal configuration, only two steps are needed:
 
-1) Install Docker (for Ubuntu/Debian: `sudo apt-get install docker`)
+1) Install Docker
+
+Ubuntu/Debian:
+```
+sudo apt-get -y install docker
+sudo systemctl enable docker
+sudo systemctl start docker
+```
+
+RHEL7:
+```
+yum install docker
+systemctl enable docker
+systemctl start docker
+```
 
 2) Clone this repo and adjust `$PATH`:
 ```bash
@@ -149,8 +163,13 @@ If you experience issues with running (locally) `nancy run` inside `screen` or
 `tmux`, double-check that Docker is running and add your user to the `docker`
 group:
 ```bash
+# Ubuntu/Debian
 usermod -aG docker ${USER}
 newgrp docker
+
+# RHEL7
+usermod -aG dockerroot ${USER}
+newgrp dockerroot
 ```
 
 (On some systems it may be `dockerroot` instead of `docker`)
