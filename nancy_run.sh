@@ -144,6 +144,11 @@ function msg() {
   fi
 }
 
+function msg_wo_dt() {
+  if ! $NO_OUTPUT; then
+    echo "$@"
+  fi
+}
 #######################################
 # Check path to file/directory.
 # Globals:
@@ -731,15 +736,19 @@ function use_ec2_ebs_drive() {
 function cleanup_and_exit {
   if  [ "$KEEP_ALIVE" -gt "0" ]; then
     msg "Debug timeout is $KEEP_ALIVE seconds – started."
+    msg_wo_dt ""
+    msg_wo_dt "  =========================================================="
     if [[ "$RUN_ON" == "aws" ]]; then
-      msg "  To connect docker machine use:"
-      msg "    docker-machine ssh $DOCKER_MACHINE"
-      msg "  To connect container machine use:"
-      msg "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
+      msg_wo_dt "  To connect docker machine use:"
+      msg_wo_dt "    docker-machine ssh $DOCKER_MACHINE"
+      msg_wo_dt "  To connect container machine use:"
+      msg_wo_dt "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
     else
-      msg "  To connect container machine use:"
-      msg "    docker exec -it pg_nancy_${CURRENT_TS} bash"
+      msg_wo_dt "  To connect container machine use:"
+      msg_wo_dt "    docker exec -it pg_nancy_${CURRENT_TS} bash"
     fi
+    msg_wo_dt "  =========================================================="
+    msg_wo_dt ""
     sleep $KEEP_ALIVE
   fi
   msg "Remove temp files..." # if exists
@@ -988,8 +997,12 @@ if [[ "$RUN_ON" == "localhost" ]]; then
   fi
   DOCKER_CONFIG=""
   msg "Docker $CONTAINER_HASH is running."
-  msg "  To connect container machine use:"
-  msg "    docker exec -it pg_nancy_${CURRENT_TS} bash"
+  msg_wo_dt ""
+  msg_wo_dt "  =========================================================="
+  msg_wo_dt "  To connect container machine use:"
+  msg_wo_dt "    docker exec -it pg_nancy_${CURRENT_TS} bash"
+  msg_wo_dt "  =========================================================="
+  msg_wo_dt ""
 elif [[ "$RUN_ON" == "aws" ]]; then
   determine_history_ec2_spot_price
   create_ec2_docker_machine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
@@ -1047,8 +1060,12 @@ elif [[ "$RUN_ON" == "aws" ]]; then
       -dit "postgresmen/postgres-nancy:${PG_VERSION}"
   )
   DOCKER_CONFIG=$(docker-machine config $DOCKER_MACHINE)
-  msg "  To connect container machine use:"
-  msg "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
+  msg_wo_dt ""
+  msg_wo_dt "  =========================================================="
+  msg_wo_dt "  To connect container machine use:"
+  msg_wo_dt "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
+  msg_wo_dt "  =========================================================="
+  msg_wo_dt ""
 else
   err "ASSERT: must not reach this point"
   exit 1
