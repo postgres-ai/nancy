@@ -6,6 +6,7 @@
   &nbsp;
 [![CircleCI](https://circleci.com/gh/postgres-ai/nancy.svg?style=svg)](https://circleci.com/gh/postgres-ai/nancy)
 
+**IMPORTANT**: Nancy has migrated to GitLab.com. The official repository address: https://gitlab.com/postgres.ai/nancy
 
 About
 <img width="122" alt="screen shot 2018-09-18 at 03 04 09" src="https://user-images.githubusercontent.com/1345402/45656700-8a987f00-baef-11e8-87b6-cccf8f65ee8f.png" align="right">
@@ -83,7 +84,11 @@ Requirements
 Installation
 ===
 
-In the minimal configuration, only two steps are needed:
+In the minimal configuration, only a few steps are needed:
+
+NOTICE: The [Additional notes](#additional-notes)</a> section contains
+instructions useful in case of docker-related errors during `nancy run` calls.
+Alternatively, see Docker's official [post-installation instructions for Linux](https://docs.docker.com/install/linux/linux-postinstall/).
 
 1) Install Docker
 
@@ -96,25 +101,28 @@ sudo systemctl start docker
 
 RHEL7:
 ```
-yum install docker
+yum -y install docker
 systemctl enable docker
 systemctl start docker
 ```
 
 2) Clone this repo and adjust `$PATH`:
 ```bash
-git clone https://github.com/postgres-ai/nancy
-echo "export PATH=\$PATH:"$(pwd)"/nancy" >> ~/.bash_profile
+git clone https://gitlab.com/postgres.ai/nancy.git
+echo "export PATH=\$PATH:"$(pwd)"/nancy" >> ~/.bashrc
 source ~/.bash_profile
 ```
 
+3) Install jq
+- Ubuntu/Debian: `sudo apt-get -y install jq`
+- CentOS/RHEL: `sudo yum install jq`
+- MacOS: `brew install jq` (assuming that [Homebrew](https://brew.sh/) is installed)
+
 Additionally, to allow use of AWS EC2 instances:
 
-3) Follow instructions https://docs.aws.amazon.com/cli/latest/userguide/installing.html
+4) Install AWS CLI https://docs.aws.amazon.com/cli/latest/userguide/installing.html
 
-4) Follow instructions https://docs.docker.com/machine/install-machine/
-
-5) install jq (for Ubuntu/Debian: `sudo apt-get install jq`)
+5) Install Docker Machine tools https://docs.docker.com/machine/install-machine/
 
 Getting started
 ===
@@ -159,9 +167,11 @@ nancy run \
 
 Additional notes
 ===
-If you experience issues with running (locally) `nancy run` inside `screen` or
+On Linux, if you experience issues with running (locally) `nancy run` inside `screen` or
 `tmux`, double-check that Docker is running and add your user to the `docker`
-group:
+group, as described below. See also: https://docs.docker.com/install/linux/linux-postinstall/.
+
+Ubuntu/Debian:
 ```bash
 # Ubuntu/Debian
 usermod -aG docker ${USER}
@@ -172,7 +182,11 @@ usermod -aG dockerroot ${USER}
 newgrp dockerroot
 ```
 
-(On some systems it may be `dockerroot` instead of `docker`)
+CentOS/RHEL:
+```bash
+usermod -aG dockerroot ${USER}
+newgrp dockerroot
+```
 
 On MacOS, it is recommended to specify `--tmp-path` explicitly, similar to this:
 ```
