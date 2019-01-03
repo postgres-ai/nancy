@@ -86,6 +86,10 @@ Installation
 
 In the minimal configuration, only two steps are needed:
 
+NOTICE: The [Additional notes](#additional-notes)</a> section contains
+instructions useful in case of docker-related errors during `nancy run` calls.
+Alternatively, see Docker's official [post-installation instructions for Linux](https://docs.docker.com/install/linux/linux-postinstall/).
+
 1) Install Docker
 
 Ubuntu/Debian:
