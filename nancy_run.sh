@@ -94,6 +94,7 @@ function dbg_cli_parameters() {
 --db-ebs-volume-id: ${DB_EBS_VOLUME_ID}
 --db-local-pgdata: ${DB_LOCAL_PGDATA}
 --db-name: ${DB_NAME}
+--db-expose-port: ${DB_EXPOSE_PORT}
 
 --commands-after-container-init: ${COMMANDS_AFTER_CONTAINER_INIT}
 --sql-before-db-restore: ${SQL_BEFORE_DB_RESTORE}
@@ -143,6 +144,11 @@ function msg() {
   fi
 }
 
+function msg_wo_dt() {
+  if ! $NO_OUTPUT; then
+    echo "$@"
+  fi
+}
 #######################################
 # Check path to file/directory.
 # Globals:
@@ -177,7 +183,7 @@ function check_path() {
     fi
   else
     dbg "Value of $1 is not a file path. Use its value as a content."
-    return -1 #
+    return 255
   fi
 }
 
@@ -348,6 +354,12 @@ function check_cli_parameters() {
   if [[ -z ${DB_NAME+x} ]]; then
     dbg "NOTICE: Database name is not given. Will use 'test'"
     DB_NAME='test'
+  fi
+
+  if [[ -z ${DB_EXPOSE_PORT+x} ]]; then
+    DB_EXPOSE_PORT=""
+  else
+    DB_EXPOSE_PORT="-p $DB_EXPOSE_PORT:5432"
   fi
 
   if [[ -z ${PG_CONFIG+x} ]]; then
@@ -724,15 +736,19 @@ function use_ec2_ebs_drive() {
 function cleanup_and_exit {
   if  [ "$KEEP_ALIVE" -gt "0" ]; then
     msg "Debug timeout is $KEEP_ALIVE seconds – started."
+    msg_wo_dt ""
+    msg_wo_dt "  =========================================================="
     if [[ "$RUN_ON" == "aws" ]]; then
-      msg "  To connect docker machine use:"
-      msg "    docker-machine ssh $DOCKER_MACHINE"
-      msg "  To connect container machine use:"
-      msg "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
+      msg_wo_dt "  To connect docker machine use:"
+      msg_wo_dt "    docker-machine ssh $DOCKER_MACHINE"
+      msg_wo_dt "  To connect container machine use:"
+      msg_wo_dt "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
     else
-      msg "  To connect container machine use:"
-      msg "    docker exec -it pg_nancy_${CURRENT_TS} bash"
+      msg_wo_dt "  To connect container machine use:"
+      msg_wo_dt "    docker exec -it pg_nancy_${CURRENT_TS} bash"
     fi
+    msg_wo_dt "  =========================================================="
+    msg_wo_dt ""
     sleep $KEEP_ALIVE
   fi
   msg "Remove temp files..." # if exists
@@ -860,6 +876,8 @@ while [ $# -gt 0 ]; do
       DB_PGBENCH="$2"; shift 2 ;;
     --db-name )
       DB_NAME="$2"; shift 2 ;;
+    --db-expose-port )
+      DB_EXPOSE_PORT="$2"; shift 2 ;;
     --commands-after-container-init )
       COMMANDS_AFTER_CONTAINER_INIT="$2"; shift 2 ;;
     --sql-before-db-restore )
@@ -956,17 +974,19 @@ else
 fi
 shopt -s expand_aliases
 
-trap cleanup_and_exit EXIT
+trap cleanup_and_exit EXIT SIGINT
 
 if [[ "$RUN_ON" == "localhost" ]]; then
   if [[ -z ${CONTAINER_ID+x} ]]; then
     if [[ -z ${DB_LOCAL_PGDATA+x} ]]; then
       CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
+        ${DB_EXPOSE_PORT} \
         -v $TMP_PATH:/machine_home \
         -dit "postgresmen/postgres-nancy:${PG_VERSION}" \
       )
     else
       CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
+        ${DB_EXPOSE_PORT} \
         -v $TMP_PATH:/machine_home \
         -v $DB_LOCAL_PGDATA:/pgdata \
         -dit "postgresmen/postgres-nancy:${PG_VERSION}" \
@@ -977,8 +997,12 @@ if [[ "$RUN_ON" == "localhost" ]]; then
   fi
   DOCKER_CONFIG=""
   msg "Docker $CONTAINER_HASH is running."
-  msg "  To connect container machine use:"
-  msg "    docker exec -it pg_nancy_${CURRENT_TS} bash"
+  msg_wo_dt ""
+  msg_wo_dt "  =========================================================="
+  msg_wo_dt "  To connect container machine use:"
+  msg_wo_dt "    docker exec -it pg_nancy_${CURRENT_TS} bash"
+  msg_wo_dt "  =========================================================="
+  msg_wo_dt ""
 elif [[ "$RUN_ON" == "aws" ]]; then
   determine_history_ec2_spot_price
   create_ec2_docker_machine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
@@ -1036,8 +1060,12 @@ elif [[ "$RUN_ON" == "aws" ]]; then
       -dit "postgresmen/postgres-nancy:${PG_VERSION}"
   )
   DOCKER_CONFIG=$(docker-machine config $DOCKER_MACHINE)
-  msg "  To connect container machine use:"
-  msg "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
+  msg_wo_dt ""
+  msg_wo_dt "  =========================================================="
+  msg_wo_dt "  To connect container machine use:"
+  msg_wo_dt "    docker \`docker-machine config $DOCKER_MACHINE\` exec -it pg_nancy_${CURRENT_TS} bash"
+  msg_wo_dt "  =========================================================="
+  msg_wo_dt ""
 else
   err "ASSERT: must not reach this point"
   exit 1
@@ -1621,7 +1649,7 @@ function docker_cleanup_and_exit {
   cleanup_and_exit
 }
 
-trap docker_cleanup_and_exit EXIT
+trap docker_cleanup_and_exit EXIT SIGINT
 
 if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]] && [[ ! "$DB_NAME" == "test" ]]; then
   docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'drop database if exists test;'"

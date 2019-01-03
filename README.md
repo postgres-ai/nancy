@@ -86,11 +86,21 @@ Installation
 
 In the minimal configuration, only two steps are needed:
 
-1) Install Docker (for Ubuntu/Debian: `sudo apt-get install docker`).
+1) Install Docker
 
-NOTICE: The [Additional notes](#additional-notes)</a> section contains
-instructions useful in case of docker-related errors during `nancy run` calls.
-Alternatively, see Docker's official [post-installation instructions for Linux](https://docs.docker.com/install/linux/linux-postinstall/).
+Ubuntu/Debian:
+```
+sudo apt-get -y install docker
+sudo systemctl enable docker
+sudo systemctl start docker
+```
+
+RHEL7:
+```
+yum install docker
+systemctl enable docker
+systemctl start docker
+```
 
 2) Clone this repo and adjust `$PATH`:
 ```bash
@@ -159,8 +169,13 @@ group, as described below. See also: https://docs.docker.com/install/linux/linux
 
 Ubuntu/Debian:
 ```bash
+# Ubuntu/Debian
 usermod -aG docker ${USER}
 newgrp docker
+
+# RHEL7
+usermod -aG dockerroot ${USER}
+newgrp dockerroot
 ```
 
 CentOS/RHEL:
