@@ -101,7 +101,7 @@ sudo systemctl start docker
 
 RHEL7:
 ```
-yum install docker
+yum -y install docker
 systemctl enable docker
 systemctl start docker
 ```
