@@ -1,4 +1,9 @@
 #!/bin/bash
+#
+# 2018–2019 © Postgres.ai
+#
+# Describe one or more experimental runs, taking
+# collection(s) of artifacts as input.
 
 DEBUG=false
 VERBOSE_OUTPUT_REDIRECT=''
