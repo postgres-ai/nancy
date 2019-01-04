@@ -93,24 +93,30 @@ Alternatively, see Docker's official [post-installation instructions for Linux](
 1) Install Docker
 
 Ubuntu/Debian:
-```
+```shell
 sudo apt-get -y install docker
 sudo systemctl enable docker
 sudo systemctl start docker
 ```
 
 RHEL7:
-```
+```shell
 yum -y install docker
 systemctl enable docker
 systemctl start docker
 ```
 
+MacOS:
+```shell
+brew install docker
+```
+See also: https://docs.docker.com/docker-for-mac/install/
+
 2) Clone this repo and adjust `$PATH`:
-```bash
+```shell
 git clone https://gitlab.com/postgres.ai/nancy.git
 echo "export PATH=\$PATH:"$(pwd)"/nancy" >> ~/.bashrc
-source ~/.bash_profile
+source ~/.bashrc
 ```
 
 3) Install jq
@@ -127,7 +133,7 @@ Additionally, to allow use of AWS EC2 instances:
 Getting started
 ===
 Start with these commands:
-```bash
+```shell
 nancy help
 nancy run help
 ```
@@ -135,7 +141,7 @@ nancy run help
 "Hello World!"
 ===
 Locally, on any Linux or macOS machine:
-```bash
+```shell
 echo "create table hello_world as select i from generate_series(1, (10^6)::int) _(i);" \
   | bzip2 > ./sample.dump.bz2
 
@@ -155,7 +161,7 @@ nancy run \
 ```
 
 AWS EC2:
-```bash
+```shell
 nancy run \
   --run-on aws \
   --aws-ec2-type "i3.large" \
@@ -172,7 +178,7 @@ On Linux, if you experience issues with running (locally) `nancy run` inside `sc
 group, as described below. See also: https://docs.docker.com/install/linux/linux-postinstall/.
 
 Ubuntu/Debian:
-```bash
+```shell
 # Ubuntu/Debian
 usermod -aG docker ${USER}
 newgrp docker
@@ -183,7 +189,7 @@ newgrp dockerroot
 ```
 
 CentOS/RHEL:
-```bash
+```shell
 usermod -aG dockerroot ${USER}
 newgrp dockerroot
 ```
