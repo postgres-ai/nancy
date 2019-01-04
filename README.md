@@ -106,7 +106,7 @@ systemctl enable docker
 systemctl start docker
 ```
 
-MacOS:
+MacOS (assuming that [Homebrew](https://brew.sh/) is installed):
 ```shell
 brew install docker
 ```
@@ -122,7 +122,7 @@ source ~/.bashrc
 3) Install jq
 - Ubuntu/Debian: `sudo apt-get -y install jq`
 - CentOS/RHEL: `sudo yum install jq`
-- MacOS: `brew install jq` (assuming that [Homebrew](https://brew.sh/) is installed)
+- MacOS: `brew install jq`
 
 Additionally, to allow use of AWS EC2 instances:
 
