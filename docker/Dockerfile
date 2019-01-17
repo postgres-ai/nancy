@@ -23,6 +23,7 @@ RUN if [ "$PG_SERVER_VERSION" = "11" ]; then \
 #   - postgres_dba and pspg
 #   - pgbadger 10+
 #   - postgres_dba toolset
+#   - pg_repack
 RUN apt-get update \
     && apt-get install -y wget ca-certificates \
     && wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - \
@@ -37,7 +38,12 @@ RUN apt-get update \
     && apt-get install -y postgresql-client-11 \
     && apt-get install -y sudo git pspg pgreplay jq etcd libjson-xs-perl vim \
     && git clone https://github.com/NikolayS/postgres_dba.git /root/postgres_dba \
-    && git clone https://github.com/darold/pgbadger.git /root/pgbadger && cd /root/pgbadger && git checkout "tags/v10.1"
+    && git clone https://github.com/darold/pgbadger.git /root/pgbadger && cd /root/pgbadger && git checkout "tags/v10.1" \
+    && apt-get install -y build-essential \
+    && apt-get install -y postgresql-server-dev-$PG_SERVER_VERSION \
+    && apt-get install -y libssl-dev \
+    && git clone https://github.com/reorg/pg_repack && cd pg_repack \
+    && make install && ln -sf /usr/lib/postgresql/$PG_SERVER_VERSION/bin/pg_repack /usr/bin/pg_repack
 
 # additional software
 RUN apt-get install -y s3cmd sudo bzip2 python-software-properties software-properties-common
@@ -50,6 +56,7 @@ RUN echo "\\set dba '\\\\\\\\i /root/postgres_dba/start.psql'" >> ~/.psqlrc \
     && echo "listen_addresses='*'" >> /etc/postgresql/$PG_SERVER_VERSION/main/postgresql.conf \
     && echo "log_filename='postgresql-$PG_SERVER_VERSION-main.log'" >> /etc/postgresql/$PG_SERVER_VERSION/main/postgresql.conf \
     && /etc/init.d/postgresql start && psql -U postgres -c 'create database test;' \
+    && psql -U postgres -d test -c "CREATE EXTENSION pg_repack;" \
     && psql -U postgres -c "CREATE ROLE testuser LOGIN password 'testuser' superuser;" && /etc/init.d/postgresql stop \
     && cat /postgresql.tweak.conf >> /etc/postgresql/$PG_SERVER_VERSION/main/postgresql.conf \
     && echo "#!/bin/bash" > /pg_start.sh && chmod a+x /pg_start.sh \
