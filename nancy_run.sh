@@ -967,6 +967,12 @@ START_TIME=$(date +%s); #save start time
 
 determine_ebs_drive_size
 
+if [ -n "$CIRCLE_JOB" ]; then
+  IS_CIRCLE_CI=true
+else
+  IS_CIRCLE_CI=false
+fi	
+
 if $DEBUG ; then
   set -xueo pipefail
 else
@@ -979,13 +985,13 @@ trap cleanup_and_exit EXIT SIGINT
 if [[ "$RUN_ON" == "localhost" ]]; then
   if [[ -z ${CONTAINER_ID+x} ]]; then
     if [[ -z ${DB_LOCAL_PGDATA+x} ]]; then
-      CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
+      CONTAINER_HASH=$(docker run --cap-add SYS_ADMIN --name="pg_nancy_${CURRENT_TS}" \
         ${DB_EXPOSE_PORT} \
         -v $TMP_PATH:/machine_home \
         -dit "postgresmen/postgres-nancy:${PG_VERSION}" \
       )
     else
-      CONTAINER_HASH=$(docker run --name="pg_nancy_${CURRENT_TS}" \
+      CONTAINER_HASH=$(docker run --cap-add SYS_ADMIN --name="pg_nancy_${CURRENT_TS}" \
         ${DB_EXPOSE_PORT} \
         -v $TMP_PATH:/machine_home \
         -v $DB_LOCAL_PGDATA:/pgdata \
@@ -1649,7 +1655,99 @@ function docker_cleanup_and_exit {
   cleanup_and_exit
 }
 
-trap docker_cleanup_and_exit EXIT SIGINT
+#######################################
+# Install perf and FlameGraph
+# Globals:
+#   MACHINE_HOME, IS_PERF_INSTALLED, IS_CIRCLE_CI
+# Arguments:
+#   None
+# Returns:
+#   (integer) ret_code
+#######################################
+function install_perf {
+  set +e
+  local ret_code="0"
+  IS_PERF_INSTALLED="false"
+  msg "Trying to install perf and FlameGraph..."
+  # TODO: try to fix perf in the CircleCI Linux
+  if [[ "$IS_CIRCLE_CI" == "true" ]]; then
+     msg "Currently perf is not supported in the CircleCI"
+     ret_code="15"
+     set -e
+     return "$ret_code"
+  fi
+  docker_exec bash -c "cd ${MACHINE_HOME} \
+    && apt-get update || true \
+    && apt-get install --fix-missing -y perf-tools-unstable linux-tools-\$(uname -r) \
+    && git clone https://github.com/brendangregg/FlameGraph"
+  ret_code="$?"
+  if [[ "$ret_code" -ne "0" ]]; then
+    msg "WARNING: Can't install perf or FlameGraph."
+    IS_PERF_INSTALLED="false"
+  else
+    IS_PERF_INSTALLED="true"
+  fi
+  set -e
+  return "$ret_code"
+}
+
+#######################################
+# Run perf in background
+# Globals:
+#   MACHINE_HOME, IS_PERF_INSTALLED
+# Arguments:
+#   None
+# Returns:
+#   (integer) ret_code
+#######################################
+function run_perf {
+  set +e
+  local ret_code="0"
+  if [[ "${IS_PERF_INSTALLED}" != "true" ]]; then
+    ret_code="15"
+    set -e
+    return "$ret_code"
+  fi
+  msg "Run perf in background."
+  docker_exec bash -c "cd ${MACHINE_HOME}/FlameGraph/ \
+    && (nohup perf record -F 99 -a -g -o perf.data >/dev/null 2>&1 </dev/null & \
+    echo \$! > /tmp/perf_pid)"
+  ret_code="$?"
+  set -e
+  return "$ret_code"
+}
+
+#######################################
+# Stop perf and generate FlameGraph artifacts
+# Globals:
+#   MACHINE_HOME, ARTIFACTS_FILENAME, IS_PERF_INSTALLED
+# Arguments:
+#   None
+# Returns:
+#   (integer) ret_code
+#######################################
+function stop_perf {
+  set +e
+  local ret_code="0"
+  if [[ "${IS_PERF_INSTALLED}" != "true" ]]; then
+    ret_code="15"
+    set -e
+    return "$ret_code"
+  fi
+  msg "Stopping perf..."
+  docker_exec bash -c "test -f /tmp/perf_pid && kill \$(cat /tmp/perf_pid)" \
+    && dbg "Perf is probably stopped."
+  msg "Generate FlameGraph."
+  docker_exec bash -c "cd ${MACHINE_HOME} && cd FlameGraph \
+    && perf script --input perf.data | ./stackcollapse-perf.pl > out.perf-folded \
+    && ./flamegraph.pl out.perf-folded > perf-kernel.svg \
+    && cp perf-kernel.svg ${MACHINE_HOME}/${ARTIFACTS_FILENAME}/"
+  ret_code="$?"
+  set -e
+  return "$ret_code"
+}
+
+trap docker_cleanup_and_exit EXIT
 
 if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]] && [[ ! "$DB_NAME" == "test" ]]; then
   docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'drop database if exists test;'"
@@ -1672,6 +1770,7 @@ fi
 sleep 10 # wait for postgres up&running
 
 apply_commands_after_container_init
+install_perf || true
 pg_config_init
 apply_sql_before_db_restore
 if [[ ! -z ${DB_DUMP+x} ]] || [[ ! -z ${DB_PGBENCH+x} ]]; then
@@ -1683,7 +1782,9 @@ docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not ex
 apply_ddl_do_code
 apply_postgres_configuration
 prepare_start_workload
+run_perf || true
 execute_workload
+stop_perf || true
 collect_results
 apply_ddl_undo_code
 save_artifacts
@@ -1707,7 +1808,10 @@ if [[ -z ${NO_PGBADGER+x} ]]; then
   echo -e "  pgBadger reports:   pgbadger.html (for humans),"
   echo -e "                      pgbadger.json (for robots)"
 fi
-echo -e "  Stat stapshots:     pg_stat_statements.csv, pg_stat_kcache.csv,"
+if [[ -f "$ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/perf-kernel.svg" ]]; then
+  echo -e "  CPU FlameGraph:     perf-kernel.svg"
+fi
+echo -e "  Stat stapshots:     pg_stat_statements.csv,"
 echo -e "                      pg_stat_***.csv"
 echo -e "  pgreplay report:    pgreplay.txt"
 echo -e "------------------------------------------------------------------------------"
