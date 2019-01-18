@@ -1808,7 +1808,7 @@ if [[ -z ${NO_PGBADGER+x} ]]; then
   echo -e "  pgBadger reports:   pgbadger.html (for humans),"
   echo -e "                      pgbadger.json (for robots)"
 fi
-if [[ -f "$ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/perf-kernel.svg" ]]; then
+if [[ -f "$ARTIFACTS_DESTINATION/$ARTIFACTS_DIRNAME/perf-kernel.svg" ]]; then
   echo -e "  CPU FlameGraph:     perf-kernel.svg"
 fi
 echo -e "  Stat stapshots:     pg_stat_statements.csv,"
