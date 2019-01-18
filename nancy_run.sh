@@ -1720,7 +1720,7 @@ function run_perf {
 #######################################
 # Stop perf and generate FlameGraph artifacts
 # Globals:
-#   MACHINE_HOME, ARTIFACTS_FILENAME, IS_PERF_INSTALLED
+#   MACHINE_HOME, ARTIFACTS_DIRNAME, IS_PERF_INSTALLED
 # Arguments:
 #   None
 # Returns:
@@ -1741,7 +1741,7 @@ function stop_perf {
   docker_exec bash -c "cd ${MACHINE_HOME} && cd FlameGraph \
     && perf script --input perf.data | ./stackcollapse-perf.pl > out.perf-folded \
     && ./flamegraph.pl out.perf-folded > perf-kernel.svg \
-    && cp perf-kernel.svg ${MACHINE_HOME}/${ARTIFACTS_FILENAME}/"
+    && cp perf-kernel.svg ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/"
   ret_code="$?"
   set -e
   return "$ret_code"
