@@ -12,9 +12,9 @@ ADD ./tsearch_data /usr/share/postgresql/$PG_SERVER_VERSION/tsearch_data
 ADD ./postgresql_${PG_SERVER_VERSION}_tweak.conf /postgresql.tweak.conf
 
 RUN if [ "$PG_SERVER_VERSION" = "11" ]; then \
-      export PG_EXOTIC="postgresql-$PG_SERVER_VERSION-rum postgresql-$PG_SERVER_VERSION-powa"; \
+      export PG_EXTRA="postgresql-$PG_SERVER_VERSION-rum"; \
     else \
-      export PG_EXOTIC="postgresql-$PG_SERVER_VERSION-rum postgresql-$PG_SERVER_VERSION-powa postgresql-$PG_SERVER_VERSION-plsh"; \
+      export PG_EXTRA="postgresql-$PG_SERVER_VERSION-rum postgresql-$PG_SERVER_VERSION-plsh"; \
     fi
 
 # install Postgres and postgres-specific software:
@@ -32,7 +32,8 @@ RUN apt-get update \
     && apt-get install -y postgresql-contrib-$PG_SERVER_VERSION \
     && apt-get install -y postgresql-plpython-$PG_SERVER_VERSION \
     && apt-get install -y postgresql-server-dev-$PG_SERVER_VERSION \
-    && apt-get install -y "$PG_EXOTIC" \
+    && apt-get install -y postgresql-$PG_SERVER_VERSION-pg-stat-kcache \
+    && apt-get install -y "$PG_EXTRA" \
     && apt-get install -y postgresql-client-11 \
     && apt-get install -y sudo git pspg pgreplay jq etcd libjson-xs-perl vim \
     && git clone https://github.com/NikolayS/postgres_dba.git /root/postgres_dba \
@@ -48,7 +49,8 @@ RUN echo "\\set dba '\\\\\\\\i /root/postgres_dba/start.psql'" >> ~/.psqlrc \
     && echo "host all  all    0.0.0.0/0  md5" >> /etc/postgresql/$PG_SERVER_VERSION/main/pg_hba.conf \
     && echo "listen_addresses='*'" >> /etc/postgresql/$PG_SERVER_VERSION/main/postgresql.conf \
     && echo "log_filename='postgresql-$PG_SERVER_VERSION-main.log'" >> /etc/postgresql/$PG_SERVER_VERSION/main/postgresql.conf \
-    && /etc/init.d/postgresql start && psql -U postgres -c 'create database test;' && /etc/init.d/postgresql stop \
+    && /etc/init.d/postgresql start && psql -U postgres -c 'create database test;' \
+    && psql -U postgres -c "CREATE ROLE testuser LOGIN password 'testuser' superuser;" && /etc/init.d/postgresql stop \
     && cat /postgresql.tweak.conf >> /etc/postgresql/$PG_SERVER_VERSION/main/postgresql.conf \
     && echo "#!/bin/bash" > /pg_start.sh && chmod a+x /pg_start.sh \
     && printf "sudo -u postgres /usr/lib/postgresql/$PG_SERVER_VERSION/bin/postgres -D /var/lib/postgresql/$PG_SERVER_VERSION/main -c config_file=/etc/postgresql/$PG_SERVER_VERSION/main/postgresql.conf & \n" >> /pg_start.sh \
