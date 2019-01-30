@@ -1645,8 +1645,8 @@ function prepare_start_workload() {
 
   if [[ "$run_number" -eq "1" ]]; then
     msg "Save prepaparation log"
-    docker_exec bash -c "mkdir $MACHINE_HOME/$ARTIFACTS_FILENAME"
-    docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.prepare.log.gz"
+    docker_exec bash -c "mkdir $MACHINE_HOME/$ARTIFACTS_DIRNAME"
+    docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_DIRNAME/postgresql.prepare.log.gz"
   fi
 
   msg "Reset pg_stat_*** and Postgres log"
@@ -1682,7 +1682,7 @@ function execute_workload() {
   OP_START_TIME=$(date +%s)
   msg "Execute workload..."
   if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
-      docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME 2>&1 | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.$run_number.txt $verbose_output"
+      docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME 2>&1 | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$run_number.txt $verbose_output"
   fi
   if [[ ! -z ${WORKLOAD_REAL+x} ]] && [[ "$WORKLOAD_REAL" != '' ]]; then
     msg "Execute pgreplay queries..."
@@ -1690,10 +1690,10 @@ function execute_workload() {
     WORKLOAD_FILE_NAME=$(basename $WORKLOAD_REAL)
     if [[ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ]] && [[ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]]; then
       docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED $MACHINE_HOME/$WORKLOAD_FILE_NAME 2>&1 \
-      | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.$run_number.txt $verbose_output"
+      | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$run_number.txt $verbose_output"
     else
       docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME 2>&1 \
-      | tee $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.$run_number.txt $verbose_output"
+      | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$run_number.txt $verbose_output"
     fi
   fi
   if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
@@ -1726,10 +1726,10 @@ function save_artifacts() {
   docker_exec bash -c "cp $MACHINE_HOME/nancy_start_params.txt $MACHINE_HOME/$ARTIFACTS_DIRNAME/"
 
   if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
-    $out=$(docker_exec s3cmd --recursive put /$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/ 2>&1)
+    $out=$(docker_exec s3cmd --recursive put /$MACHINE_HOME/$ARTIFACTS_DIRNAME $ARTIFACTS_DESTINATION/ 2>&1)
   else
     if [[ "$RUN_ON" == "localhost" ]]; then
-      out=$(docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_FILENAME $ARTIFACTS_DESTINATION/ 2>&1)
+      out=$(docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_DIRNAME $ARTIFACTS_DESTINATION/ 2>&1)
     elif [[ "$RUN_ON" == "aws" ]]; then
       mkdir -p $ARTIFACTS_DESTINATION/$ARTIFACTS_DIRNAME
       out=$(docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_DIRNAME/* $ARTIFACTS_DESTINATION/$ARTIFACTS_DIRNAME/)
@@ -1761,7 +1761,7 @@ function collect_results() {
       docker_exec bash -c "/root/pgbadger/pgbadger \
         -j $CPU_CNT \
         --prefix '%t [%p]: [%l-1] db=%d,user=%u (%a,%h)' /var/log/postgresql/* -f stderr \
-        -o $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.$run_number.$report_type $VERBOSE_OUTPUT_REDIRECT" \
+        -o $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$run_number.$report_type $VERBOSE_OUTPUT_REDIRECT" \
         2> >(grep -v "install the Text::CSV_XS" >&2)
     done
   fi
@@ -1784,11 +1784,11 @@ function collect_results() {
     "pg_stat_user_functions order by schemaname, funcname" \
     "pg_stat_xact_user_functions order by schemaname, funcname" \
   ; do
-  docker_exec bash -c "psql -U postgres $DB_NAME -b -c \"copy (select * from $table2export) to stdout with csv header delimiter ',';\" > /$MACHINE_HOME/$ARTIFACTS_FILENAME/\$(echo \"$table2export\" | awk '{print \$1}').$run_number.csv"
+  docker_exec bash -c "psql -U postgres $DB_NAME -b -c \"copy (select * from $table2export) to stdout with csv header delimiter ',';\" > /$MACHINE_HOME/$ARTIFACTS_DIRNAME/\$(echo \"$table2export\" | awk '{print \$1}').$run_number.csv"
   done
 
-  docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.workload.$run_number.log.gz"
-  docker_exec bash -c "cp /etc/postgresql/$PG_VERSION/main/postgresql.conf $MACHINE_HOME/$ARTIFACTS_FILENAME/postgresql.$run_number.conf"
+  docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_DIRNAME/postgresql.workload.$run_number.log.gz"
+  docker_exec bash -c "cp /etc/postgresql/$PG_VERSION/main/postgresql.conf $MACHINE_HOME/$ARTIFACTS_DIRNAME/postgresql.$run_number.conf"
 
   save_artifacts
 
@@ -1899,7 +1899,7 @@ while : ; do
 
   echo "Run #$num done."
   echo -e "------------------------------------------------------------------------------"
-  echo -e "Artifacts (collected in \"$ARTIFACTS_DESTINATION/$ARTIFACTS_FILENAME/\"):"
+  echo -e "Artifacts (collected in \"$ARTIFACTS_DESTINATION/$ARTIFACTS_DIRNAME/\"):"
   echo -e "  Postgres config:    postgresql.$num.conf"
   echo -e "  Postgres logs:      postgresql.prepare.$num.log.gz (preparation),"
   echo -e "                      postgresql.workload.$num.log.gz (workload)"
@@ -1915,20 +1915,20 @@ while : ; do
   echo -e "Workload:"
   echo -e "  Execution time:     $DURATION_WRKLD"
   if [[ -z ${NO_PGBADGER+x} ]]; then
-    echo -e "  Total query time:   "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.$num.json | jq '.overall_stat.queries_duration') " ms"
-    echo -e "  Queries:            "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.$num.json | jq '.overall_stat.queries_number')
-    echo -e "  Query groups:       "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.$num.json | jq '.normalyzed_info | length')
-    echo -e "  Errors:             "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.$num.json | jq '.overall_stat.errors_number')
-    echo -e "  Errors groups:      "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/pgbadger.$num.json | jq '.error_info | length')
+    echo -e "  Total query time:   "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.overall_stat.queries_duration') " ms"
+    echo -e "  Queries:            "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.overall_stat.queries_number')
+    echo -e "  Query groups:       "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.normalyzed_info | length')
+    echo -e "  Errors:             "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.overall_stat.errors_number')
+    echo -e "  Errors groups:      "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.error_info | length')
     if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
-      tps_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.$num.txt | grep "including connections establishing")
+      tps_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$num.txt | grep "including connections establishing")
       tps=${tps_string//[!0-9.]/}
       if [[ ! -z "$tps" ]]; then
         echo -e "  TPS:                $tps (including connections establishing)"
       fi
     fi
     if [[ ! -z ${WORKLOAD_REAL+x} ]]; then
-      avg_num_con_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_FILENAME/workload_output.$num.txt | grep "Average number of concurrent connections")
+      avg_num_con_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$num.txt | grep "Average number of concurrent connections")
       avg_num_con=${avg_num_con_string//[!0-9.]/}
       if [[ ! -z "$avg_num_con" ]]; then
         echo -e "  Avg. connection number: $avg_num_con"
