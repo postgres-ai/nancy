@@ -1898,6 +1898,15 @@ while : ; do
   collect_results $i;
 
   echo "Run #$num done."
+  if ([[ ! -z "$delta_config" ]] || [[ ! -z "$delta_ddl_do" ]]); then
+    echo -e "------------------------------------------------------------------------------"
+    if [[ ! -z "$delta_config" ]]; then
+      echo -e "Config delta:         $delta_config"
+    fi
+    if [[ ! -z "$delta_ddl_do" ]]; then
+      echo -e "DDL delta:            $delta_ddl_do"
+    fi
+  fi
   echo -e "------------------------------------------------------------------------------"
   echo -e "Artifacts (collected in \"$ARTIFACTS_DESTINATION/$ARTIFACTS_DIRNAME/\"):"
   echo -e "  Postgres config:    postgresql.$num.conf"
