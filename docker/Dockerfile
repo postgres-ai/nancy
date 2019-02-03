@@ -36,17 +36,16 @@ RUN apt-get update \
     && apt-get install -y postgresql-$PG_SERVER_VERSION-pg-stat-kcache \
     && apt-get install -y "$PG_EXTRA" \
     && apt-get install -y postgresql-client-11 \
-    && apt-get install -y sudo git pspg pgreplay jq etcd libjson-xs-perl vim \
+    && apt-get install -y sudo git pspg pgreplay jq libjson-xs-perl vim \
     && git clone https://github.com/NikolayS/postgres_dba.git /root/postgres_dba \
     && git clone https://github.com/darold/pgbadger.git /root/pgbadger && cd /root/pgbadger && git checkout "tags/v10.1" \
-    && apt-get install -y build-essential \
-    && apt-get install -y postgresql-server-dev-$PG_SERVER_VERSION \
-    && apt-get install -y libssl-dev \
-    && git clone https://github.com/reorg/pg_repack && cd pg_repack \
-    && make install && ln -sf /usr/lib/postgresql/$PG_SERVER_VERSION/bin/pg_repack /usr/bin/pg_repack
+    && apt-get install -y postgresql-$PG_SERVER_VERSION-repack \
+	&& apt-get install -y sysbench s3cmd sudo bzip2 python-software-properties software-properties-common \
+    && rm -rf /tmp/* \
+    && apt-get purge -y --auto-remove \
+    && apt-get clean -y autoclean \
+    && rm -rf /var/lib/apt/lists/*
 
-# additional software
-RUN apt-get install -y s3cmd sudo bzip2 python-software-properties software-properties-common
 
 # configure psql, configure postgres & check postgres start & stop & prepare start script
 RUN echo "\\set dba '\\\\\\\\i /root/postgres_dba/start.psql'" >> ~/.psqlrc \
@@ -60,8 +59,7 @@ RUN echo "\\set dba '\\\\\\\\i /root/postgres_dba/start.psql'" >> ~/.psqlrc \
     && psql -U postgres -c "CREATE ROLE testuser LOGIN password 'testuser' superuser;" && /etc/init.d/postgresql stop \
     && cat /postgresql.tweak.conf >> /etc/postgresql/$PG_SERVER_VERSION/main/postgresql.conf \
     && echo "#!/bin/bash" > /pg_start.sh && chmod a+x /pg_start.sh \
-    && printf "sudo -u postgres /usr/lib/postgresql/$PG_SERVER_VERSION/bin/postgres -D /var/lib/postgresql/$PG_SERVER_VERSION/main -c config_file=/etc/postgresql/$PG_SERVER_VERSION/main/postgresql.conf & \n" >> /pg_start.sh \
-    && echo "etcd" >> /pg_start.sh
+    && printf "sudo -u postgres /usr/lib/postgresql/$PG_SERVER_VERSION/bin/postgres -D /var/lib/postgresql/$PG_SERVER_VERSION/main -c config_file=/etc/postgresql/$PG_SERVER_VERSION/main/postgresql.conf & \n" >> /pg_start.sh
 
 EXPOSE 5432
 
