@@ -39,7 +39,7 @@ RUN apt-get update \
     && apt-get install -y sudo git pspg pgreplay jq libjson-xs-perl vim \
     && git clone https://github.com/NikolayS/postgres_dba.git /root/postgres_dba \
     && git clone https://github.com/darold/pgbadger.git /root/pgbadger && cd /root/pgbadger && git checkout "tags/v10.1" \
-    && git clone git@gitlab.com:postgres-ai-team/postgres-checkup.git /root/pgbadger && cd /root/pgbadger && git checkout "tags/0.9-pre" \
+    && git clone git@gitlab.com:postgres-ai-team/postgres-checkup.git /root/postgres-checkup && cd /root/postgres-checkup && git checkout "tags/0.9-pre" \
     && apt-get install -y postgresql-$PG_SERVER_VERSION-repack \
     && apt-get install -y sysbench s3cmd sudo bzip2 python-software-properties software-properties-common \
     && rm -rf /tmp/* \
