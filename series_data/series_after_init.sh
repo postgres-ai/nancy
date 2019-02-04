@@ -18,7 +18,7 @@ writeSql="
 \set aid random_zipfian(1, 100000 * :scale, 0.99)
 \set bid random_zipfian(1, 1 * :scale, 0.99)
 \set tid random_zipfian(1, 10 * :scale, 0.99)
-\set delta random_zipfian(-5000, 5000)
+\set delta random(-5000, 5000)
 BEGIN;
 UPDATE pgbench_accounts SET abalance = abalance + :delta WHERE aid = :aid;
 UPDATE pgbench_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;

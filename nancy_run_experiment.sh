@@ -8,6 +8,10 @@
 
 CURRENT_TS=$(date +%Y%m%d_%H%M%S%N_%Z)
 
+mkdir -p ./series_results
+mkdir -p ./series_tmp
+mkdir -p ./series_logs
+
 /home/dmius/nancy/nancy_run.sh \
   --run-on aws \
   --aws-keypair-name awskey3 \
@@ -22,3 +26,7 @@ CURRENT_TS=$(date +%Y%m%d_%H%M%S%N_%Z)
   --workload-pgbench "$4" \
   --artifacts-dirname "$1_$CURRENT_TS" \
   --commands-after-container-init file://$(pwd)/series_data/series_after_init.sh > $(pwd)/series_logs/"$1_$CURRENT_TS".log 2>&1
+
+#  --debug \
+#  --keep-alive 3600 \
+

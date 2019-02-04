@@ -1094,6 +1094,8 @@ elif [[ "$RUN_ON" == "aws" ]]; then
   msg "  To connect docker machine use:"
   msg "    docker-machine ssh $DOCKER_MACHINE"
 
+  docker-machine ssh $DOCKER_MACHINE echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+
   if [[ "$RUN_ON" == "aws" ]] && [[ ! -z ${DB_EBS_VOLUME_ID+x} ]]; then
     attach_db_ebs_drive
   fi
@@ -1893,7 +1895,8 @@ while : ; do
   delta_config=${RUNS[$j]}
   delta_ddl_do=${RUNS[$d]}
   delta_ddl_undo=${RUNS[$u]}
-  MSG_PREFIX=$(cat $delta_config)
+  # Use last string as prefix in case when we have multilines config
+  MSG_PREFIX=$(cat $delta_config | tail -n 1)
   MSG_PREFIX="$MSG_PREFIX > "
 
   do_cpu_test $i
