@@ -20,6 +20,7 @@ VERBOSE_OUTPUT_REDIRECT=" > /dev/null"
 EBS_SIZE_MULTIPLIER=5
 POSTGRES_VERSION_DEFAULT=10
 AWS_BLOCK_DURATION=0
+MSG_PREFIX=""
 declare -a RUNS # i - delta_config  i+1 delta_ddl_do i+2 delta_ddl_undo
 
 #######################################
@@ -1645,7 +1646,6 @@ function prepare_start_workload() {
 
   if [[ "$run_number" -eq "1" ]]; then
     msg "Save prepaparation log"
-    docker_exec bash -c "mkdir $MACHINE_HOME/$ARTIFACTS_DIRNAME"
     docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_DIRNAME/postgresql.prepare.log.gz"
   fi
 
@@ -1682,7 +1682,7 @@ function execute_workload() {
   OP_START_TIME=$(date +%s)
   msg "Execute workload..."
   if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
-      docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME 2>&1 | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$run_number.txt $verbose_output"
+      docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME 2>&1 | awk '{print \"$MSG_PREFIX\" \$0}' | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$run_number.txt $verbose_output"
   fi
   if [[ ! -z ${WORKLOAD_REAL+x} ]] && [[ "$WORKLOAD_REAL" != '' ]]; then
     msg "Execute pgreplay queries..."
@@ -1690,10 +1690,10 @@ function execute_workload() {
     WORKLOAD_FILE_NAME=$(basename $WORKLOAD_REAL)
     if [[ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ]] && [[ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]]; then
       docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED $MACHINE_HOME/$WORKLOAD_FILE_NAME 2>&1 \
-      | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$run_number.txt $verbose_output"
+      | awk '{print \"$MSG_PREFIX\" \$0}' | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$run_number.txt $verbose_output"
     else
       docker_exec bash -c "pgreplay -r -j $MACHINE_HOME/$WORKLOAD_FILE_NAME 2>&1 \
-      | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$run_number.txt $verbose_output"
+      | awk '{print \"$MSG_PREFIX\" \$0}' | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$run_number.txt $verbose_output"
     fi
   fi
   if ([ ! -z ${WORKLOAD_CUSTOM_SQL+x} ] && [ "$WORKLOAD_CUSTOM_SQL" != "" ]); then
@@ -1816,6 +1816,23 @@ function docker_cleanup_and_exit {
   cleanup_and_exit
 }
 
+function do_cpu_test() {
+  local run_number=$1
+  let run_number=run_number+1
+  dbg "Start CPU test"
+  docker_exec bash -c "sysbench --test=cpu --num-threads=\"$(lscpu -e | grep -v CPU | wc -l)\" --max-time=10 run 2>&1 | awk '{print \"$MSG_PREFIX\" \$0}' | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/sysbench_cpu_run.$run_number.txt $VERBOSE_OUTPUT_REDIRECT"
+}
+
+function do_fs_test() {
+  local run_number=$1
+  let run_number=run_number+1
+  dbg "Start FS test"
+  docker_exec bash -c "mkdir -p /storage/fs_test"
+  docker_exec bash -c "cd /storage/fs_test && sysbench --test=fileio --file-test-mode=rndrw --num-threads=\"$(lscpu -e | grep -v CPU | wc -l)\" prepare 2>&1 | awk '{print \"$MSG_PREFIX\" \$0}' | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/sysbench_fs_prepare.$run_number.txt $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "cd /storage/fs_test && sysbench --test=fileio --file-test-mode=rndrw --num-threads=\"$(lscpu -e | grep -v CPU | wc -l)\" --max-time=10 run 2>&1 | awk '{print \"$MSG_PREFIX\" \$0}' | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/sysbench_fs_run.$run_number.txt $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "rm /storage/fs_test/*"
+}
+
 trap docker_cleanup_and_exit EXIT
 
 if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]] && [[ ! "$DB_NAME" == "test" ]]; then
@@ -1853,6 +1870,7 @@ done
 # Dump
 sleep 10 # wait for postgres up&running
 
+docker_exec bash -c "mkdir $MACHINE_HOME/$ARTIFACTS_DIRNAME"
 apply_commands_after_container_init
 pg_config_init
 apply_sql_before_db_restore
@@ -1875,6 +1893,11 @@ while : ; do
   delta_config=${RUNS[$j]}
   delta_ddl_do=${RUNS[$d]}
   delta_ddl_undo=${RUNS[$u]}
+  MSG_PREFIX=$(cat $delta_config)
+  MSG_PREFIX="$MSG_PREFIX > "
+
+  do_cpu_test $i
+  do_fs_test $i
 
   #restore database if not first run
   if [[ "$i" -gt "0" ]]; then
@@ -1908,44 +1931,44 @@ while : ; do
     fi
   fi
   echo -e "------------------------------------------------------------------------------"
-  echo -e "Artifacts (collected in \"$ARTIFACTS_DESTINATION/$ARTIFACTS_DIRNAME/\"):"
-  echo -e "  Postgres config:    postgresql.$num.conf"
-  echo -e "  Postgres logs:      postgresql.prepare.$num.log.gz (preparation),"
+  echo -e "${MSG_PREFIX}Artifacts (collected in \"$ARTIFACTS_DESTINATION/$ARTIFACTS_DIRNAME/\"):"
+  echo -e "$MSG_PREFIX  Postgres config:    postgresql.$num.conf"
+  echo -e "$MSG_PREFIX  Postgres logs:      postgresql.prepare.$num.log.gz (preparation),"
   echo -e "                      postgresql.workload.$num.log.gz (workload)"
   if [[ -z ${NO_PGBADGER+x} ]]; then
-    echo -e "  pgBadger reports:   pgbadger.$num.html (for humans),"
+    echo -e "$MSG_PREFIX  pgBadger reports:   pgbadger.$num.html (for humans),"
     echo -e "                      pgbadger.$num.json (for robots)"
   fi
-  echo -e "  Stat stapshots:     pg_stat_statements.$num.csv,"
+  echo -e "$MSG_PREFIX  Stat stapshots:     pg_stat_statements.$num.csv,"
   echo -e "                      pg_stat_***.$num.csv"
   echo -e "------------------------------------------------------------------------------"
-  echo -e "Total execution time: $DURATION"
+  echo -e "${MSG_PREFIX}Total execution time: $DURATION"
   echo -e "------------------------------------------------------------------------------"
-  echo -e "Workload:"
-  echo -e "  Execution time:     $DURATION_WRKLD"
+  echo -e "${MSG_PREFIX}Workload:"
+  echo -e "$MSG_PREFIX   Execution time:     $DURATION_WRKLD"
   if [[ -z ${NO_PGBADGER+x} ]]; then
-    echo -e "  Total query time:   "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.overall_stat.queries_duration') " ms"
-    echo -e "  Queries:            "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.overall_stat.queries_number')
-    echo -e "  Query groups:       "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.normalyzed_info | length')
-    echo -e "  Errors:             "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.overall_stat.errors_number')
-    echo -e "  Errors groups:      "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.error_info | length')
+    echo -e "$MSG_PREFIX   Total query time:   "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.overall_stat.queries_duration') " ms"
+    echo -e "$MSG_PREFIX   Queries:            "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.overall_stat.queries_number')
+    echo -e "$MSG_PREFIX   Query groups:       "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.normalyzed_info | length')
+    echo -e "$MSG_PREFIX   Errors:             "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.overall_stat.errors_number')
+    echo -e "$MSG_PREFIX   Errors groups:      "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.error_info | length')
     if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
       tps_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$num.txt | grep "including connections establishing")
       tps=${tps_string//[!0-9.]/}
       if [[ ! -z "$tps" ]]; then
-        echo -e "  TPS:                $tps (including connections establishing)"
+        echo -e "$MSG_PREFIX   TPS:                $tps (including connections establishing)"
       fi
     fi
     if [[ ! -z ${WORKLOAD_REAL+x} ]]; then
       avg_num_con_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$num.txt | grep "Average number of concurrent connections")
       avg_num_con=${avg_num_con_string//[!0-9.]/}
       if [[ ! -z "$avg_num_con" ]]; then
-        echo -e "  Avg. connection number: $avg_num_con"
+        echo -e "$MSG_PREFIX   Avg. connection number: $avg_num_con"
       fi
     fi
   else
     if [[ ! -z ${PG_STAT_TOTAL_TIME+x} ]]; then
-      echo -e "  Total query time:   $PG_STAT_TOTAL_TIME ms"
+      echo -e "$MSG_PREFIX   Total query time:   $PG_STAT_TOTAL_TIME ms"
     fi
   fi
   echo -e "------------------------------------------------------------------------------"
