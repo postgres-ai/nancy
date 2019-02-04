@@ -40,7 +40,7 @@ RUN apt-get update \
     && git clone https://github.com/NikolayS/postgres_dba.git /root/postgres_dba \
     && git clone https://github.com/darold/pgbadger.git /root/pgbadger && cd /root/pgbadger && git checkout "tags/v10.1" \
     && apt-get install -y postgresql-$PG_SERVER_VERSION-repack \
-	&& apt-get install -y sysbench s3cmd sudo bzip2 python-software-properties software-properties-common \
+    && apt-get install -y sysbench s3cmd sudo bzip2 python-software-properties software-properties-common \
     && rm -rf /tmp/* \
     && apt-get purge -y --auto-remove \
     && apt-get clean -y autoclean \
@@ -59,7 +59,8 @@ RUN echo "\\set dba '\\\\\\\\i /root/postgres_dba/start.psql'" >> ~/.psqlrc \
     && psql -U postgres -c "CREATE ROLE testuser LOGIN password 'testuser' superuser;" && /etc/init.d/postgresql stop \
     && cat /postgresql.tweak.conf >> /etc/postgresql/$PG_SERVER_VERSION/main/postgresql.conf \
     && echo "#!/bin/bash" > /pg_start.sh && chmod a+x /pg_start.sh \
-    && printf "sudo -u postgres /usr/lib/postgresql/$PG_SERVER_VERSION/bin/postgres -D /var/lib/postgresql/$PG_SERVER_VERSION/main -c config_file=/etc/postgresql/$PG_SERVER_VERSION/main/postgresql.conf \n" >> /pg_start.sh
+    && printf "sudo -u postgres /usr/lib/postgresql/$PG_SERVER_VERSION/bin/postgres -D /var/lib/postgresql/$PG_SERVER_VERSION/main -c config_file=/etc/postgresql/$PG_SERVER_VERSION/main/postgresql.conf \n" >> /pg_start.sh \
+    && echo "/bin/bash -c \"trap : TERM INT; sleep infinity & wait\"" >> /pg_start.sh
 
 EXPOSE 5432
 
