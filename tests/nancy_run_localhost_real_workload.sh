@@ -8,7 +8,7 @@ src_dir=$(dirname $(dirname $(realpath "$0")))"/.circleci"
 
 output=$(
   ${BASH_SOURCE%/*}/../nancy run \
-    --db-dump "create table hello_world as select i, i as id from generate_series(1, 1000) _(i);" \
+    --db-dump "create table hello_world as select i, i as id from generate_series(1, 1000) _(i); drop role testuser;" \
     --workload-real "file://$src_dir/sample.replay" \
     --tmp-path $src_dir/tmp 2>&1
 )
