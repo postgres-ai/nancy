@@ -25,6 +25,7 @@ mkdir -p ./series_logs
   --db-pgbench "$3" \
   --workload-pgbench "$4" \
   --artifacts-dirname "$1_$CURRENT_TS" \
+  --no-pgbadger \
   --commands-after-container-init file://$(pwd)/series_data/series_after_init.sh > $(pwd)/series_logs/"$1_$CURRENT_TS".log 2>&1
 
 #  --debug \

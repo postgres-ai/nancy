@@ -1,13 +1,13 @@
 #!/bin/bash
 
 readSql="
-\set aid random_zipfian(1, 100000 * :scale, 1.07)
+\set aid random(1, 100000 * :scale)
 BEGIN;
 SELECT abalance FROM pgbench_accounts WHERE aid = :aid;
 END;
 "
 scanSql="
-\set aid random_zipfian(1, 100000 * :scale, 1.07)
+\set aid random(1, 100000 * :scale)
 \SET limit random(1, 100)
 BEGIN;
 SELECT abalance FROM pgbench_accounts WHERE aid > :aid ORDER BY aid LIMIT :limit;
@@ -15,9 +15,9 @@ END;
 "
 
 writeSql="
-\set aid random_zipfian(1, 100000 * :scale, 1.07)
-\set bid random_zipfian(1, 1 * :scale, 1.07)
-\set tid random_zipfian(1, 10 * :scale, 1.07)
+\set aid random(1, 100000 * :scale)
+\set bid random(1, 1 * :scale)
+\set tid random(1, 10 * :scale)
 \set delta random(-5000, 5000)
 BEGIN;
 UPDATE pgbench_accounts SET abalance = abalance + :delta WHERE aid = :aid;

@@ -1,0 +1,13 @@
+run:
+  0:
+    delta_config: effective_cache_size = 183GB;shared_buffers = 8MB
+  1:
+    delta_config: effective_cache_size = 183GB;shared_buffers = 1GB
+  2:
+    delta_config: effective_cache_size = 183GB;shared_buffers = 8GB
+  3:
+    delta_config: effective_cache_size = 183GB;shared_buffers = 61GB
+  4:
+    delta_config: effective_cache_size = 183GB;shared_buffers = 90GB
+  5:
+    delta_config: effective_cache_size = 183GB;shared_buffers = 190GB
