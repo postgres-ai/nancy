@@ -1917,8 +1917,8 @@ while : ; do
       rsync_backup
       docker_exec bash -c "sudo /etc/init.d/postgresql start $VERBOSE_OUTPUT_REDIRECT"
     else
-      # restore_dump;
       echo "Skip restore database."
+      #restore_dump;
     fi
     sleep 10
   fi
