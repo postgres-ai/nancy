@@ -1772,6 +1772,7 @@ function collect_results() {
   PG_STAT_TOTAL_TIME=${out//[!0-9.]/}
 
   for table2export in \
+    "pg_settings order by name" \
     "pg_stat_statements order by total_time desc" \
     "pg_stat_archiver" \
     "pg_stat_bgwriter" \
@@ -1910,7 +1911,7 @@ while : ; do
       rsync_backup
       docker_exec bash -c "sudo /etc/init.d/postgresql start $VERBOSE_OUTPUT_REDIRECT"
     else
-      restore_dump;
+      # restore_dump;
     fi
     sleep 10
   fi
