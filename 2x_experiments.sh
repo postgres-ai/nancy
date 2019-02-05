@@ -12,34 +12,34 @@
 
 # 80 %
 
-./nancy_run_experiment.sh "SA2_i3_2xlarge_5G_80" "i3.2xlarge" "-s 400" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r" "$(pwd)/series_data/8m-52g_46gb.yml" &
+./nancy_run_experiment.sh "SA2_i3_2xlarge_5G_80" "i3.2xlarge" "-s 400" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r -Mprepared" "$(pwd)/series_data/8m-52g_46gb.yml" &
 sleep 3
 
-./nancy_run_experiment.sh "SA2_i3_2xlarge_50G_80" "i3.2xlarge" "-s 4000" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r" "$(pwd)/series_data/8m-52g_46gb.yml" &
+./nancy_run_experiment.sh "SA2_i3_2xlarge_50G_80" "i3.2xlarge" "-s 4000" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r -Mprepared" "$(pwd)/series_data/8m-52g_46gb.yml" &
 sleep 3
 
-./nancy_run_experiment.sh "SA2_i3_2xlarge_100G_80" "i3.2xlarge" "-s 8000" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r" "$(pwd)/series_data/8m-52g_46gb.yml" &
+./nancy_run_experiment.sh "SA2_i3_2xlarge_100G_80" "i3.2xlarge" "-s 8000" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r -Mprepared" "$(pwd)/series_data/8m-52g_46gb.yml" &
 sleep 3
 
-./nancy_run_experiment.sh "SA2_i3_2xlarge_200G_80" "i3.2xlarge" "-s 16000" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r" "$(pwd)/series_data/8m-52g_46gb.yml" &
+./nancy_run_experiment.sh "SA2_i3_2xlarge_200G_80" "i3.2xlarge" "-s 16000" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r -Mprepared" "$(pwd)/series_data/8m-52g_46gb.yml" &
 sleep 3
 
-./nancy_run_experiment.sh "SA2_i3_2xlarge_400G_80" "i3.2xlarge" "-s 32000" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r" "$(pwd)/series_data/8m-52g_46gb.yml" &
+./nancy_run_experiment.sh "SA2_i3_2xlarge_400G_80" "i3.2xlarge" "-s 32000" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r -Mprepared" "$(pwd)/series_data/8m-52g_46gb.yml" &
 sleep 3
 
-./nancy_run_experiment.sh "SB2_i3_2xlarge_5G_80" "i3.2xlarge" "-s 400" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
+./nancy_run_experiment.sh "SB2_i3_2xlarge_5G_80" "i3.2xlarge" "-s 400" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r -Mprepared -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
 sleep 3
 
-./nancy_run_experiment.sh "SB2_i3_2xlarge_50G_80" "i3.2xlarge" "-s 4000" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
+./nancy_run_experiment.sh "SB2_i3_2xlarge_50G_80" "i3.2xlarge" "-s 4000" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r -Mprepared -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
 sleep 3
 
-./nancy_run_experiment.sh "SB2_i3_2xlarge_100G_80" "i3.2xlarge" "-s 8000" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
+./nancy_run_experiment.sh "SB2_i3_2xlarge_100G_80" "i3.2xlarge" "-s 8000" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r -Mprepared -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
 sleep 3
 
-./nancy_run_experiment.sh "SB2_i3_2xlarge_200G_80" "i3.2xlarge" "-s 16000" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
+./nancy_run_experiment.sh "SB2_i3_2xlarge_200G_80" "i3.2xlarge" "-s 16000" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r -Mprepared -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
 sleep 3
 
-./nancy_run_experiment.sh "SB2_i3_2xlarge_400G_80" "i3.2xlarge" "-s 32000" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
+./nancy_run_experiment.sh "SB2_i3_2xlarge_400G_80" "i3.2xlarge" "-s 32000" "-f /storage/zipfian/read.sql@64 -f /storage/zipfian/scan.sql@16 -f /storage/zipfian/write.sql@20 -j8 -c8 -T600 -r -Mprepared -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
 sleep 3
 
 
@@ -47,32 +47,32 @@ sleep 3
 
 # 100 %
 
-#./nancy_run_experiment.sh "SA1_i3_2xlarge_5G_100" "i3.2xlarge" "-s 400" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r" "$(pwd)/series_data/8m-52g_46gb.yml" &
+#./nancy_run_experiment.sh "SA1_i3_2xlarge_5G_100" "i3.2xlarge" "-s 400" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r -Mprepared" "$(pwd)/series_data/8m-52g_46gb.yml" &
 #sleep 3
 
-#./nancy_run_experiment.sh "SA1_i3_2xlarge_50G_100" "i3.2xlarge" "-s 4000" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r" "$(pwd)/series_data/8m-52g_46gb.yml" &
+#./nancy_run_experiment.sh "SA1_i3_2xlarge_50G_100" "i3.2xlarge" "-s 4000" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r -Mprepared" "$(pwd)/series_data/8m-52g_46gb.yml" &
 #sleep 3
 
-#./nancy_run_experiment.sh "SA1_i3_2xlarge_100G_100" "i3.2xlarge" "-s 8000" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r" "$(pwd)/series_data/8m-52g_46gb.yml" &
+#./nancy_run_experiment.sh "SA1_i3_2xlarge_100G_100" "i3.2xlarge" "-s 8000" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r -Mprepared" "$(pwd)/series_data/8m-52g_46gb.yml" &
 #sleep 3
 
-#./nancy_run_experiment.sh "SA1_i3_2xlarge_200G_100" "i3.2xlarge" "-s 16000" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r" "$(pwd)/series_data/8m-52g_46gb.yml" &
+#./nancy_run_experiment.sh "SA1_i3_2xlarge_200G_100" "i3.2xlarge" "-s 16000" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r -Mprepared" "$(pwd)/series_data/8m-52g_46gb.yml" &
 #sleep 3
 
-#./nancy_run_experiment.sh "SA1_i3_2xlarge_400G_100" "i3.2xlarge" "-s 32000" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r" "$(pwd)/series_data/8m-52g_46gb.yml" &
+#./nancy_run_experiment.sh "SA1_i3_2xlarge_400G_100" "i3.2xlarge" "-s 32000" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r -Mprepared" "$(pwd)/series_data/8m-52g_46gb.yml" &
 #sleep 3
 
-#./nancy_run_experiment.sh "SB1_i3_2xlarge_5G_100" "i3.2xlarge" "-s 400" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
+#./nancy_run_experiment.sh "SB1_i3_2xlarge_5G_100" "i3.2xlarge" "-s 400" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r -Mprepared -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
 #sleep 3
 
-#./nancy_run_experiment.sh "SB1_i3_2xlarge_50G_100" "i3.2xlarge" "-s 4000" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
+#./nancy_run_experiment.sh "SB1_i3_2xlarge_50G_100" "i3.2xlarge" "-s 4000" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r -Mprepared -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
 #sleep 3
 
-#./nancy_run_experiment.sh "SB1_i3_2xlarge_100G_100" "i3.2xlarge" "-s 8000" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
+#./nancy_run_experiment.sh "SB1_i3_2xlarge_100G_100" "i3.2xlarge" "-s 8000" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r -Mprepared -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
 #sleep 3
 
-#./nancy_run_experiment.sh "SB1_i3_2xlarge_200G_100" "i3.2xlarge" "-s 16000" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
+#./nancy_run_experiment.sh "SB1_i3_2xlarge_200G_100" "i3.2xlarge" "-s 16000" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r -Mprepared -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
 #sleep 3
 
-#./nancy_run_experiment.sh "SB1_i3_2xlarge_400G_100" "i3.2xlarge" "-s 32000" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
+#./nancy_run_experiment.sh "SB1_i3_2xlarge_400G_100" "i3.2xlarge" "-s 32000" "-f /storage/zipfian/read.sql@80 -f /storage/zipfian/scan.sql@20 -j8 -c8 -T600 -r -Mprepared -R1000" "$(pwd)/series_data/8m-52g_46gb.yml" &
 #sleep 3
