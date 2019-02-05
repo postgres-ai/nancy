@@ -1094,8 +1094,6 @@ elif [[ "$RUN_ON" == "aws" ]]; then
   msg "  To connect docker machine use:"
   msg "    docker-machine ssh $DOCKER_MACHINE"
 
-  docker-machine ssh $DOCKER_MACHINE echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
-
   if [[ "$RUN_ON" == "aws" ]] && [[ ! -z ${DB_EBS_VOLUME_ID+x} ]]; then
     attach_db_ebs_drive
   fi
@@ -1651,6 +1649,14 @@ function prepare_start_workload() {
     docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_DIRNAME/postgresql.prepare.log.gz"
   fi
 
+  msg "Prewarm"
+  (docker_exec psql -U postgres $DB_NAME -f - <<EOF
+    create extension pg_prewarm;
+    select pg_prewarm('pgbench_accounts');
+    select pg_prewarm('pgbench_accounts_pkey');
+EOF
+) > /dev/null
+
   msg "Reset pg_stat_*** and Postgres log"
   (docker_exec psql -U postgres $DB_NAME -f - <<EOF
     select pg_stat_reset(), pg_stat_statements_reset(), pg_stat_reset_shared('archiver'), pg_stat_reset_shared('bgwriter');
@@ -1823,7 +1829,7 @@ function do_cpu_test() {
   local run_number=$1
   let run_number=run_number+1
   dbg "Start CPU test"
-  docker_exec bash -c "sysbench --test=cpu --num-threads=\"$(lscpu -e | grep -v CPU | wc -l)\" --max-time=10 run 2>&1 | awk '{print \"$MSG_PREFIX\" \$0}' | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/sysbench_cpu_run.$run_number.txt $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "sysbench --test=cpu --num-threads=${CPU_CNT} --max-time=10 run 2>&1 | awk '{print \"$MSG_PREFIX\" \$0}' | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/sysbench_cpu_run.$run_number.txt $VERBOSE_OUTPUT_REDIRECT"
 }
 
 function do_fs_test() {
@@ -1831,8 +1837,8 @@ function do_fs_test() {
   let run_number=run_number+1
   dbg "Start FS test"
   docker_exec bash -c "mkdir -p /storage/fs_test"
-  docker_exec bash -c "cd /storage/fs_test && sysbench --test=fileio --file-test-mode=rndrw --num-threads=\"$(lscpu -e | grep -v CPU | wc -l)\" prepare 2>&1 | awk '{print \"$MSG_PREFIX\" \$0}' | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/sysbench_fs_prepare.$run_number.txt $VERBOSE_OUTPUT_REDIRECT"
-  docker_exec bash -c "cd /storage/fs_test && sysbench --test=fileio --file-test-mode=rndrw --num-threads=\"$(lscpu -e | grep -v CPU | wc -l)\" --max-time=10 run 2>&1 | awk '{print \"$MSG_PREFIX\" \$0}' | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/sysbench_fs_run.$run_number.txt $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "cd /storage/fs_test && sysbench --test=fileio --file-test-mode=rndrw --num-threads=${CPU_CNT} prepare 2>&1 | awk '{print \"$MSG_PREFIX\" \$0}' | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/sysbench_fs_prepare.$run_number.txt $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "cd /storage/fs_test && sysbench --test=fileio --file-test-mode=rndrw --num-threads=${CPU_CNT} --max-time=10 run 2>&1 | awk '{print \"$MSG_PREFIX\" \$0}' | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/sysbench_fs_run.$run_number.txt $VERBOSE_OUTPUT_REDIRECT"
   docker_exec bash -c "rm /storage/fs_test/*"
 }
 
@@ -1912,6 +1918,7 @@ while : ; do
       docker_exec bash -c "sudo /etc/init.d/postgresql start $VERBOSE_OUTPUT_REDIRECT"
     else
       # restore_dump;
+      echo "Skip restore database."
     fi
     sleep 10
   fi
