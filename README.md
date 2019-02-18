@@ -182,10 +182,6 @@ Ubuntu/Debian:
 # Ubuntu/Debian
 usermod -aG docker ${USER}
 newgrp docker
-
-# RHEL7
-usermod -aG dockerroot ${USER}
-newgrp dockerroot
 ```
 
 CentOS/RHEL:
