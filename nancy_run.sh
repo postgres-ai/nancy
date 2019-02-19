@@ -1163,14 +1163,17 @@ function attach_pgdata() {
     # pgdata path given by --db-local-pgdata
     docker_exec bash -c "sudo rm -rf /var/lib/postgresql/$PG_VERSION/main $VERBOSE_OUTPUT_REDIRECT"
     docker_exec bash -c "ln -s /pgdata/ /var/lib/postgresql/$PG_VERSION/main $VERBOSE_OUTPUT_REDIRECT"
-    docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql/$PG_VERSION/main $VERBOSE_OUTPUT_REDIRECT"
-    docker_exec bash -c "chmod -R 0700 /var/lib/postgresql/$PG_VERSION/main/ $VERBOSE_OUTPUT_REDIRECT"
   else
     # path where need place pgdata given by --pgdata-dir
     docker_exec bash -c "sudo rm -rf /pgdata/*"
-    docker_exec bash -c "sudo mv /var/lib/postgresql /pgdata/"
-    docker_exec bash -c "ln -s /pgdata/postgresql /var/lib/postgresql"
+    docker_exec bash -c "sudo mv /var/lib/postgresql/$PG_VERSION/main/* /pgdata/"
+    docker_exec bash -c "sudo rm -rf /var/lib/postgresql/$PG_VERSION/main"
+    docker_exec bash -c "ln -s /pgdata/ /var/lib/postgresql/$PG_VERSION/main $VERBOSE_OUTPUT_REDIRECT"
   fi
+  docker_exec bash -c "sudo chown -R postgres:postgres /var/lib/postgresql/$PG_VERSION/main $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "sudo chmod -R 0700 /var/lib/postgresql/$PG_VERSION/main $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "sudo chown -R postgres:postgres /pgdata"
+  docker_exec bash -c "sudo chmod -R 0700 /pgdata"
   local end_time=$(date +%s);
   local duration=$(echo $((end_time-op_start_time)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Time taken to attach PGDATA: $duration."
