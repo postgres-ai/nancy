@@ -1528,7 +1528,18 @@ function execute_workload() {
   fi
   if [[ ! -z ${WORKLOAD_REAL+x} ]] && [[ "$WORKLOAD_REAL" != '' ]]; then
     msg "Execute pgreplay queries..."
-    out=$(docker_exec psql -U postgres $DB_NAME -c "create role testuser superuser login;")
+    (docker_exec psql -U postgres $DB_NAME -f - <<EOF
+    do
+    \$do\$
+    begin
+       if not exists (select 1 from pg_catalog.pg_roles where rolname = 'testuser') then
+          create role testuser superuser login;
+       end if;
+    end
+    \$do\$;
+EOF
+) > /dev/null
+
     WORKLOAD_FILE_NAME=$(basename $WORKLOAD_REAL)
     if [[ ! -z ${WORKLOAD_REAL_REPLAY_SPEED+x} ]] && [[ "$WORKLOAD_REAL_REPLAY_SPEED" != '' ]]; then
       docker_exec bash -c "pgreplay -r -s $WORKLOAD_REAL_REPLAY_SPEED $MACHINE_HOME/$WORKLOAD_FILE_NAME 2>&1 \
