@@ -12,7 +12,7 @@ mkdir -p ./series_results
 mkdir -p ./series_tmp
 mkdir -p ./series_logs
 
-/home/dmius/nancy/nancy_run.sh \
+$(pwd)/nancy_run.sh \
   --run-on aws \
   --aws-keypair-name awskey3 \
   --aws-ssh-key-path file:///home/dmius/.ssh/awskey3.pem \

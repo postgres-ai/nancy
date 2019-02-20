@@ -1430,6 +1430,7 @@ function restore_dump() {
   msg "Restore database"
   if ([ ! -z ${DB_PGBENCH+x} ]); then
       docker_exec bash -c "pgbench -i $DB_PGBENCH -U postgres $DB_NAME $VERBOSE_OUTPUT_REDIRECT" || true
+      docker_exec psql -U postgres $DB_NAME -c "create table pgbench_accounts_vac (like pgbench_accounts EXCLUDING ALL);"
   else
     case "$DB_DUMP_EXT" in
       sql)
@@ -1649,13 +1650,12 @@ function prepare_start_workload() {
     docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_DIRNAME/postgresql.prepare.log.gz"
   fi
 
-  msg "Prewarm"
-  (docker_exec psql -U postgres $DB_NAME -f - <<EOF
-    create extension pg_prewarm;
-    select pg_prewarm('pgbench_accounts');
-    select pg_prewarm('pgbench_accounts_pkey');
-EOF
-) > /dev/null
+#  msg "Prewarm"
+#  (docker_exec psql -U postgres $DB_NAME -f - <<EOF
+#    select pg_prewarm('pgbench_accounts');
+#    select pg_prewarm('pgbench_accounts_pkey');
+#EOF
+#) > /dev/null
 
   msg "Reset pg_stat_*** and Postgres log"
   (docker_exec psql -U postgres $DB_NAME -f - <<EOF
@@ -1688,6 +1688,10 @@ function execute_workload() {
     verbose_output=$VERBOSE_OUTPUT_REDIRECT
   fi
   OP_START_TIME=$(date +%s)
+  msg "Start autovacuum in background"
+  docker_exec bash -c "nohup psql -A -t -d bench -c \"vacuum analyze pgbench_accounts_vac\" &>/dev/null &"
+  #nohup "psql -A -t -d bench -c \"vacuum analyze pgbench_accounts_vac\"" &>/dev/null &
+  
   msg "Execute workload..."
   if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
       docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME 2>&1 | awk '{print \"$MSG_PREFIX\" \$0}' | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$run_number.txt $verbose_output"
@@ -1888,6 +1892,7 @@ if [[ ! -z ${DB_DUMP+x} ]] || [[ ! -z ${DB_PGBENCH+x} ]]; then
 fi
 apply_sql_after_db_restore
 docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not exists pg_stat_statements;' $VERBOSE_OUTPUT_REDIRECT"
+#docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not exists pg_prewarm;' $VERBOSE_OUTPUT_REDIRECT"
 
 msg "Start runs..."
 runs_count=${#RUNS[*]}
@@ -1918,6 +1923,8 @@ while : ; do
       docker_exec bash -c "sudo /etc/init.d/postgresql start $VERBOSE_OUTPUT_REDIRECT"
     else
       echo "Skip restore database."
+      #clear cashe
+      docker_exec bash -c "sync; echo 3 > /proc/sys/vm/drop_caches"
       #restore_dump;
     fi
     sleep 10
