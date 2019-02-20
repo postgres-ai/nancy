@@ -115,6 +115,7 @@ function dbg_cli_parameters() {
 --aws-region: ${AWS_REGION}
 --aws-zone: ${AWS_ZONE}
 --aws-block-duration: ${AWS_BLOCK_DURATION}
+--aws-zfs: ${AWS_ZFS}
 --s3-cfg-path: ${S3_CFG_PATH}
 
 --debug: ${DEBUG}
@@ -238,6 +239,9 @@ function check_cli_parameters() {
     if [[ -z ${AWS_ZONE+x} ]]; then
       err "NOTICE: AWS EC2 zone not given. Will be determined by min price."
     fi
+    if [[ -z ${AWS_ZFS+x} ]]; then
+      err "NOTICE: Ext4 will be used for PGDATA."
+    fi
     if [[ -z ${AWS_BLOCK_DURATION+x} ]]; then
       err "NOTICE: Container live time duration is not given. Will use 60 minutes."
       AWS_BLOCK_DURATION=60
@@ -287,6 +291,10 @@ function check_cli_parameters() {
     fi
     if [[ ! -z ${AWS_ZONE+x} ]]; then
       err "ERROR: option '--aws-zone' must be used with '--run-on aws'."
+      exit 1
+    fi
+    if [[ ! -z ${AWS_ZFS+x} ]]; then
+      err "ERROR: option '--aws-zfs' must be used with '--run-on aws'."
       exit 1
     fi
     if [[ "$AWS_BLOCK_DURATION" != "0" ]]; then
@@ -646,13 +654,26 @@ function use_ec2_nvme_drive() {
   # Init i3's NVMe storage, mounting one of the existing volumes to /storage
   # The following commands are to be executed in the docker machine itself,
   # not in the container.
-  docker-machine ssh $DOCKER_MACHINE sudo add-apt-repository -y ppa:sbates
-  docker-machine ssh $DOCKER_MACHINE "sudo apt-get update || true"
-  docker-machine ssh $DOCKER_MACHINE sudo apt-get install -y nvme-cli
-  docker-machine ssh $DOCKER_MACHINE "sudo parted -a optimal -s /dev/nvme0n1 mklabel gpt"
-  docker-machine ssh $DOCKER_MACHINE "sudo parted -a optimal -s /dev/nvme0n1 mkpart primary 0% 100%"
-  docker-machine ssh $DOCKER_MACHINE "sudo mkfs.ext4 /dev/nvme0n1p1"
-  docker-machine ssh $DOCKER_MACHINE "sudo mount /dev/nvme0n1p1 /home/storage"
+
+  if [[ -z ${AWS_ZFS+x} ]]; then
+    # Format volume as Ext4.
+    docker-machine ssh $DOCKER_MACHINE "sudo mkfs.ext4 /dev/nvme0n1"
+    docker-machine ssh $DOCKER_MACHINE "sudo mount -o noatime \
+                                             -o data=writeback \
+                                             -o barrier=0 \
+                                             -o nobh \
+                                             /dev/nvme0n1 /home/storage || exit 115"
+    else
+    # Format volume as ZFS.
+    docker-machine ssh $DOCKER_MACHINE "sudo apt-get install -y zfsutils-linux"
+    docker-machine ssh $DOCKER_MACHINE "rm -rf /home/storage >/dev/null 2>&1 || true"
+    docker-machine ssh $DOCKER_MACHINE "sudo zpool create -O compression=on \
+                                             -O atime=off \
+                                             -O recordsize=8k \
+                                             -O logbias=throughput \
+                                             -m /home/storage zpool /dev/nvme0n1"
+    # Set ARC size as 30% of RAM
+  fi
   docker-machine ssh $DOCKER_MACHINE "sudo df -h /dev/nvme0n1p1"
 }
 
@@ -928,6 +949,8 @@ while [ $# -gt 0 ]; do
         AWS_ZONE="$2"; shift 2 ;;
     --aws-block-duration )
         AWS_BLOCK_DURATION=$2; shift 2 ;;
+    --aws-zfs )
+        AWS_ZFS=1; shift ;;
     --db-ebs-volume-id )
       DB_EBS_VOLUME_ID=$2; shift 2;;
     --db-local-pgdata )
