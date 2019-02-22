@@ -3,7 +3,7 @@
 # Test ZFS on i3
 
 output=$(
-  ${BASH_SOURCE%/*}/../nancy run \
+  bash -x ${BASH_SOURCE%/*}/../nancy run \
     --debug \
     --run-on aws \
     --aws-keypair-name awskey \
