@@ -686,7 +686,7 @@ function use_ec2_nvme_drive() {
     docker-machine ssh $DOCKER_MACHINE "sudo cat /sys/module/zfs/parameters/zfs_arc_max"
     msg "ARC MAX was set to '$arc_size_b' bytes:"
   fi
-  docker-machine ssh $DOCKER_MACHINE "sudo df -h /home/storage1"
+  docker-machine ssh $DOCKER_MACHINE "sudo df -h /home/storage"
 }
 
 #######################################
