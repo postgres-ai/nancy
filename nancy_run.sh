@@ -768,6 +768,8 @@ function use_ec2_ebs_drive() {
 #   None
 #######################################
 function cleanup_and_exit {
+  local exit_code="$?" # we can detect exit code here
+
   if  [ "$KEEP_ALIVE" -gt "0" ]; then
     msg "Debug timeout is $KEEP_ALIVE seconds – started."
     msg_wo_dt ""
@@ -805,6 +807,7 @@ function cleanup_and_exit {
     err "ASSERT: must not reach this point"
     exit 1
   fi
+  exit "${exit_code}"
 }
 
 #######################################
@@ -1016,7 +1019,7 @@ else
 fi
 shopt -s expand_aliases
 
-trap cleanup_and_exit EXIT SIGINT
+trap cleanup_and_exit 1 2 13 15 EXIT
 
 if [[ "$RUN_ON" == "localhost" ]]; then
   if [[ -z ${CONTAINER_ID+x} ]]; then
