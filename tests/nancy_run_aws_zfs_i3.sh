@@ -4,7 +4,7 @@
 
 output=$(
   ${BASH_SOURCE%/*}/../nancy run \
-    --debug 1 \
+    --debug \
     --run-on aws \
     --aws-keypair-name awskey \
     --aws-ssh-key-path /path/.ssh/awskey.pem \
