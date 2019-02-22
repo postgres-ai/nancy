@@ -686,8 +686,7 @@ function use_ec2_nvme_drive() {
     docker-machine ssh $DOCKER_MACHINE "sudo cat /sys/module/zfs/parameters/zfs_arc_max"
     msg "ARC MAX was set to '$arc_size_b' bytes:"
   fi
-  msg "NVME storage file system for PGDATA is:"
-  docker-machine ssh $DOCKER_MACHINE "sudo df -h /home/storage"
+  docker-machine ssh $DOCKER_MACHINE "sudo df -h /home/storage1"
 }
 
 #######################################
@@ -806,6 +805,9 @@ function cleanup_and_exit {
   else
     err "ASSERT: must not reach this point"
     exit 1
+  fi
+  if [[ "$exit_code" -ne "0" ]]; then
+    err "Exiting with error code '$exit_code'."
   fi
   exit "${exit_code}"
 }
