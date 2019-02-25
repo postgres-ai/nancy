@@ -93,6 +93,7 @@ function dbg_cli_parameters() {
 --db-pgbench: '${DB_PGBENCH}'
 --db-ebs-volume-id: ${DB_EBS_VOLUME_ID}
 --db-local-pgdata: ${DB_LOCAL_PGDATA}
+--pgdata-dir: ${PGDATA_DIR}
 --db-name: ${DB_NAME}
 --db-expose-port: ${DB_EXPOSE_PORT}
 
@@ -149,6 +150,7 @@ function msg_wo_dt() {
     echo "$@"
   fi
 }
+
 #######################################
 # Check path to file/directory.
 # Globals:
@@ -221,6 +223,10 @@ function check_cli_parameters() {
       err "ERROR: --db-local-pgdata may be specified only for local runs ('--run-on localhost')."
       exit 1
     fi
+    if [[ ! -z ${PGDATA_DIR+x} ]]; then
+      err "ERROR: --db-local-pgdata may be specified only for local runs ('--run-on localhost')."
+      exit 1
+    fi
     if [[ -z ${AWS_KEYPAIR_NAME+x} ]] || [[ -z ${AWS_SSH_KEY_PATH+x} ]]; then
       err "ERROR: AWS keypair name and ssh key file must be specified to run on AWS EC2."
       exit 1
@@ -267,6 +273,10 @@ function check_cli_parameters() {
   elif [[ "$RUN_ON" == "localhost" ]]; then
     if [[ ! -z ${CONTAINER_ID+x} ]] && [[ ! -z ${DB_LOCAL_PGDATA+x} ]]; then
       err "ERROR: Both --container-id and --db-local-pgdata are provided. Cannot use --db-local-pgdata with existing container."
+      exit 1
+    fi
+    if [[ ! -z ${PGDATA_DIR+x} ]] && [[ ! -z ${DB_LOCAL_PGDATA+x} ]]; then
+      err "ERROR: Both --pgdata-dir and --db-local-pgdata are provided. Cannot use --pgdata-dir with existing pgdata path given by --db-local-pgdata."
       exit 1
     fi
     if [[ ! -z ${AWS_KEYPAIR_NAME+x} ]] || [[ ! -z ${AWS_SSH_KEY_PATH+x} ]] ; then
@@ -755,6 +765,10 @@ function cleanup_and_exit {
   if [[ ! -z "${DOCKER_CONFIG+x}" ]]; then
     docker $DOCKER_CONFIG exec -i ${CONTAINER_HASH} bash -c "sudo rm -rf $MACHINE_HOME"
   fi
+  if [[ ! -z "${PGDATA_DIR+x}" ]]; then
+    docker $DOCKER_CONFIG exec -i ${CONTAINER_HASH} bash -c "sudo /etc/init.d/postgresql stop $VERBOSE_OUTPUT_REDIRECT"
+    docker $DOCKER_CONFIG exec -i ${CONTAINER_HASH} bash -c "sudo rm -rf /pgdata/* $VERBOSE_OUTPUT_REDIRECT"
+  fi
   rm -rf "$TMP_PATH"
   if [[ "$RUN_ON" == "localhost" ]]; then
     msg "Remove docker container"
@@ -932,6 +946,9 @@ while [ $# -gt 0 ]; do
       DB_EBS_VOLUME_ID=$2; shift 2;;
     --db-local-pgdata )
       DB_LOCAL_PGDATA=$2; shift 2;;
+    --pgdata-dir )
+      PGDATA_DIR=$2; shift 2;;
+
     --less-output )
       DEBUG=false
       NO_OUTPUT=true
@@ -984,17 +1001,23 @@ trap cleanup_and_exit EXIT SIGINT
 
 if [[ "$RUN_ON" == "localhost" ]]; then
   if [[ -z ${CONTAINER_ID+x} ]]; then
-    if [[ -z ${DB_LOCAL_PGDATA+x} ]]; then
+    if [[ ! -z ${DB_LOCAL_PGDATA+x} ]] || [[ ! -z ${PGDATA_DIR+x} ]]; then
+      if [[ ! -z ${DB_LOCAL_PGDATA+x} ]]; then
+        pgdata_dir=$DB_LOCAL_PGDATA
+      fi
+      if [[ ! -z ${PGDATA_DIR+x} ]]; then
+        pgdata_dir=$PGDATA_DIR
+      fi
       CONTAINER_HASH=$(docker run --cap-add SYS_ADMIN --name="pg_nancy_${CURRENT_TS}" \
         ${DB_EXPOSE_PORT} \
         -v $TMP_PATH:/machine_home \
+        -v $pgdata_dir:/pgdata \
         -dit "postgresmen/postgres-nancy:${PG_VERSION}" \
       )
     else
       CONTAINER_HASH=$(docker run --cap-add SYS_ADMIN --name="pg_nancy_${CURRENT_TS}" \
         ${DB_EXPOSE_PORT} \
         -v $TMP_PATH:/machine_home \
-        -v $DB_LOCAL_PGDATA:/pgdata \
         -dit "postgresmen/postgres-nancy:${PG_VERSION}" \
       )
     fi
@@ -1133,12 +1156,24 @@ function cp_db_ebs_backup() {
 #######################################
 
 function attach_pgdata() {
+  local use_existing_pgdata=$1
   local op_start_time=$(date +%s)
   docker_exec bash -c "sudo /etc/init.d/postgresql stop $VERBOSE_OUTPUT_REDIRECT"
-  docker_exec bash -c "sudo rm -rf /var/lib/postgresql/$PG_VERSION/main $VERBOSE_OUTPUT_REDIRECT"
-  docker_exec bash -c "ln -s /pgdata/ /var/lib/postgresql/$PG_VERSION/main $VERBOSE_OUTPUT_REDIRECT"
-  docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql/$PG_VERSION/main $VERBOSE_OUTPUT_REDIRECT"
-  docker_exec bash -c "chmod -R 0700 /var/lib/postgresql/$PG_VERSION/main/ $VERBOSE_OUTPUT_REDIRECT"
+  if $use_existing_pgdata ; then
+    # pgdata path given by --db-local-pgdata
+    docker_exec bash -c "sudo rm -rf /var/lib/postgresql/$PG_VERSION/main $VERBOSE_OUTPUT_REDIRECT"
+    docker_exec bash -c "ln -s /pgdata/ /var/lib/postgresql/$PG_VERSION/main $VERBOSE_OUTPUT_REDIRECT"
+  else
+    # path where need place pgdata given by --pgdata-dir
+    docker_exec bash -c "sudo rm -rf /pgdata/*"
+    docker_exec bash -c "sudo mv /var/lib/postgresql/$PG_VERSION/main/* /pgdata/"
+    docker_exec bash -c "sudo rm -rf /var/lib/postgresql/$PG_VERSION/main"
+    docker_exec bash -c "ln -s /pgdata/ /var/lib/postgresql/$PG_VERSION/main $VERBOSE_OUTPUT_REDIRECT"
+  fi
+  docker_exec bash -c "sudo chown -R postgres:postgres /var/lib/postgresql/$PG_VERSION/main $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "sudo chmod -R 0700 /var/lib/postgresql/$PG_VERSION/main $VERBOSE_OUTPUT_REDIRECT"
+  docker_exec bash -c "sudo chown -R postgres:postgres /pgdata"
+  docker_exec bash -c "sudo chmod -R 0700 /pgdata"
   local end_time=$(date +%s);
   local duration=$(echo $((end_time-op_start_time)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Time taken to attach PGDATA: $duration."
@@ -1182,7 +1217,11 @@ if [[ "$RUN_ON" == "aws" ]]; then
   sleep 2 # wait for postgres started
 else
   if [[ ! -z ${DB_LOCAL_PGDATA+x} ]]; then
-    attach_pgdata
+    attach_pgdata true
+  else
+    if [[ ! -z ${PGDATA_DIR+x} ]]; then
+      attach_pgdata false
+    fi
   fi
 fi
 

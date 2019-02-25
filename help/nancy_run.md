@@ -147,6 +147,11 @@
   Path of Postgres pgdata placed on local storage to use in experiments. All changes at database,
   which done during experiment will be stored.
 
+  <b>--pgdata-dir</b>
+
+  The path of Postgres pgdata is placed in local storage to use it in experiments.
+  All changes to the database, which are done during experiments will be stored.
+
   <b>--commands-after-container-init</b> (string)
 
   Shell commands to be executed after the container initialization. Can be used
