@@ -663,7 +663,7 @@ function use_ec2_nvme_drive() {
                                              -o barrier=0 \
                                              -o nobh \
                                              /dev/nvme0n1 /home/storage || exit 115"
-    else
+  else
     # Format volume as ZFS and tune it
     docker-machine ssh $DOCKER_MACHINE "sudo apt-get install -y zfsutils-linux"
     docker-machine ssh $DOCKER_MACHINE "sudo rm -rf /home/storage >/dev/null 2>&1 || true"
