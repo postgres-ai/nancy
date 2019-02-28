@@ -44,10 +44,11 @@ RUN git clone https://github.com/darold/pgbadger.git /root/pgbadger && cd /root/
 RUN apt-get install -y postgresql-$PG_SERVER_VERSION-repack
 RUN apt-get install -y sysbench s3cmd sudo bzip2 python-software-properties software-properties-common
 
-# add perf and FlameGraph support for AWS
-RUN apt-get install -y linux-tools-aws
-RUN apt-get install -y perf-tools-unstable
+# install FlameGraph and generic perf
 RUN git clone https://github.com/brendangregg/FlameGraph /root/FlameGraph
+RUN apt-get install -y linux-tools-generic
+# replace incorrect Debian perf wrapper with a symbolic link
+RUN path=$(ls /usr/lib/linux-tools/*generic/perf | head -n 1) && ln -s -f "$path" /usr/bin/perf
 
 # configure psql, configure postgres & check postgres start & stop & prepare start script
 RUN echo "\\set dba '\\\\\\\\i /root/postgres_dba/start.psql'" >> ~/.psqlrc
