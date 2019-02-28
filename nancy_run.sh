@@ -1706,45 +1706,9 @@ function docker_cleanup_and_exit {
 }
 
 #######################################
-# Install perf and FlameGraph
-# Globals:
-#   MACHINE_HOME, IS_PERF_INSTALLED, IS_CIRCLE_CI
-# Arguments:
-#   None
-# Returns:
-#   (integer) ret_code
-#######################################
-function install_perf {
-  set +e
-  local ret_code="0"
-  IS_PERF_INSTALLED="false"
-  msg "Trying to install perf and FlameGraph..."
-  # TODO: try to fix perf in the CircleCI Linux
-  if [[ "$IS_CIRCLE_CI" == "true" ]]; then
-     msg "Currently perf is not supported in the CircleCI"
-     ret_code="15"
-     set -e
-     return "$ret_code"
-  fi
-  docker_exec bash -c "cd ${MACHINE_HOME} \
-    && apt-get update || true \
-    && apt-get install --fix-missing -y perf-tools-unstable linux-tools-\$(uname -r) \
-    && git clone https://github.com/brendangregg/FlameGraph"
-  ret_code="$?"
-  if [[ "$ret_code" -ne "0" ]]; then
-    msg "WARNING: Can't install perf or FlameGraph."
-    IS_PERF_INSTALLED="false"
-  else
-    IS_PERF_INSTALLED="true"
-  fi
-  set -e
-  return "$ret_code"
-}
-
-#######################################
 # Run perf in background
 # Globals:
-#   MACHINE_HOME, IS_PERF_INSTALLED
+#   MACHINE_HOME
 # Arguments:
 #   None
 # Returns:
@@ -1753,13 +1717,8 @@ function install_perf {
 function run_perf {
   set +e
   local ret_code="0"
-  if [[ "${IS_PERF_INSTALLED}" != "true" ]]; then
-    ret_code="15"
-    set -e
-    return "$ret_code"
-  fi
   msg "Run perf in background."
-  docker_exec bash -c "cd ${MACHINE_HOME}/FlameGraph/ \
+  docker_exec bash -c "cd /root/FlameGraph/ \
     && (nohup perf record -F 99 -a -g -o perf.data >/dev/null 2>&1 </dev/null & \
     echo \$! > /tmp/perf_pid)"
   ret_code="$?"
@@ -1770,7 +1729,7 @@ function run_perf {
 #######################################
 # Stop perf and generate FlameGraph artifacts
 # Globals:
-#   MACHINE_HOME, ARTIFACTS_DIRNAME, IS_PERF_INSTALLED
+#   ARTIFACTS_DIRNAME
 # Arguments:
 #   None
 # Returns:
@@ -1779,16 +1738,11 @@ function run_perf {
 function stop_perf {
   set +e
   local ret_code="0"
-  if [[ "${IS_PERF_INSTALLED}" != "true" ]]; then
-    ret_code="15"
-    set -e
-    return "$ret_code"
-  fi
   msg "Stopping perf..."
   docker_exec bash -c "test -f /tmp/perf_pid && kill \$(cat /tmp/perf_pid)" \
     && dbg "Perf is probably stopped."
   msg "Generate FlameGraph."
-  docker_exec bash -c "cd ${MACHINE_HOME} && cd FlameGraph \
+  docker_exec bash -c "cd /root/FlameGraph \
     && perf script --input perf.data | ./stackcollapse-perf.pl > out.perf-folded \
     && ./flamegraph.pl out.perf-folded > perf-kernel.svg \
     && cp perf-kernel.svg ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/"
@@ -1820,7 +1774,6 @@ fi
 sleep 10 # wait for postgres up&running
 
 apply_commands_after_container_init
-install_perf || true
 pg_config_init
 apply_sql_before_db_restore
 if [[ ! -z ${DB_DUMP+x} ]] || [[ ! -z ${DB_PGBENCH+x} ]]; then
