@@ -260,6 +260,15 @@
 
   Zone for creating AWS EC2 spot in region given by --aws-zone.
 
+  <b>--aws-zfs</b>
+
+  Attach local NVME drive to 'i3' instance and format it with ZFS.  
+  Tunning options are applied: atime=off, recordsize=8k, logbias=throughput.  
+  ARC MAX is set to 30% of RAM or at least 1GB.  
+
+  Otherwise, Ext4 will be used with the following options:  
+  noatime, data=writeback, barrier=0, nobh
+
   <b>--aws-block-duration</b> (integer)
 
   EC2 spot max live time in minutes. This value must be a multiple
