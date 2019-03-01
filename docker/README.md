@@ -1,5 +1,11 @@
 How to build/rebuild:
 
+Rebuild and push images for all postgres versions:
+```bash
+./rebuild_push_images.sh
+```
+
+Or do it manually:
 ```bash
 export NANCY_DOCKER_PG_VERSION=9.6
 
