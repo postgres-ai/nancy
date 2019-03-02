@@ -81,7 +81,8 @@
   Specify the major version of PostgreSQL. Allowed values:
 
   * '9.6'
-  * '10' (default)
+  * '10'
+  * '11' (default)
 
   Currently, there is no way to specify the minor version – it is always the
   most recent version, available in the official PostgreSQL APT repository (see

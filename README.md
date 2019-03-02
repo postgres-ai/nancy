@@ -9,7 +9,7 @@
 **IMPORTANT**: Nancy has migrated to GitLab.com. The official repository address: https://gitlab.com/postgres.ai/nancy
 
 About
-<img width="122" alt="screen shot 2018-09-18 at 03 04 09" src="https://user-images.githubusercontent.com/1345402/45656700-8a987f00-baef-11e8-87b6-cccf8f65ee8f.png" align="right">
+<img width="122" src="https://user-images.githubusercontent.com/1345402/45656700-8a987f00-baef-11e8-87b6-cccf8f65ee8f.png" align="right">
 ===
 Nancy helps to conduct automated database experiments.
 
@@ -41,7 +41,7 @@ Currently Supported Features
 ===
 * Works anywhere where Docker can run (checked: Linux Ubuntu/Debian, macOS)
 * Experiments are conducted in a Docker container with extended Postgres setup
-* Supported Postgres versions: 9.6, 10
+* Supported Postgres versions: 11 (default), 10, 9.6
 * Postgres config specified via options, may be partial
 * Supported locations for experimental runs:
   * Any machine with Docker installed
