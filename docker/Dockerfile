@@ -11,12 +11,6 @@ ADD ./tsearch_data /usr/share/postgresql/$PG_SERVER_VERSION/tsearch_data
 # logging ON; memory setting – for 2CPU/4096MB/SSD
 ADD ./postgresql_${PG_SERVER_VERSION}_tweak.conf /postgresql.tweak.conf
 
-RUN if [ "$PG_SERVER_VERSION" = "11" ]; then \
-      export PG_EXTRA="postgresql-$PG_SERVER_VERSION-rum"; \
-    else \
-      export PG_EXTRA="postgresql-$PG_SERVER_VERSION-rum postgresql-$PG_SERVER_VERSION-plsh"; \
-    fi
-
 # set up apt, add Postgres repo
 RUN apt-get update
 RUN apt-get install -y wget ca-certificates
@@ -39,7 +33,6 @@ RUN apt-get install -y postgresql-client-11
 
 RUN apt-get install -y pgreplay
 RUN apt-get install -y pspg
-RUN apt-get install -y "$PG_EXTRA"
 RUN git clone https://github.com/NikolayS/postgres_dba.git /root/postgres_dba
 RUN apt-get install -y postgresql-$PG_SERVER_VERSION-repack
 RUN git clone https://github.com/darold/pgbadger.git /root/pgbadger && cd /root/pgbadger && git checkout "tags/v10.3"
