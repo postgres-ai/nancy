@@ -13,7 +13,7 @@ output=$(
     --tmp-path $src_dir/tmp 2>&1
 )
 
-regex="Queries:[[:blank:]]*1"
+regex="Queries:[[:blank:]]*[1-9]"
 if [[ $output =~ $regex ]]; then
   echo -e "\e[36mOK\e[39m"
 else
