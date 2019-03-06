@@ -13,7 +13,7 @@ output=$(
     --tmp-path $src_dir/tmp 2>&1
 )
 
-if [[ $output =~ "  To connect container machine use:" ]]; then
+if [[ $output =~ "  How to connect to" ]]; then
   echo -e "\e[36mOK\e[39m"
 else
   >&2 echo -e "\e[31mFAILED\e[39m"
