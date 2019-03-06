@@ -814,7 +814,7 @@ function cleanup_and_exit {
   local exit_code="$?" # we can detect exit code here
 
   if  [ "$KEEP_ALIVE" -gt "0" ]; then
-    msg "According the '--keep-alive' parameter, the container will be up for additional ${KEEP_ALIVE} seconds."
+    msg "According to '--keep-alive', the spot instance with the container will be up for additional ${KEEP_ALIVE} seconds."
     print_connection
     sleep $KEEP_ALIVE
   fi
