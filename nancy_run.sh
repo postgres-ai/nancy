@@ -778,7 +778,7 @@ function use_ec2_ebs_drive() {
 #######################################
 # Print "How to connect" instructions
 # Globals:
-#   DOCKER_MACHINE, CURRENT_TS
+#   DOCKER_MACHINE, CURRENT_TS, RUN_ON
 # Arguments:
 #   None
 # Returns:
