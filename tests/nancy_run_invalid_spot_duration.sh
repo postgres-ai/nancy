@@ -10,7 +10,7 @@ output=$(
     2>&1
 )
 
-if [[ $output =~ " Container live time duration (--aws-block-duration) has wrong value: 30. Available values of AWS spot instance duration in minutes is 60, 120, 180, 240, 300, or 360)." ]]; then
+if [[ $output =~ "ERROR: The value of '--aws-block-duration' is invalid" ]]; then
   echo -e "\e[36mOK\e[39m"
 else
   >&2 echo -e "\e[31mFAILED\e[39m"

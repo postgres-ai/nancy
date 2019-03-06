@@ -2,7 +2,7 @@
 
 # Test ZFS on i3
 
-# TODO(vyagofarov): fix after migration to GitLab
+# TODO(vyagofarov): fix after migration to GitLab CI/CD
 
 #output=$(
 #  bash -x ${BASH_SOURCE%/*}/../nancy run \
