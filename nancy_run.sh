@@ -650,6 +650,46 @@ function determine_actual_ec2_spot_price() {
 }
 
 #######################################
+# Mount aws nvme or ebs drive with ZFS
+# Globals:
+#   DOCKER_MACHINE
+# Arguments:
+#   $1 drive path (For example: /dev/nvme1 or /dev/xvdf)
+# Returns:
+#   None
+# Result:
+#   Mount drive with ZFS to /home/storage
+#######################################
+function use_ec2_zfs_drive (){
+  drive=$1
+  options=""
+  if [[ $drive =~ "xvd" ]]; then
+    options="-f" # for ebs drives only
+  fi
+  # Format volume as ZFS and tune it
+  docker-machine ssh $DOCKER_MACHINE "sudo apt-get install -y zfsutils-linux"
+  docker-machine ssh $DOCKER_MACHINE "sudo rm -rf /home/storage >/dev/null 2>&1 || true"
+  docker-machine ssh $DOCKER_MACHINE "sudo zpool create -O compression=on \
+                                           -O atime=off \
+                                           -O recordsize=8k \
+                                           -O logbias=throughput \
+                                           -m /home/storage zpool ${drive} ${options}"
+  # Set ARC size as 30% of RAM
+  # get MemTotal (kB)
+  local memtotal_kb=$(docker-machine ssh $DOCKER_MACHINE "grep MemTotal /proc/meminfo | awk '{print \$2}'")
+  # calculate recommended ARC size in bytes
+  local arc_size_b=$(( memtotal_kb / 100 * 30 * 1024))
+  # if calculated ARC is less then 1GB, set it to 1GB
+  if [[ "${arc_size_b}" -lt "1073741824" ]]; then
+    arc_size_b="1073741824" # 1GB
+  fi
+  # finally, change ARC MAX
+  docker-machine ssh $DOCKER_MACHINE "echo ${arc_size_b} | sudo tee /sys/module/zfs/parameters/zfs_arc_max"
+  docker-machine ssh $DOCKER_MACHINE "sudo cat /sys/module/zfs/parameters/zfs_arc_max"
+  msg "ARC MAX was set to '$arc_size_b' bytes:"
+}
+
+#######################################
 # Mount nvme drive for i3 EC2 instances
 # Globals:
 #   DOCKER_MACHINE
@@ -674,27 +714,7 @@ function use_ec2_nvme_drive() {
                                              -o nobh \
                                              /dev/nvme0n1 /home/storage || exit 115"
   else
-    # Format volume as ZFS and tune it
-    docker-machine ssh $DOCKER_MACHINE "sudo apt-get install -y zfsutils-linux"
-    docker-machine ssh $DOCKER_MACHINE "sudo rm -rf /home/storage >/dev/null 2>&1 || true"
-    docker-machine ssh $DOCKER_MACHINE "sudo zpool create -O compression=on \
-                                             -O atime=off \
-                                             -O recordsize=8k \
-                                             -O logbias=throughput \
-                                             -m /home/storage zpool /dev/nvme0n1"
-    # Set ARC size as 30% of RAM
-    # get MemTotal (kB)
-    local memtotal_kb=$(docker-machine ssh $DOCKER_MACHINE "grep MemTotal /proc/meminfo | awk '{print \$2}'")
-    # calculate recommended ARC size in bytes
-    local arc_size_b=$(( memtotal_kb / 100 * 30 * 1024))
-    # if calculated ARC is less then 1GB, set it to 1GB
-    if [[ "${arc_size_b}" -lt "1073741824" ]]; then
-      arc_size_b="1073741824" # 1GB
-    fi
-    # finally, change ARC MAX
-    docker-machine ssh $DOCKER_MACHINE "echo ${arc_size_b} | sudo tee /sys/module/zfs/parameters/zfs_arc_max"
-    docker-machine ssh $DOCKER_MACHINE "sudo cat /sys/module/zfs/parameters/zfs_arc_max"
-    msg "ARC MAX was set to '$arc_size_b' bytes:"
+    use_ec2_zfs_drive "/dev/nvme0n1"
   fi
   docker-machine ssh $DOCKER_MACHINE "sudo df -h /home/storage"
 }
@@ -761,9 +781,14 @@ function use_ec2_ebs_drive() {
   instance_id=$(docker-machine ssh $DOCKER_MACHINE curl -s http://169.254.169.254/latest/meta-data/instance-id)
   attachResult=$(aws --region=$AWS_REGION ec2 attach-volume --device /dev/xvdf --volume-id $VOLUME_ID --instance-id $instance_id)
   sleep 10 # wait to volume will attached
-  docker-machine ssh $DOCKER_MACHINE sudo mkfs.ext4 /dev/xvdf
-  docker-machine ssh $DOCKER_MACHINE sudo mount /dev/xvdf /home/storage
-  docker-machine ssh $DOCKER_MACHINE "sudo df -h /dev/xvdf"
+  if [[ -z ${AWS_ZFS+x} ]]; then
+    docker-machine ssh $DOCKER_MACHINE sudo mkfs.ext4 /dev/xvdf
+    docker-machine ssh $DOCKER_MACHINE sudo mount /dev/xvdf /home/storage
+    docker-machine ssh $DOCKER_MACHINE "sudo df -h /dev/xvdf"
+  else
+    use_ec2_zfs_drive "/dev/xvdf"
+  fi
+  docker-machine ssh $DOCKER_MACHINE "sudo df -h /home/storage"
 }
 
 #######################################
