@@ -1755,7 +1755,7 @@ function docker_cleanup_and_exit {
 # Returns:
 #   (integer) ret_code
 #######################################
-function run_perf {
+function start_perf {
   set +e
   local ret_code="0"
   msg "Run perf in background."
@@ -1792,6 +1792,59 @@ function stop_perf {
   return "$ret_code"
 }
 
+#######################################
+# Start log monitoring: mpstat, iotop, etc.
+# Globals:
+#   ARTIFACTS_DIRNAME, MACHINE_HOME
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function start_monitoring {
+  # WARNING: do not forget stop logging at stop_monitoring() function
+  local freq="10" # every 10 sec
+  local ret_code=0
+  set +e
+  msg "Start monitoring."
+
+  # mpstat cpu
+  docker_exec bash -c "nohup bash -c \"set -ueo pipefail; \
+    mpstat -P ALL ${freq} 2>&1 | ts \
+    | tee ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/mpstat.log\" \
+     >/dev/null 2>&1 </dev/null &"
+  ret_code="$?"
+  [[ "$ret_code" -ne "0" ]] && err "WARNING: Can't execute mpstat"
+
+  # iotop
+  docker_exec bash -c "nohup bash -c \"set -ueo pipefail; \
+    iotop -obkd ${freq} 2>&1 | ts \
+    | tee ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/iotop.log\" \
+     >/dev/null 2>&1 </dev/null &"
+  ret_code="$?"
+  [[ "$ret_code" -ne "0" ]] && err "WARNING: Can't execute iotop"
+  set -e
+}
+
+#######################################
+# Stop monitoring (we need it for series runs)
+# Globals:
+#   ARTIFACTS_DIRNAME, MACHINE_HOME
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function stop_monitoring {
+  set +e
+  # mpstat cpu
+  msg "Stop monitoring."
+  docker_exec bash -c "killall mpstat >/dev/null 2>&1"
+  # iotop
+  docker_exec bash -c "killall iotop >/dev/null 2>&1"
+  set -e
+}
+
 trap docker_cleanup_and_exit EXIT
 
 if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]] && [[ ! "$DB_NAME" == "test" ]]; then
@@ -1826,9 +1879,11 @@ docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not ex
 apply_ddl_do_code
 apply_postgres_configuration
 prepare_start_workload
-run_perf || true
+start_perf || true
+start_monitoring
 execute_workload
 stop_perf || true
+stop_monitoring
 collect_results
 apply_ddl_undo_code
 save_artifacts
