@@ -1793,7 +1793,7 @@ function stop_perf {
 }
 
 #######################################
-# Start log monitoring: mpstat, iotop, etc.
+# Start log monitoring: mpstat, iostat, etc.
 # Globals:
 #   ARTIFACTS_DIRNAME, MACHINE_HOME
 # Arguments:
@@ -1816,13 +1816,13 @@ function start_monitoring {
   ret_code="$?"
   [[ "$ret_code" -ne "0" ]] && err "WARNING: Can't execute mpstat"
 
-  # iotop
+  # iostat
   docker_exec bash -c "nohup bash -c \"set -ueo pipefail; \
-    iotop -obkd ${freq} 2>&1 | ts \
-    | tee ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/iotop.log\" \
+    iostat -ymxt ${freq} \
+    | tee ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/iostat.log\" \
      >/dev/null 2>&1 </dev/null &"
   ret_code="$?"
-  [[ "$ret_code" -ne "0" ]] && err "WARNING: Can't execute iotop"
+  [[ "$ret_code" -ne "0" ]] && err "WARNING: Can't execute iostat"
   set -e
 }
 
@@ -1840,8 +1840,8 @@ function stop_monitoring {
   # mpstat cpu
   msg "Stop monitoring."
   docker_exec bash -c "killall mpstat >/dev/null 2>&1"
-  # iotop
-  docker_exec bash -c "killall iotop >/dev/null 2>&1"
+  # iostat
+  docker_exec bash -c "killall iostat >/dev/null 2>&1"
   set -e
 }
 
