@@ -119,6 +119,8 @@ function dbg_cli_parameters() {
 --aws-zfs: ${AWS_ZFS}
 --s3-cfg-path: ${S3_CFG_PATH}
 
+--no-perf: ${NO_PERF}
+
 --debug: ${DEBUG}
 --keep-alive: ${KEEP_ALIVE}
 --tmp-path: ${TMP_PATH}
@@ -998,6 +1000,9 @@ while [ $# -gt 0 ]; do
     --no-pgbadger )
       NO_PGBADGER=1;  shift;;
 
+    --no-perf )
+      NO_PERF=1;  shift;;
+
     --s3cfg-path )
       S3_CFG_PATH="$2"; shift 2 ;;
     * )
@@ -1758,6 +1763,11 @@ function docker_cleanup_and_exit {
 function start_perf {
   set +e
   local ret_code="0"
+
+  if [[ "${NO_PERF}" -eq "1" ]]; then
+    return 0
+  fi
+
   msg "Run perf in background."
   docker_exec bash -c "cd /root/FlameGraph/ \
     && (nohup perf record -F 99 -a -g -o perf.data >/dev/null 2>&1 </dev/null & \
@@ -1779,6 +1789,11 @@ function start_perf {
 function stop_perf {
   set +e
   local ret_code="0"
+
+  if [[ "${NO_PERF}" -eq "1" ]]; then
+    return 0
+  fi
+
   msg "Stopping perf..."
   docker_exec bash -c "test -f /tmp/perf_pid && kill \$(cat /tmp/perf_pid)" \
     && dbg "Perf is probably stopped."
