@@ -1809,6 +1809,7 @@ function stop_perf {
 
 #######################################
 # Start log monitoring: mpstat, iostat, etc.
+# in the background.
 # Globals:
 #   ARTIFACTS_DIRNAME, MACHINE_HOME
 # Arguments:
@@ -1818,7 +1819,7 @@ function stop_perf {
 #######################################
 function start_monitoring {
   # WARNING: do not forget stop logging at stop_monitoring() function
-  local freq="10" # every 10 sec
+  local freq="10" # every 10 sec (frequency)
   local ret_code=0
   set +e
   msg "Start monitoring."
@@ -1833,7 +1834,7 @@ function start_monitoring {
 
   # iostat
   docker_exec bash -c "nohup bash -c \"set -ueo pipefail; \
-    iostat -ymxt ${freq} \
+    LC_ALL=en_US.UTF-8 iostat -ymxt ${freq} \
     | tee ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/iostat.log\" \
      >/dev/null 2>&1 </dev/null &"
   ret_code="$?"

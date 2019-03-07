@@ -72,6 +72,9 @@ RUN apt-get purge -y --auto-remove
 RUN apt-get clean -y autoclean
 RUN rm -rf /var/lib/apt/lists/*
 
+# generate english locale for iostat + iostat-tool
+RUN locale-gen en_US.UTF-8
+
 EXPOSE 5432
 
 #VOLUME  ["/etc/postgresql", "/var/log/postgresql", "/var/lib/postgresql"]
