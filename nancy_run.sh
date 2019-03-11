@@ -119,6 +119,8 @@ function dbg_cli_parameters() {
 --aws-zfs: ${AWS_ZFS}
 --s3-cfg-path: ${S3_CFG_PATH}
 
+--no-perf: ${NO_PERF}
+
 --debug: ${DEBUG}
 --keep-alive: ${KEEP_ALIVE}
 --tmp-path: ${TMP_PATH}
@@ -1020,6 +1022,9 @@ while [ $# -gt 0 ]; do
     --no-pgbadger )
       NO_PGBADGER=1;  shift;;
 
+    --no-perf )
+      NO_PERF=1;  shift;;
+
     --s3cfg-path )
       S3_CFG_PATH="$2"; shift 2 ;;
     * )
@@ -1771,9 +1776,14 @@ function docker_cleanup_and_exit {
 # Returns:
 #   (integer) ret_code
 #######################################
-function run_perf {
+function start_perf {
   set +e
   local ret_code="0"
+
+  if [[ "${NO_PERF}" -eq "1" ]]; then
+    return 0
+  fi
+
   msg "Run perf in background."
   docker_exec bash -c "cd /root/FlameGraph/ \
     && (nohup perf record -F 99 -a -g -o perf.data >/dev/null 2>&1 </dev/null & \
@@ -1795,6 +1805,11 @@ function run_perf {
 function stop_perf {
   set +e
   local ret_code="0"
+
+  if [[ "${NO_PERF}" -eq "1" ]]; then
+    return 0
+  fi
+
   msg "Stopping perf..."
   docker_exec bash -c "test -f /tmp/perf_pid && kill \$(cat /tmp/perf_pid)" \
     && dbg "Perf is probably stopped."
@@ -1806,6 +1821,60 @@ function stop_perf {
   ret_code="$?"
   set -e
   return "$ret_code"
+}
+
+#######################################
+# Start log monitoring: mpstat, iostat, etc.
+# in the background.
+# Globals:
+#   ARTIFACTS_DIRNAME, MACHINE_HOME
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function start_monitoring {
+  # WARNING: do not forget stop logging at stop_monitoring() function
+  local freq="10" # every 10 sec (frequency)
+  local ret_code=0
+  set +e
+  msg "Start monitoring."
+
+  # mpstat cpu
+  docker_exec bash -c "nohup bash -c \"set -ueo pipefail; \
+    mpstat -P ALL ${freq} 2>&1 | ts \
+    | tee ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/mpstat.log\" \
+     >/dev/null 2>&1 </dev/null &"
+  ret_code="$?"
+  [[ "$ret_code" -ne "0" ]] && err "WARNING: Can't execute mpstat"
+
+  # iostat
+  docker_exec bash -c "nohup bash -c \"set -ueo pipefail; \
+    LC_ALL=en_US.UTF-8 iostat -ymxt ${freq} \
+    | tee ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/iostat.log\" \
+     >/dev/null 2>&1 </dev/null &"
+  ret_code="$?"
+  [[ "$ret_code" -ne "0" ]] && err "WARNING: Can't execute iostat"
+  set -e
+}
+
+#######################################
+# Stop monitoring (we need it for series runs)
+# Globals:
+#   ARTIFACTS_DIRNAME, MACHINE_HOME
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function stop_monitoring {
+  set +e
+  # mpstat cpu
+  msg "Stop monitoring."
+  docker_exec bash -c "killall mpstat >/dev/null 2>&1"
+  # iostat
+  docker_exec bash -c "killall iostat >/dev/null 2>&1"
+  set -e
 }
 
 trap docker_cleanup_and_exit EXIT
@@ -1842,9 +1911,11 @@ docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not ex
 apply_ddl_do_code
 apply_postgres_configuration
 prepare_start_workload
-run_perf || true
+start_perf || true
+start_monitoring
 execute_workload
 stop_perf || true
+stop_monitoring
 collect_results
 apply_ddl_undo_code
 save_artifacts

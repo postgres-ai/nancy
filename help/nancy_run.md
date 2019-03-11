@@ -287,6 +287,10 @@
 
   Turn off use pgbadger to prepare reports.
 
+  <b>--no-perf</b>
+
+  Turn off use perf and FlameGraphs.
+
   <b>--less-output</b>
 
   Turn off all output besides errors and results statistic.
