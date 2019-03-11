@@ -650,17 +650,15 @@ function determine_actual_ec2_spot_price() {
 }
 
 #######################################
-# Mount aws nvme or ebs drive with ZFS
+# (AWS only) Use ZFS on local NVMe disk or EBS drive
 # Globals:
 #   DOCKER_MACHINE
 # Arguments:
 #   $1 drive path (For example: /dev/nvme1 or /dev/xvdf)
-# Returns:
+# Return:
 #   None
-# Result:
-#   Mount drive with ZFS to /home/storage
 #######################################
-function use_ec2_zfs_drive (){
+function use_aws_zfs_drive (){
   drive=$1
   options=""
   if [[ $drive =~ "xvd" ]]; then
@@ -677,16 +675,16 @@ function use_ec2_zfs_drive (){
   # Set ARC size as 30% of RAM
   # get MemTotal (kB)
   local memtotal_kb=$(docker-machine ssh $DOCKER_MACHINE "grep MemTotal /proc/meminfo | awk '{print \$2}'")
-  # calculate recommended ARC size in bytes
+  # Calculate recommended ARC size in bytes.
   local arc_size_b=$(( memtotal_kb / 100 * 30 * 1024))
-  # if calculated ARC is less then 1GB, set it to 1GB
+  # If the calculated ARC is less than 1 GiB, then set it to 1 GiB.
   if [[ "${arc_size_b}" -lt "1073741824" ]]; then
-    arc_size_b="1073741824" # 1GB
+    arc_size_b="1073741824" # 1 GiB
   fi
   # finally, change ARC MAX
   docker-machine ssh $DOCKER_MACHINE "echo ${arc_size_b} | sudo tee /sys/module/zfs/parameters/zfs_arc_max"
   docker-machine ssh $DOCKER_MACHINE "sudo cat /sys/module/zfs/parameters/zfs_arc_max"
-  msg "ARC MAX was set to '$arc_size_b' bytes:"
+  msg "ARC MAX has been set to ${arc_size_b} bytes."
 }
 
 #######################################
@@ -714,7 +712,7 @@ function use_ec2_nvme_drive() {
                                              -o nobh \
                                              /dev/nvme0n1 /home/storage || exit 115"
   else
-    use_ec2_zfs_drive "/dev/nvme0n1"
+    use_aws_zfs_drive "/dev/nvme0n1"
   fi
   docker-machine ssh $DOCKER_MACHINE "sudo df -h /home/storage"
 }
@@ -783,10 +781,14 @@ function use_ec2_ebs_drive() {
   sleep 10 # wait to volume will attached
   if [[ -z ${AWS_ZFS+x} ]]; then
     docker-machine ssh $DOCKER_MACHINE sudo mkfs.ext4 /dev/xvdf
-    docker-machine ssh $DOCKER_MACHINE sudo mount /dev/xvdf /home/storage
+    docker-machine ssh $DOCKER_MACHINE "sudo mount -o noatime \
+                                             -o data=writeback \
+                                             -o barrier=0 \
+                                             -o nobh \
+                                             /dev/xvdf /home/storage || exit 115"
     docker-machine ssh $DOCKER_MACHINE "sudo df -h /dev/xvdf"
   else
-    use_ec2_zfs_drive "/dev/xvdf"
+    use_aws_zfs_drive "/dev/xvdf"
   fi
   docker-machine ssh $DOCKER_MACHINE "sudo df -h /home/storage"
 }
