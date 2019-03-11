@@ -9,7 +9,7 @@ output=$(
     2>&1
 )
 
-if [[ $output =~ "must be used with '--run-on aws'" ]]; then
+if [[ $output =~ "may be used only with '--run-on aws'" ]]; then
   echo -e "\e[36mOK\e[39m"
 else
   >&2 echo -e "\e[31mFAILED\e[39m"

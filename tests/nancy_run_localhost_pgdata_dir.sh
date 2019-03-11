@@ -5,15 +5,21 @@ realpath() {
 }
 
 src_dir=$(dirname $(dirname $(realpath "$0")))"/.circleci"
+if [ ! -d "$src_dir/tmp" ]; then
+  mkdir "$src_dir/tmp"
+fi
 
 output=$(
   ${BASH_SOURCE%/*}/../nancy run \
-    --db-dump "create table hello_world as select i, i as id from generate_series(1, 1000) _(i);" \
-    --workload-real "file://$src_dir/sample.replay" \
+    --workload-custom-sql "file://$src_dir/custom.sql" \
+    --db-dump "file://$src_dir/test.dump.sql" \
+    --db-local-pgdata ./ \
+    --pgdata-dir ./ \
     --tmp-path $src_dir/tmp 2>&1
 )
 
-if [[ $output =~ "  How to connect to" ]]; then
+regex="ERROR: Both --pgdata-dir and --db-local-pgdata are provided"
+if [[ $output =~ $regex ]]; then
   echo -e "\e[36mOK\e[39m"
 else
   >&2 echo -e "\e[31mFAILED\e[39m"

@@ -1,4 +1,9 @@
 #!/bin/bash
+#
+# 2018–2019 © Postgres.ai
+#
+# Prepare worklod file based on a full production Postgres log.
+#
 
 DEBUG=0
 

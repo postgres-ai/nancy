@@ -5,15 +5,21 @@ realpath() {
 }
 
 src_dir=$(dirname $(dirname $(realpath "$0")))"/.circleci"
+if [ ! -d "$src_dir/tmp" ]; then
+  mkdir "$src_dir/tmp"
+fi
 
 output=$(
   ${BASH_SOURCE%/*}/../nancy run \
-    --db-dump "create table hello_world as select i, i as id from generate_series(1, 1000) _(i); drop role testuser;" \
-    --workload-real "file://$src_dir/sample.replay" \
+    --run-on aws \
+    --workload-custom-sql "file://$src_dir/custom.sql" \
+    --db-dump "file://$src_dir/test.dump.sql" \
+    --db-local-pgdata ./ \
+    --pgdata-dir ./ \
     --tmp-path $src_dir/tmp 2>&1
 )
 
-regex="Queries:[[:blank:]]*[1-9]"
+regex="ERROR: --db-local-pgdata may be specified only for local runs"
 if [[ $output =~ $regex ]]; then
   echo -e "\e[36mOK\e[39m"
 else

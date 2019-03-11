@@ -6,9 +6,10 @@
   &nbsp;
 [![CircleCI](https://circleci.com/gh/postgres-ai/nancy.svg?style=svg)](https://circleci.com/gh/postgres-ai/nancy)
 
+**IMPORTANT**: Nancy has migrated to GitLab.com. The official repository address: https://gitlab.com/postgres.ai/nancy
 
 About
-<img width="122" alt="screen shot 2018-09-18 at 03 04 09" src="https://user-images.githubusercontent.com/1345402/45656700-8a987f00-baef-11e8-87b6-cccf8f65ee8f.png" align="right">
+<img width="122" src="https://user-images.githubusercontent.com/1345402/45656700-8a987f00-baef-11e8-87b6-cccf8f65ee8f.png" align="right">
 ===
 Nancy helps to conduct automated database experiments.
 
@@ -40,7 +41,7 @@ Currently Supported Features
 ===
 * Works anywhere where Docker can run (checked: Linux Ubuntu/Debian, macOS)
 * Experiments are conducted in a Docker container with extended Postgres setup
-* Supported Postgres versions: 9.6, 10
+* Supported Postgres versions: 11 (default), 10, 9.6
 * Postgres config specified via options, may be partial
 * Supported locations for experimental runs:
   * Any machine with Docker installed
@@ -83,29 +84,56 @@ Requirements
 Installation
 ===
 
-In the minimal configuration, only two steps are needed:
+In the minimal configuration, only a few steps are needed:
 
-1) Install Docker (for Ubuntu/Debian: `sudo apt-get install docker`)
+NOTICE: The [Additional notes](#additional-notes)</a> section contains
+instructions useful in case of docker-related errors during `nancy run` calls.
+Alternatively, see Docker's official [post-installation instructions for Linux](https://docs.docker.com/install/linux/linux-postinstall/).
+
+1) Install Docker
+
+Ubuntu/Debian:
+```shell
+sudo apt-get -y install docker
+sudo systemctl enable docker
+sudo systemctl start docker
+```
+
+RHEL7:
+```shell
+yum -y install docker
+systemctl enable docker
+systemctl start docker
+```
+
+MacOS (assuming that [Homebrew](https://brew.sh/) is installed):
+```shell
+brew install docker
+```
+See also: https://docs.docker.com/docker-for-mac/install/
 
 2) Clone this repo and adjust `$PATH`:
-```bash
-git clone https://github.com/postgres-ai/nancy
-echo "export PATH=\$PATH:"$(pwd)"/nancy" >> ~/.bash_profile
-source ~/.bash_profile
+```shell
+git clone https://gitlab.com/postgres.ai/nancy.git
+echo "export PATH=\$PATH:"$(pwd)"/nancy" >> ~/.bashrc
+source ~/.bashrc
 ```
+
+3) Install jq
+- Ubuntu/Debian: `sudo apt-get -y install jq`
+- CentOS/RHEL: `sudo yum install jq`
+- MacOS: `brew install jq`
 
 Additionally, to allow use of AWS EC2 instances:
 
-3) Follow instructions https://docs.aws.amazon.com/cli/latest/userguide/installing.html
+4) Install AWS CLI https://docs.aws.amazon.com/cli/latest/userguide/installing.html
 
-4) Follow instructions https://docs.docker.com/machine/install-machine/
-
-5) install jq (for Ubuntu/Debian: `sudo apt-get install jq`)
+5) Install Docker Machine tools https://docs.docker.com/machine/install-machine/
 
 Getting started
 ===
 Start with these commands:
-```bash
+```shell
 nancy help
 nancy run help
 ```
@@ -113,7 +141,7 @@ nancy run help
 "Hello World!"
 ===
 Locally, on any Linux or macOS machine:
-```bash
+```shell
 echo "create table hello_world as select i from generate_series(1, (10^6)::int) _(i);" \
   | bzip2 > ./sample.dump.bz2
 
@@ -133,7 +161,7 @@ nancy run \
 ```
 
 AWS EC2:
-```bash
+```shell
 nancy run \
   --run-on aws \
   --aws-ec2-type "i3.large" \
@@ -145,15 +173,22 @@ nancy run \
 
 Additional notes
 ===
-If you experience issues with running (locally) `nancy run` inside `screen` or
+On Linux, if you experience issues with running (locally) `nancy run` inside `screen` or
 `tmux`, double-check that Docker is running and add your user to the `docker`
-group:
-```bash
+group, as described below. See also: https://docs.docker.com/install/linux/linux-postinstall/.
+
+Ubuntu/Debian:
+```shell
+# Ubuntu/Debian
 usermod -aG docker ${USER}
 newgrp docker
 ```
 
-(On some systems it may be `dockerroot` instead of `docker`)
+CentOS/RHEL:
+```shell
+usermod -aG dockerroot ${USER}
+newgrp dockerroot
+```
 
 On MacOS, it is recommended to specify `--tmp-path` explicitly, similar to this:
 ```

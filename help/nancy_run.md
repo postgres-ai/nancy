@@ -81,7 +81,8 @@
   Specify the major version of PostgreSQL. Allowed values:
 
   * '9.6'
-  * '10' (default)
+  * '10'
+  * '11' (default)
 
   Currently, there is no way to specify the minor version – it is always the
   most recent version, available in the official PostgreSQL APT repository (see
@@ -146,6 +147,11 @@
 
   Path of Postgres pgdata placed on local storage to use in experiments. All changes at database,
   which done during experiment will be stored.
+
+  <b>--pgdata-dir</b>
+
+  The path of Postgres pgdata is placed in local storage to use it in experiments.
+  All changes to the database, which are done during experiments will be stored.
 
   <b>--commands-after-container-init</b> (string)
 
@@ -255,6 +261,15 @@
 
   Zone for creating AWS EC2 spot in region given by --aws-zone.
 
+  <b>--aws-zfs</b>
+
+  Attach local NVME drive to 'i3' instance and format it with ZFS.  
+  Tunning options are applied: atime=off, recordsize=8k, logbias=throughput.  
+  ARC MAX is set to 30% of RAM or at least 1GB.  
+
+  Otherwise, Ext4 will be used with the following options:  
+  noatime, data=writeback, barrier=0, nobh
+
   <b>--aws-block-duration</b> (integer)
 
   EC2 spot max live time in minutes. This value must be a multiple
@@ -296,6 +311,10 @@
   <b>--no-pgbadger</b>
 
   Turn off use pgbadger to prepare reports.
+
+  <b>--no-perf</b>
+
+  Turn off use perf and FlameGraphs.
 
   <b>--less-output</b>
 
