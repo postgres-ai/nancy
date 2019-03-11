@@ -22,6 +22,7 @@ RUN apt-get install -y apt-utils
 # install additional utilites
 RUN apt-get install -y sudo git jq libjson-xs-perl vim
 RUN apt-get install -y sysbench s3cmd sudo bzip2 python-software-properties software-properties-common
+RUN apt-get install -y sysstat iotop moreutils psmisc
 
 # install Postgres and postgres-specific packages
 RUN apt-get install -y postgresql-$PG_SERVER_VERSION
@@ -70,6 +71,9 @@ RUN rm -rf /tmp/*
 RUN apt-get purge -y --auto-remove
 RUN apt-get clean -y autoclean
 RUN rm -rf /var/lib/apt/lists/*
+
+# generate english locale for iostat + iostat-tool
+RUN locale-gen en_US.UTF-8
 
 EXPOSE 5432
 
