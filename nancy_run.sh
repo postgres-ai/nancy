@@ -1780,7 +1780,7 @@ function start_perf {
   set +e
   local ret_code="0"
 
-  if [[ "${NO_PERF}" -eq "1" ]]; then
+  if [[ ! -z ${NO_PERF+x} ]]; then
     return 0
   fi
 
@@ -1806,7 +1806,7 @@ function stop_perf {
   set +e
   local ret_code="0"
 
-  if [[ "${NO_PERF}" -eq "1" ]]; then
+  if [[ ! -z ${NO_PERF+x} ]]; then
     return 0
   fi
 
