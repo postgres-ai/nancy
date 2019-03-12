@@ -2088,6 +2088,71 @@ function stop_monitoring {
   set -e
 }
 
+function stop_postgres {
+  dbg "Stopping Postgres..."
+  local cnt=0
+  while true; do
+  #while (ps auxww | grep postgres | grep -v grep >/dev/null); do
+    res=$(docker_exec bash -c "ps auxww | grep postgres | grep -v grep || echo ''")
+    if [[ -z "$res" ]]; then
+      # postgres process not found
+      echo "Postgres stopped."
+      return;
+    fi
+    cnt=$((cnt+1))
+    if [[ "${cnt}" -ge "60" ]]; then
+      dbg "WARNING: can't stop postgres in 60 seconds. Killing."
+      docker_exec bash -c "sudo killall -s 9 postgres"
+    fi
+    # Try normal "fast stop"
+    docker_exec bash -c "sudo pg_ctlcluster ${PG_VERSION} main stop -m f "
+    sleep 1
+  done
+}
+
+function start_postgres {
+  dbg "Starting Postgres..."
+  local cnt=0
+  while true; do
+  #while ! (psql -Upostgres -d postgres -c "select" >/dev/null); do
+    res=$(docker_exec bash -c "psql -Upostgres -d postgres -t -c \"select 1\" || echo '' ")
+    if [[ ! -z "$res" ]]; then
+      dbg "Postgres started."
+      return;
+    fi
+    cnt=$((cnt+1))
+    if [[ "${cnt}" -ge "60" ]]; then
+      dbg "WARNING: Can't start Postgres in 60 seconds." >&2
+      return 12
+    fi
+    docker_exec bash -c "sudo pg_ctlcluster ${PG_VERSION} main start"
+    sleep 1
+  done
+  dbg "Postgres started"
+}
+
+function zfs_rollback_snapshot {
+  OP_START_TIME=$(date +%s)
+  dbg "Rollback database"
+  stop_postgres
+  docker_exec bash -c "zfs rollback -f -r zpool@init_db"
+  start_postgres
+  END_TIME=$(date +%s)
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  msg "Time taken to rollback database: $DURATION."
+}
+
+function zfs_create_snapshot {
+  OP_START_TIME=$(date +%s)
+  dbg "Create database snapshot"
+  stop_postgres
+  docker_exec bash -c "zfs snapshot -r zpool@init_db"
+  start_postgres
+  END_TIME=$(date +%s)
+  DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+  msg "Time taken to create database snapshot: $DURATION."
+}
+
 trap docker_cleanup_and_exit EXIT
 
 if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]] && [[ ! "$DB_NAME" == "test" ]]; then
@@ -2125,6 +2190,14 @@ done
 # Dump
 sleep 10 # wait for postgres up&running
 
+if [[ ! -z ${AWS_ZONE+x} ]]; then
+  docker_exec bash -c "sudo apt-get update"
+  docker_exec bash -c "sudo apt-get install -y zfsutils-linux"
+fi
+
+docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not exists pg_stat_statements;' $VERBOSE_OUTPUT_REDIRECT"
+docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not exists pg_stat_kcache;' $VERBOSE_OUTPUT_REDIRECT"
+
 apply_commands_after_container_init
 pg_config_init
 apply_sql_before_db_restore
@@ -2132,8 +2205,10 @@ if [[ ! -z ${DB_DUMP+x} ]] || [[ ! -z ${DB_PGBENCH+x} ]]; then
   restore_dump
 fi
 apply_sql_after_db_restore
-docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not exists pg_stat_statements;' $VERBOSE_OUTPUT_REDIRECT"
-docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not exists pg_stat_kcache;' $VERBOSE_OUTPUT_REDIRECT"
+
+if [[ ! -z ${AWS_ZONE+x} ]]; then
+  zfs_create_snapshot
+fi
 
 msg "Start runs..."
 runs_count=${#RUNS[*]}
@@ -2152,7 +2227,9 @@ while : ; do
   #restore database if not first run
   if [[ "$i" -gt "0" ]]; then
     sleep 10
-    if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]]; then
+    if [[ ! -z ${AWS_ZONE+x} ]]; then
+      zfs_rollback_snapshot
+    elif [[ ! -z ${DB_EBS_VOLUME_ID+x} ]]; then
       docker_exec bash -c "sudo /etc/init.d/postgresql stop $VERBOSE_OUTPUT_REDIRECT"
       rsync_backup
       docker_exec bash -c "sudo /etc/init.d/postgresql start $VERBOSE_OUTPUT_REDIRECT"
