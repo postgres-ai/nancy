@@ -1249,7 +1249,9 @@ elif [[ "$RUN_ON" == "aws" ]]; then
     msg "EBS volume will be used."
     # Create new volume and attach them for non i3 instances if needed
     if [[ "$RUN_ON" == "aws" ]] && [[ ! -z ${AWS_EBS_VOLUME_SIZE+x} ]]; then
-      use_ec2_ebs_drive $AWS_EBS_VOLUME_SIZE
+      use_ec2_ebs_drive
+    else
+      err "ERROR: Can't use ebs drive, drive size not specified."
     fi
   fi
 
