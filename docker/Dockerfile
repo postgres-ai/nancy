@@ -75,6 +75,13 @@ RUN rm -rf /var/lib/apt/lists/*
 # generate english locale for iostat + iostat-tool
 RUN locale-gen en_US.UTF-8
 
+# install pip and iostat-tool
+RUN apt-get update
+RUN apt-get install curl
+RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+RUN python3 get-pip.py
+RUN pip3 install iostat-tool
+
 EXPOSE 5432
 
 #VOLUME  ["/etc/postgresql", "/var/log/postgresql", "/var/lib/postgresql"]
