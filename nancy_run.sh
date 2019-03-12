@@ -1982,6 +1982,8 @@ function docker_cleanup_and_exit {
 #   (integer) ret_code
 #######################################
 function start_perf {
+  local run_number=$1
+  let run_number=run_number+1
   set +e
   local ret_code="0"
 
@@ -1991,7 +1993,7 @@ function start_perf {
 
   msg "Run perf in background."
   docker_exec bash -c "cd /root/FlameGraph/ \
-    && (nohup perf record -F 99 -a -g -o perf.data >/dev/null 2>&1 </dev/null & \
+    && (nohup perf record -F 99 -a -g -o perf.${run_number}.data >/dev/null 2>&1 </dev/null & \
     echo \$! > /tmp/perf_pid)"
   ret_code="$?"
   set -e
@@ -2008,6 +2010,8 @@ function start_perf {
 #   (integer) ret_code
 #######################################
 function stop_perf {
+  local run_number=$1
+  let run_number=run_number+1
   set +e
   local ret_code="0"
 
@@ -2020,9 +2024,9 @@ function stop_perf {
     && dbg "Perf is probably stopped."
   msg "Generating FlameGraph..."
   docker_exec bash -c "cd /root/FlameGraph \
-    && perf script --input perf.data | ./stackcollapse-perf.pl > out.perf-folded \
-    && ./flamegraph.pl out.perf-folded > perf-kernel.svg \
-    && cp perf-kernel.svg ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/"
+    && perf script --input perf.${run_number}.data | ./stackcollapse-perf.pl > out.${run_number}.perf-folded \
+    && ./flamegraph.pl out.${run_number}.perf-folded > perf-kernel.${run_number}.svg \
+    && cp perf-kernel.${run_number}.svg ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/"
   ret_code="$?"
   set -e
   return "$ret_code"
@@ -2039,6 +2043,8 @@ function stop_perf {
 #   None
 #######################################
 function start_monitoring {
+  local run_number=$1
+  let run_number=run_number+1
   # WARNING: do not forget stop logging at stop_monitoring() function
   local freq="10" # every 10 sec (frequency)
   local ret_code=0
@@ -2048,7 +2054,7 @@ function start_monitoring {
   # mpstat cpu
   docker_exec bash -c "nohup bash -c \"set -ueo pipefail; \
     mpstat -P ALL ${freq} 2>&1 | ts \
-    | tee ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/mpstat.log\" \
+    | tee ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/mpstat.${run_number}.log\" \
      >/dev/null 2>&1 </dev/null &"
   ret_code="$?"
   [[ "$ret_code" -ne "0" ]] && err "WARNING: Can't execute mpstat"
@@ -2056,7 +2062,7 @@ function start_monitoring {
   # iostat
   docker_exec bash -c "nohup bash -c \"set -ueo pipefail; \
     LC_ALL=en_US.UTF-8 iostat -ymxt ${freq} \
-    | tee ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/iostat.log\" \
+    | tee ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/iostat.${run_number}.log\" \
      >/dev/null 2>&1 </dev/null &"
   ret_code="$?"
   [[ "$ret_code" -ne "0" ]] && err "WARNING: Can't execute iostat"
@@ -2161,7 +2167,11 @@ while : ; do
   [[ ! -z "$delta_ddl_do" ]] && apply_ddl_do_code $delta_ddl_do
 
   prepare_start_workload $i;
-  execute_workload $i;
+  start_perf $i || true
+  start_monitoring $i
+  execute_workload $i
+  stop_perf $i || true
+  stop_monitoring $i
   collect_results $i;
 
   echo "Run #$num done."
