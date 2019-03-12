@@ -76,11 +76,13 @@ RUN rm -rf /var/lib/apt/lists/*
 RUN locale-gen en_US.UTF-8
 
 # install pip and iostat-tool
-RUN apt-get update
 RUN apt-get install curl
 RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
 RUN python3 get-pip.py
 RUN pip3 install iostat-tool
+
+# install zfs utils
+RUN apt-get install -y zfsutils-linux
 
 EXPOSE 5432
 
