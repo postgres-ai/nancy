@@ -1877,6 +1877,25 @@ function stop_monitoring {
   set -e
 }
 
+#######################################
+# Tune Linux host for better performance
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function tune_host_machine {
+  # Tune docker-machine on AWS
+  if [[ "${RUN_ON}" == "aws" ]]; then 
+    docker-machine ssh $DOCKER_MACHINE \
+      "echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor"
+    docker-machine ssh $DOCKER_MACHINE \
+      "sudo bash -c 'echo 0 > /proc/sys/vm/swappiness'"
+  fi
+}
+
 trap docker_cleanup_and_exit EXIT
 
 if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]] && [[ ! "$DB_NAME" == "test" ]]; then
@@ -1911,6 +1930,7 @@ docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not ex
 apply_ddl_do_code
 apply_postgres_configuration
 prepare_start_workload
+tune_host_machine
 start_perf || true
 start_monitoring
 execute_workload
