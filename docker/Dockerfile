@@ -66,12 +66,6 @@ RUN printf "sudo -u postgres /usr/lib/postgresql/$PG_SERVER_VERSION/bin/postgres
 # infinite sleep to allow restarting Postgres
 RUN echo "/bin/bash -c \"trap : TERM INT; sleep infinity & wait\"" >> /pg_start.sh
 
-# reduce images size
-RUN rm -rf /tmp/*
-RUN apt-get purge -y --auto-remove
-RUN apt-get clean -y autoclean
-RUN rm -rf /var/lib/apt/lists/*
-
 # generate english locale for iostat + iostat-tool
 RUN locale-gen en_US.UTF-8
 
@@ -83,6 +77,12 @@ RUN pip3 install iostat-tool
 
 # install zfs utils
 RUN apt-get install -y zfsutils-linux
+
+# reduce images size
+RUN rm -rf /tmp/*
+RUN apt-get purge -y --auto-remove
+RUN apt-get clean -y autoclean
+RUN rm -rf /var/lib/apt/lists/*
 
 EXPOSE 5432
 
