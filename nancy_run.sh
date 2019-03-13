@@ -149,6 +149,15 @@ function msg() {
   fi
 }
 
+#######################################
+# Print an message to STDOUT without timestamp
+# Globals:
+#   None
+# Arguments:
+#   (text) Message
+# Returns:
+#   None
+#######################################
 function msg_wo_dt() {
   if ! $NO_OUTPUT; then
     echo "$@"
@@ -747,7 +756,7 @@ function determine_actual_ec2_spot_price() {
 # Globals:
 #   DOCKER_MACHINE
 # Arguments:
-#   $1 drive path (For example: /dev/nvme1 or /dev/xvdf)
+#   1 drive path (For example: /dev/nvme1 or /dev/xvdf)
 # Return:
 #   None
 #######################################
@@ -1444,6 +1453,7 @@ if [[ "$RUN_ON" == "aws" ]]; then
   docker-machine ssh $DOCKER_MACHINE "sudo chmod a+w /home/storage"
   MACHINE_HOME="${MACHINE_HOME}/storage"
   docker_exec bash -c "ln -s /storage/ ${MACHINE_HOME}"
+  #docker_exec bash -c "mkdir -p ${MACHINE_HOME}/storage"
 
   msg "Move PGDATA to /storage (machine's /home/storage)..."
   docker_exec bash -c "sudo /etc/init.d/postgresql stop ${VERBOSE_OUTPUT_REDIRECT}"
@@ -1489,7 +1499,7 @@ fi
 # Globals:
 #   MACHINE_HOME, CONTAINER_HASH
 # Arguments:
-#   None
+#   1 - file path
 # Returns:
 #   None
 #######################################
@@ -1622,7 +1632,7 @@ function apply_sql_after_db_restore() {
 # Globals:
 #   DELTA_SQL_DO, DB_NAME, MACHINE_HOME, VERBOSE_OUTPUT_REDIRECT
 # Arguments:
-#   None
+#   1 - path to file with ddl do code
 # Returns:
 #   None
 #######################################
@@ -1645,7 +1655,7 @@ function apply_ddl_do_code() {
 # Globals:
 #   DELTA_SQL_UNDO, DB_NAME, MACHINE_HOME, VERBOSE_OUTPUT_REDIRECT
 # Arguments:
-#   None
+#   1 - path to file with ddl undo code
 # Returns:
 #   None
 #######################################
@@ -1746,7 +1756,7 @@ function pg_config_init() {
 # Globals:
 #   DELTA_CONFIG, MACHINE_HOME
 # Arguments:
-#   None
+#   1 - path to file with delta config
 # Returns:
 #   None
 #######################################
@@ -1774,7 +1784,7 @@ function apply_postgres_configuration() {
 # Globals:
 #   ARTIFACTS_DIRNAME, MACHINE_HOME, DB_NAME
 # Arguments:
-#   None
+#   1 - run number
 # Returns:
 #   None
 #######################################
@@ -1788,7 +1798,6 @@ function prepare_start_workload() {
 
   if [[ "$run_number" -eq "1" ]]; then
     msg "Save prepaparation log"
-    docker_exec bash -c "mkdir $MACHINE_HOME/$ARTIFACTS_DIRNAME"
     docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_DIRNAME/postgresql.prepare.log.gz"
   fi
 
@@ -1806,7 +1815,7 @@ EOF
 #   WORKLOAD_REAL, WORKLOAD_REAL_REPLAY_SPEED, WORKLOAD_CUSTOM_SQL, MACHINE_HOME,
 #   DURATION_WRKLD, DB_NAME, VERBOSE_OUTPUT_REDIRECT
 # Arguments:
-#   None
+#   1 - run number
 # Returns:
 #   None
 #######################################
@@ -1881,19 +1890,20 @@ function save_artifacts() {
   docker_exec bash -c "cp $MACHINE_HOME/nancy_start_params.txt $MACHINE_HOME/$ARTIFACTS_DIRNAME/"
 
   if [[ $ARTIFACTS_DESTINATION =~ "s3://" ]]; then
-    $out=$(docker_exec s3cmd --recursive put /$MACHINE_HOME/$ARTIFACTS_DIRNAME $ARTIFACTS_DESTINATION/ 2>&1)
+    out=$(docker_exec s3cmd --recursive put /$MACHINE_HOME/$ARTIFACTS_DIRNAME $ARTIFACTS_DESTINATION/ 2>&1)
   else
     if [[ "$RUN_ON" == "localhost" ]]; then
       out=$(docker cp $CONTAINER_HASH:$MACHINE_HOME/$ARTIFACTS_DIRNAME $ARTIFACTS_DESTINATION/ 2>&1)
     elif [[ "$RUN_ON" == "aws" ]]; then
       mkdir -p $ARTIFACTS_DESTINATION/$ARTIFACTS_DIRNAME
-      out=$(docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_DIRNAME/* $ARTIFACTS_DESTINATION/$ARTIFACTS_DIRNAME/)
+      #out=$(docker-machine scp $DOCKER_MACHINE:/home/storage/$ARTIFACTS_DIRNAME/* $ARTIFACTS_DESTINATION/$ARTIFACTS_DIRNAME/)
+      out=$(docker-machine scp $DOCKER_MACHINE:/home/ubuntu/$ARTIFACTS_DIRNAME/* $ARTIFACTS_DESTINATION/$ARTIFACTS_DIRNAME/)
     else
       err "ERROR: (ASSERT) must not reach this point."
       exit 1
     fi
   fi
-  msg $out "Artifacts saved"
+  msg "Artifacts saved"
 }
 
 #######################################
@@ -1901,7 +1911,7 @@ function save_artifacts() {
 # Globals:
 #   CONTAINER_HASH, MACHINE_HOME, ARTIFACTS_DESTINATION, PG_STAT_TOTAL_TIME
 # Arguments:
-#   None
+#   1 - run number
 # Returns:
 #   None
 #######################################
@@ -1925,6 +1935,7 @@ function collect_results() {
   PG_STAT_TOTAL_TIME=${out//[!0-9.]/}
 
   for table2export in \
+    "pg_settings order by name" \
     "pg_stat_statements order by total_time desc" \
     "pg_stat_kcache() order by reads desc" \
     "pg_stat_archiver" \
@@ -1977,7 +1988,7 @@ function docker_cleanup_and_exit {
 # Globals:
 #   MACHINE_HOME
 # Arguments:
-#   None
+#   1 - run number
 # Returns:
 #   (integer) ret_code
 #######################################
@@ -2005,7 +2016,7 @@ function start_perf {
 # Globals:
 #   ARTIFACTS_DIRNAME
 # Arguments:
-#   None
+#   1 - run number
 # Returns:
 #   (integer) ret_code
 #######################################
@@ -2024,8 +2035,8 @@ function stop_perf {
     && dbg "Perf is probably stopped."
   msg "Generating FlameGraph..."
   docker_exec bash -c "cd /root/FlameGraph \
-    && perf script --input perf.${run_number}.data | ./stackcollapse-perf.pl > out.${run_number}.perf-folded \
-    && ./flamegraph.pl out.${run_number}.perf-folded > perf-kernel.${run_number}.svg \
+    && perf script --input perf.${run_number}.data $VERBOSE_OUTPUT_REDIRECT | ./stackcollapse-perf.pl > out.${run_number}.perf-folded $VERBOSE_OUTPUT_REDIRECT \
+    && ./flamegraph.pl out.${run_number}.perf-folded > perf-kernel.${run_number}.svg $VERBOSE_OUTPUT_REDIRECT \
     && cp perf-kernel.${run_number}.svg ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/"
   ret_code="$?"
   set -e
@@ -2038,7 +2049,7 @@ function stop_perf {
 # Globals:
 #   ARTIFACTS_DIRNAME, MACHINE_HOME
 # Arguments:
-#   None
+#   1 - run number
 # Returns:
 #   None
 #######################################
@@ -2074,11 +2085,13 @@ function start_monitoring {
 # Globals:
 #   ARTIFACTS_DIRNAME, MACHINE_HOME
 # Arguments:
-#   None
+#   1 - run number
 # Returns:
 #   None
 #######################################
 function stop_monitoring {
+  local run_number=$1
+  let run_number=run_number+1
   set +e
   # mpstat cpu
   msg "Stop monitoring."
@@ -2086,19 +2099,28 @@ function stop_monitoring {
   # iostat
   docker_exec bash -c "killall iostat >/dev/null 2>&1"
   msg "Generating iostat graph..."
-  docker_exec bash -c "cd ${MACHINE_HOME}/${ARTIFACTS_DIRNAME} && iostat-cli --data iostat.log plot || true"
+  docker_exec bash -c "cd ${MACHINE_HOME}/${ARTIFACTS_DIRNAME} && iostat-cli --data iostat.${run_number}.log plot $VERBOSE_OUTPUT_REDIRECT || true"
+  docker_exec bash -c "mv ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/iostat.png ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/iostat.${run_number}.png $VERBOSE_OUTPUT_REDIRECT"
   set -e
 }
 
+#######################################
+# Stop postgres and wait for complete stop
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
 function stop_postgres {
   dbg "Stopping Postgres..."
   local cnt=0
   while true; do
-  #while (ps auxww | grep postgres | grep -v grep >/dev/null); do
-    res=$(docker_exec bash -c "ps auxww | grep postgres | grep -v grep || echo ''")
+    res=$(docker_exec bash -c "ps auxww | grep postgres | grep -v "grep" 2>/dev/null || echo ''")
     if [[ -z "$res" ]]; then
       # postgres process not found
-      echo "Postgres stopped."
+      dbg "Postgres stopped."
       return;
     fi
     cnt=$((cnt+1))
@@ -2112,12 +2134,20 @@ function stop_postgres {
   done
 }
 
+#######################################
+# Start postgres and wait for ready
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
 function start_postgres {
   dbg "Starting Postgres..."
   local cnt=0
   while true; do
-  #while ! (psql -Upostgres -d postgres -c "select" >/dev/null); do
-    res=$(docker_exec bash -c "psql -Upostgres -d postgres -t -c \"select 1\" || echo '' ")
+    res=$(docker_exec bash -c "psql -Upostgres -d postgres -t -c \"select 1\" 2>/dev/null || echo '' ")
     if [[ ! -z "$res" ]]; then
       dbg "Postgres started."
       return;
@@ -2133,22 +2163,41 @@ function start_postgres {
   dbg "Postgres started"
 }
 
+#######################################
+# Do rollback to earlier created ZFS snapshot with stop and start postgres
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
 function zfs_rollback_snapshot {
+  return
   OP_START_TIME=$(date +%s)
   dbg "Rollback database"
   stop_postgres
-  docker_exec bash -c "zfs rollback -f -r zpool@init_db"
+  docker_exec bash -c "zfs rollback -f -r zpool@init_db $VERBOSE_OUTPUT_REDIRECT"
   start_postgres
   END_TIME=$(date +%s)
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Time taken to rollback database: $DURATION."
 }
 
+#######################################
+# Create ZFS snapshot with stop and start postgres
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
 function zfs_create_snapshot {
   OP_START_TIME=$(date +%s)
   dbg "Create database snapshot"
   stop_postgres
-  docker_exec bash -c "zfs snapshot -r zpool@init_db"
+  docker_exec bash -c "zfs snapshot -r zpool@init_db  $VERBOSE_OUTPUT_REDIRECT"
   start_postgres
   END_TIME=$(date +%s)
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
@@ -2192,11 +2241,6 @@ done
 # Dump
 sleep 10 # wait for postgres up&running
 
-if [[ ! -z ${AWS_ZONE+x} ]]; then
-  docker_exec bash -c "sudo apt-get update"
-  docker_exec bash -c "sudo apt-get install -y zfsutils-linux"
-fi
-
 docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not exists pg_stat_statements;' $VERBOSE_OUTPUT_REDIRECT"
 docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not exists pg_stat_kcache;' $VERBOSE_OUTPUT_REDIRECT"
 
@@ -2208,7 +2252,14 @@ if [[ ! -z ${DB_DUMP+x} ]] || [[ ! -z ${DB_PGBENCH+x} ]]; then
 fi
 apply_sql_after_db_restore
 
-if [[ ! -z ${AWS_ZONE+x} ]]; then
+if [[ "${RUN_ON}" == "aws" ]]; then
+  docker_exec bash -c "mkdir /machine_home/$ARTIFACTS_DIRNAME"
+  docker_exec bash -c "ln -s /machine_home/$ARTIFACTS_DIRNAME $MACHINE_HOME/$ARTIFACTS_DIRNAME"
+else
+  docker_exec bash -c "mkdir $MACHINE_HOME/$ARTIFACTS_DIRNAME"
+fi
+
+if [[ ! -z ${AWS_ZFS+x} ]]; then
   zfs_create_snapshot
 fi
 
@@ -2229,7 +2280,7 @@ while : ; do
   #restore database if not first run
   if [[ "$i" -gt "0" ]]; then
     sleep 10
-    if [[ ! -z ${AWS_ZONE+x} ]]; then
+    if [[ ! -z ${AWS_ZFS+x} ]]; then
       zfs_rollback_snapshot
     elif [[ ! -z ${DB_EBS_VOLUME_ID+x} ]]; then
       docker_exec bash -c "sudo /etc/init.d/postgresql stop $VERBOSE_OUTPUT_REDIRECT"
