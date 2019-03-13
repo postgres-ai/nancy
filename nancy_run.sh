@@ -1874,6 +1874,8 @@ function stop_monitoring {
   docker_exec bash -c "killall mpstat >/dev/null 2>&1"
   # iostat
   docker_exec bash -c "killall iostat >/dev/null 2>&1"
+  msg "Generating iostat graph..."
+  docker_exec bash -c "cd ${MACHINE_HOME}/${ARTIFACTS_DIRNAME} && iostat-cli --data iostat.log plot || true"
   set -e
 }
 
