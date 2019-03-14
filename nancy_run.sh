@@ -1870,8 +1870,10 @@ function execute_workload() {
   fi
   OP_START_TIME=$(date +%s)
   print_connection
-  msg "Clear OS cache"
-  docker_exec bash -c "sync; echo 3 > /proc/sys/vm/drop_caches"
+  if [[ "${RUN_ON}" == "aws" ]]; then
+    msg "Clear OS cache"
+    docker_exec bash -c "sync; echo 3 > /proc/sys/vm/drop_caches"
+  fi
   msg "Executing workload..."
   if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
       docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME 2>&1 | awk '{print \"$MSG_PREFIX\"\$0}' | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$run_number.txt $verbose_output"
