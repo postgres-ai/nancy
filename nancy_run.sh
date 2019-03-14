@@ -20,7 +20,7 @@ VERBOSE_OUTPUT_REDIRECT=" > /dev/null"
 EBS_SIZE_MULTIPLIER=5
 POSTGRES_VERSION_DEFAULT=11
 AWS_BLOCK_DURATION=0
-MSG_PREFIX="" ####
+MSG_PREFIX=""
 declare -a RUNS # i - delta_config  i+1 delta_ddl_do i+2 delta_ddl_undo
 
 #######################################
@@ -1585,7 +1585,6 @@ function restore_dump() {
   msg "Restoring database from dump..."
   if ([ ! -z ${DB_PGBENCH+x} ]); then
     docker_exec bash -c "pgbench -i --quiet ${DB_PGBENCH} -U postgres ${DB_NAME} ${VERBOSE_OUTPUT_REDIRECT}" || true
-    docker_exec bash -c "psql -U postgres $DB_NAME -c \"create table pgbench_accounts_vac (like pgbench_accounts EXCLUDING ALL);\" ${VERBOSE_OUTPUT_REDIRECT}" ####
   else
     case "${DB_DUMP_EXT}" in
       sql)
@@ -1871,12 +1870,8 @@ function execute_workload() {
   fi
   OP_START_TIME=$(date +%s)
   print_connection
-  msg "Clear cache"
+  msg "Clear OS cache"
   docker_exec bash -c "sync; echo 3 > /proc/sys/vm/drop_caches"
-  if [[ ! -z ${DB_PGBENCH+x} ]]; then ####
-    msg "Start autovacuum in background" ####
-    docker_exec bash -c "nohup psql -A -t -d bench -c \"vacuum analyze pgbench_accounts_vac\" &>/dev/null &" ####
-  fi ####
   msg "Executing workload..."
   if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
       docker_exec bash -c "pgbench $WORKLOAD_PGBENCH -U postgres $DB_NAME 2>&1 | awk '{print \"$MSG_PREFIX\"\$0}' | tee $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$run_number.txt $verbose_output"
