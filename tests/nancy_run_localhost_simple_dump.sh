@@ -20,7 +20,7 @@ if [[ ! $output =~ $regex ]]; then
 fi
 
 artifacts_location=$(
-  echo "$output" | grep "Artifacts location:" | awk -F': ' '{print $2}'
+  echo "$output" | grep "Artifacts (collected in " | awk -F"\"" '{print $2}'
 )
 if [[ ! $(grep Linux "$artifacts_location/system_info.txt") =~ ^Linux ]]; then
   test_passed=false
