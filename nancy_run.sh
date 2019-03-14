@@ -2164,7 +2164,7 @@ function stop_postgres {
     fi
     cnt=$((cnt+1))
     if [[ "${cnt}" -ge "60" ]]; then
-      dbg "WARNING: can't stop postgres in 60 seconds. Killing."
+      msg "WARNING: could not stop Postgres in 60 seconds. Killing."
       docker_exec bash -c "sudo killall -s 9 postgres"
     fi
     # Try normal "fast stop"
