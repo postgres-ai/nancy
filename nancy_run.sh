@@ -2167,7 +2167,7 @@ function stop_postgres {
     cnt=$((cnt+1))
     if [[ "${cnt}" -ge "60" ]]; then
       msg "WARNING: could not stop Postgres in 60 seconds. Killing."
-      docker_exec bash -c "sudo killall -s 9 postgres"
+      docker_exec bash -c "sudo killall -s 9 postgres || true"
     fi
     # Try normal "fast stop"
     docker_exec bash -c "sudo pg_ctlcluster ${PG_VERSION} main stop -m f "
@@ -2198,7 +2198,7 @@ function start_postgres {
       dbg "WARNING: Can't start Postgres in 60 seconds." >&2
       return 12
     fi
-    docker_exec bash -c "sudo pg_ctlcluster ${PG_VERSION} main start"
+    docker_exec bash -c "sudo pg_ctlcluster ${PG_VERSION} main start || true"
     sleep 1
   done
   dbg "Postgres started"
@@ -2368,7 +2368,9 @@ while : ; do
   echo -e "------------------------------------------------------------------------------"
   echo -e "${MSG_PREFIX}Artifacts (collected in \"$ARTIFACTS_DESTINATION/$ARTIFACTS_DIRNAME/\"):"
   echo -e "${MSG_PREFIX}  Postgres config:    postgresql.$num.conf"
-  echo -e "${MSG_PREFIX}  Postgres logs:      postgresql.prepare.$num.log.gz (preparation),"
+  if [[ "$runs_count" -eq "1" ]]; then
+    echo -e "${MSG_PREFIX}  Postgres logs:      postgresql.prepare.log.gz (preparation),"
+  fi
   echo -e "                      postgresql.workload.$num.log.gz (workload)"
   if [[ -z ${NO_PGBADGER+x} ]]; then
     echo -e "${MSG_PREFIX}  pgBadger reports:   pgbadger.$num.html (for humans),"
