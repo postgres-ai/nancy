@@ -2245,6 +2245,28 @@ function zfs_create_snapshot {
   msg "Time taken to create database snapshot: $DURATION."
 }
 
+#######################################
+# Tune Linux host for better performance
+# Globals:
+#   DOCKER_MACHINE
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function tune_host_machine {
+  # Switch CPU to performance mode
+  docker-machine ssh $DOCKER_MACHINE \
+    "[[ -e /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor ]] \
+     && echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor"
+  # Disable swap
+  docker-machine ssh $DOCKER_MACHINE \
+    "[[ -e /proc/sys/vm/swappiness ]] \
+     && sudo bash -c 'echo 0 > /proc/sys/vm/swappiness'"
+}
+
+tune_host_machine
+
 trap docker_cleanup_and_exit EXIT
 
 if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]] && [[ ! "$DB_NAME" == "test" ]]; then
@@ -2347,13 +2369,13 @@ while : ; do
   [[ ! -z "$delta_config" ]] && apply_postgres_configuration $delta_config
   [[ ! -z "$delta_ddl_do" ]] && apply_ddl_do_code $delta_ddl_do
 
-  prepare_start_workload $i;
+  prepare_start_workload $i
   start_perf $i || true
   start_monitoring $i
   execute_workload $i
   stop_perf $i || true
   stop_monitoring $i
-  collect_results $i;
+  collect_results $i
 
   echo "Run #$num done."
   if ([[ ! -z "$delta_config" ]] || [[ ! -z "$delta_ddl_do" ]]); then
