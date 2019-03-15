@@ -922,6 +922,33 @@ function print_connection {
 }
 
 #######################################
+# Print estimated cost of experiment for run on aws
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function calc_estimated_cost {
+  if [[ "$RUN_ON" == "aws" ]]; then
+    END_TIME=$(date +%s)
+    DURATION=$(echo $((END_TIME-START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+    echo "All runs done for $DURATION"
+    let SECONDS_DURATION=$END_TIME-$START_TIME
+    if [[ ! -z ${EC2_PRICE+x} ]]; then
+      PRICE_PER_SECOND=$(echo "scale=10; $EC2_PRICE / 3600" | bc)
+      let DURATION_SECONDS=$END_TIME-$START_TIME
+      ESTIMATE_COST=$(echo "scale=10; $DURATION_SECONDS * $PRICE_PER_SECOND" | bc)
+      ESTIMATE_COST=$(printf "%02.03f\n" "$ESTIMATE_COST")
+    fi
+    if [[ ! -z "${ESTIMATE_COST+x}" ]]; then
+    echo -e "Estimated AWS cost: \$$ESTIMATE_COST"
+    fi
+  fi
+}
+
+#######################################
 # Wait keep alive time and stop container with EC2 intstance.
 # Also delete temp drive if it was created and attached for non i3 instances.
 # Globals:
@@ -1256,9 +1283,9 @@ elif [[ "$RUN_ON" == "aws" ]]; then
     msg "High-speed NVMe SSD will be used."
     use_ec2_nvme_drive
   else
-    msg "EBS volume will be used."
     # Create new volume and attach them for non i3 instances if needed
     if [[ "$RUN_ON" == "aws" ]] && [[ ! -z ${AWS_EBS_VOLUME_SIZE+x} ]]; then
+      msg "EBS volume will be used."
       use_ec2_ebs_drive
     else
       err "ERROR: Can't use ebs drive, drive size not specified."
@@ -2020,6 +2047,7 @@ function docker_cleanup_and_exit {
     docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_DIRNAME/postgresql.abnormal.log.gz"
     err "Abnormal termination. Check artifacts to understand the reasons."
     save_artifacts
+    calc_estimated_cost
   fi
   cleanup_and_exit
 }
@@ -2214,7 +2242,6 @@ function start_postgres {
 #   None
 #######################################
 function zfs_rollback_snapshot {
-  return
   OP_START_TIME=$(date +%s)
   dbg "Rollback database"
   stop_postgres
@@ -2246,7 +2273,7 @@ function zfs_create_snapshot {
 }
 
 #######################################
-# Tune Linux host for better performance
+# Tune AWS Linux host for better performance
 # Globals:
 #   DOCKER_MACHINE
 # Arguments:
@@ -2255,14 +2282,16 @@ function zfs_create_snapshot {
 #   None
 #######################################
 function tune_host_machine {
-  # Switch CPU to performance mode
-  docker-machine ssh $DOCKER_MACHINE \
-    "[[ -e /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor ]] \
-     && echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor"
-  # Disable swap
-  docker-machine ssh $DOCKER_MACHINE \
-    "[[ -e /proc/sys/vm/swappiness ]] \
-     && sudo bash -c 'echo 0 > /proc/sys/vm/swappiness'"
+  if [[ "$RUN_ON" == "aws" ]]; then
+    # Switch CPU to performance mode
+    docker-machine ssh $DOCKER_MACHINE \
+      "[[ -e /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor ]] \
+       && echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor"
+    # Disable swap
+    docker-machine ssh $DOCKER_MACHINE \
+      "[[ -e /proc/sys/vm/swappiness ]] \
+       && sudo bash -c 'echo 0 > /proc/sys/vm/swappiness'"
+  fi
 }
 
 tune_host_machine
@@ -2438,17 +2467,5 @@ while : ; do
   [[ "$i" -eq "$runs_count" ]] && break;
 done
 
-END_TIME=$(date +%s)
-DURATION=$(echo $((END_TIME-START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
-echo "All runs done for $DURATION"
-let SECONDS_DURATION=$END_TIME-$START_TIME
-if [[ ! -z ${EC2_PRICE+x} ]]; then
-  PRICE_PER_SECOND=$(echo "scale=10; $EC2_PRICE / 3600" | bc)
-  let DURATION_SECONDS=$END_TIME-$START_TIME
-  ESTIMATE_COST=$(echo "scale=10; $DURATION_SECONDS * $PRICE_PER_SECOND" | bc)
-  ESTIMATE_COST=$(printf "%02.03f\n" "$ESTIMATE_COST")
-fi
-if [[ ! -z "${ESTIMATE_COST+x}" ]]; then
-echo -e "Estimated AWS cost: \$$ESTIMATE_COST"
-fi
+calc_estimated_cost
 DONE=1
