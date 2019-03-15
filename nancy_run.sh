@@ -714,10 +714,10 @@ function determine_history_ec2_spot_price() {
   price="${price/\"/}"
   AWS_ZONE=${region:$((${#region}-1)):1}
   AWS_REGION=${region:0:$((${#region}-1))}
-  msg "Min price from history: $price in $AWS_REGION (zone: $AWS_ZONE)."
+  msg "Min price from history: ${price}/h in $AWS_REGION (zone: $AWS_ZONE)."
   multiplier="1.01"
   price=$(echo "$price * $multiplier" | bc -l)
-  msg "Increased price: $price"
+  msg "Increased price: ${price}/h"
   EC2_PRICE=$price
 }
 
