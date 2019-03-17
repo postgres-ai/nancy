@@ -8,16 +8,16 @@
 
 **IMPORTANT**: Nancy has migrated to GitLab.com. The official repository address: https://gitlab.com/postgres.ai/nancy
 
-About
-<img width="122" src="https://user-images.githubusercontent.com/1345402/45656700-8a987f00-baef-11e8-87b6-cccf8f65ee8f.png" align="right">
-===
+# About
+<img width="200" src="https://gitlab.com/postgres-ai-team/nancy/uploads/c5ebf02e1c39cc91c95e8beac8028b62/nancy.png" align="right">
+
 Nancy helps to conduct automated database experiments.
 
 The Nancy Command Line Interface is a unified way to manage automated
 database experiments either in clouds or on-premise.
 
-What is a Database Experiment?
-===
+### What is a Database Experiment?
+
 Database experiment is a set of actions performed to test
  * (a) specified SQL queries ("workload")
  * (b) on specified machine / OS / Postgres version ("environment")
@@ -37,8 +37,8 @@ Database experiments are needed when you:
  - plan to upgrade your DBMS to a new major version;
  - want to train ML model related to DB optimization.
 
-Currently Supported Features
-===
+# Currently Supported Features
+
 * Works anywhere where Docker can run (checked: Linux Ubuntu/Debian, macOS)
 * Experiments are conducted in a Docker container with extended Postgres setup
 * Supported Postgres versions: 11 (default), 10, 9.6
@@ -71,8 +71,8 @@ Currently Supported Features
   * Workload SQL logs
   * Deep SQL query analysis report
 
-Requirements
-===
+# Requirements
+
 1) To use Nancy CLI you need Linux or MacOS with installed Docker.
 
 2) To run on AWS EC2 instances, you also need:
@@ -81,8 +81,7 @@ Requirements
   * jq https://stedolan.github.io/jq/
 
 
-Installation
-===
+# Installation
 
 In the minimal configuration, only a few steps are needed:
 
@@ -130,16 +129,16 @@ Additionally, to allow use of AWS EC2 instances:
 
 5) Install Docker Machine tools https://docs.docker.com/machine/install-machine/
 
-Getting started
-===
+# Getting started
+
 Start with these commands:
 ```shell
 nancy help
 nancy run help
 ```
 
-"Hello World!"
-===
+# "Hello World!"
+
 Locally, on any Linux or macOS machine:
 ```shell
 echo "create table hello_world as select i from generate_series(1, (10^6)::int) _(i);" \
@@ -171,8 +170,8 @@ nancy run \
   --workload-custom-sql "select i from hello_world where i between 10 and 20;"
 ```
 
-Additional notes
-===
+# Additional notes
+
 On Linux, if you experience issues with running (locally) `nancy run` inside `screen` or
 `tmux`, double-check that Docker is running and add your user to the `docker`
 group, as described below. See also: https://docs.docker.com/install/linux/linux-postinstall/.
