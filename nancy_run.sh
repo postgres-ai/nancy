@@ -2104,7 +2104,7 @@ function stop_perf {
   msg "Stopping perf..."
   docker_exec bash -c "test -f /tmp/perf_pid \
     && while kill \$(cat /tmp/perf_pid) 2>/dev/null; do sleep 1; done" \
-    && dbg "Perf is probably stopped."
+    && dbg "perf should be stopped."
 
   msg "Generating FlameGraph..."
   docker_exec bash -c "cd /root/FlameGraph \
