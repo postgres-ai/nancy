@@ -1218,7 +1218,10 @@ trap cleanup_and_exit 1 2 13 15 EXIT
 if [[ "$RUN_ON" == "localhost" ]]; then
   if [[ -z ${CONTAINER_ID+x} ]]; then
     docker pull "postgresmen/postgres-nancy:${PG_VERSION}" 2>&1 \
-      | grep -e 'Pulling from' -e Digest -e Status -e Error
+      | grep -v Waiting \
+      | grep -v Pulling \
+      | grep -v Verifying \
+      | grep -v " complete"
 
     if [[ ! -z ${DB_LOCAL_PGDATA+x} ]] || [[ ! -z ${PGDATA_DIR+x} ]]; then
       if [[ ! -z ${DB_LOCAL_PGDATA+x} ]]; then
