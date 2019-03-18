@@ -17,6 +17,7 @@ DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
 KEEP_ALIVE=0
 DURATION_WRKLD=""
 VERBOSE_OUTPUT_REDIRECT=" > /dev/null"
+STDERR_DST="/dev/null"
 EBS_SIZE_MULTIPLIER=5
 POSTGRES_VERSION_DEFAULT=11
 AWS_BLOCK_DURATION=0
@@ -1075,6 +1076,7 @@ while [ $# -gt 0 ]; do
     -d | --debug )
       DEBUG=true
       VERBOSE_OUTPUT_REDIRECT=''
+      STDERR_DST='/dev/stderr'
       shift ;;
     --keep-alive )
       KEEP_ALIVE="$2"; shift 2 ;;
@@ -2100,12 +2102,15 @@ function stop_perf {
   fi
 
   msg "Stopping perf..."
-  docker_exec bash -c "test -f /tmp/perf_pid && kill \$(cat /tmp/perf_pid)" \
+  docker_exec bash -c "test -f /tmp/perf_pid \
+    && while kill \$(cat /tmp/perf_pid) 2>/dev/null; do sleep 1; done" \
     && dbg "Perf is probably stopped."
+
   msg "Generating FlameGraph..."
   docker_exec bash -c "cd /root/FlameGraph \
-    && perf script --input perf.${run_number}.data $VERBOSE_OUTPUT_REDIRECT | ./stackcollapse-perf.pl > out.${run_number}.perf-folded $VERBOSE_OUTPUT_REDIRECT \
-    && ./flamegraph.pl out.${run_number}.perf-folded > perf-kernel.${run_number}.svg $VERBOSE_OUTPUT_REDIRECT \
+    && perf script --input perf.${run_number}.data 2>${STDERR_DST} \
+    | ./stackcollapse-perf.pl > out.${run_number}.perf-folded 2>${STDERR_DST} \
+    && ./flamegraph.pl out.${run_number}.perf-folded > perf-kernel.${run_number}.svg 2>${STDERR_DST} \
     && cp perf-kernel.${run_number}.svg ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/"
   ret_code="$?"
   set -e
