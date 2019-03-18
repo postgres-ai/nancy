@@ -2487,7 +2487,7 @@ while : ; do
     else
       checkpoint_mbps=0
     fi
-    echo -e "${MSG_PREFIX}                      ${checkpoint_buffers} buffers (${checkpoint_mb} MiB) written and synced during ${checkpoint_t} ms, avg tput: ${checkpoint_mbps} MiB/s"
+    echo -e "${MSG_PREFIX}                      ${checkpoint_buffers} buffers (${checkpoint_mb} MiB), took ${checkpoint_t} ms, avg tput: ${checkpoint_mbps} MiB/s"
   else
     if [[ ! -z ${PG_STAT_TOTAL_TIME+x} ]]; then
       echo -e "${MSG_PREFIX}  Total query time:   $PG_STAT_TOTAL_TIME ms"
