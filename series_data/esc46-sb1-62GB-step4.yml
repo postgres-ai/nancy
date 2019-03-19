@@ -1,0 +1,37 @@
+run:
+  0:
+    delta_config: effective_cache_size = 46GB;shared_buffers = 256MB
+  1:
+    delta_config: effective_cache_size = 46GB;shared_buffers = 512MB
+  2:
+    delta_config: effective_cache_size = 46GB;shared_buffers = 1GB
+  3:
+    delta_config: effective_cache_size = 46GB;shared_buffers = 5GB
+  4:
+    delta_config: effective_cache_size = 46GB;shared_buffers = 9GB
+  5:
+    delta_config: effective_cache_size = 46GB;shared_buffers = 13GB
+  6:
+    delta_config: effective_cache_size = 46GB;shared_buffers = 17GB
+  7:
+    delta_config: effective_cache_size = 46GB;shared_buffers = 21GB
+  8:
+    delta_config: effective_cache_size = 46GB;shared_buffers = 25GB
+  9:
+    delta_config: effective_cache_size = 46GB;shared_buffers = 29GB
+  10:
+    delta_config: effective_cache_size = 46GB;shared_buffers = 33GB
+  11:
+    delta_config: effective_cache_size = 46GB;shared_buffers = 38GB
+  12:
+    delta_config: effective_cache_size = 46GB;shared_buffers = 42GB
+  13:
+    delta_config: effective_cache_size = 46GB;shared_buffers = 46GB
+  14:
+    delta_config: effective_cache_size = 46GB;shared_buffers = 50GB
+  15:
+    delta_config: effective_cache_size = 46GB;shared_buffers = 54GB
+  16:
+    delta_config: effective_cache_size = 46GB;shared_buffers = 58GB
+  17:
+    delta_config: effective_cache_size = 46GB;shared_buffers = 62GB

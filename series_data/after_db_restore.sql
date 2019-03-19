@@ -1,0 +1,1 @@
+create table pgbench_accounts_vac as select * from pgbench_accounts;

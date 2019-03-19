@@ -2198,7 +2198,7 @@ function stop_postgres {
       docker_exec bash -c "sudo killall -s 9 postgres || true"
     fi
     # Try normal "fast stop"
-    docker_exec bash -c "sudo pg_ctlcluster ${PG_VERSION} main stop -m f "
+    docker_exec bash -c "sudo pg_ctlcluster ${PG_VERSION} main stop -m f || true"
     sleep 1
   done
 }
@@ -2286,11 +2286,11 @@ function tune_host_machine {
     # Switch CPU to performance mode
     docker-machine ssh $DOCKER_MACHINE \
       "[[ -e /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor ]] \
-       && echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor"
+       && echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor || true"
     # Disable swap
     docker-machine ssh $DOCKER_MACHINE \
       "[[ -e /proc/sys/vm/swappiness ]] \
-       && sudo bash -c 'echo 0 > /proc/sys/vm/swappiness'"
+       && sudo bash -c 'echo 0 > /proc/sys/vm/swappiness' || true"
   fi
 }
 
