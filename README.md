@@ -179,13 +179,13 @@ group, as described below. See also: https://docs.docker.com/install/linux/linux
 Ubuntu/Debian:
 ```shell
 # Ubuntu/Debian
-usermod -aG docker ${USER}
+sudo usermod -aG docker ${USER}
 newgrp docker
 ```
 
 CentOS/RHEL:
 ```shell
-usermod -aG dockerroot ${USER}
+sudo usermod -aG dockerroot ${USER}
 newgrp dockerroot
 ```
 
