@@ -6,8 +6,10 @@
 
 
 EXPERIMENT_DURATION=1800
-EXPERIMENT_WORKLOAD="-f /storage/workload/read.sql@64 -f /storage/workload/scan.sql@16 -f /storage/workload/write.sql@20 --progress=10"
-WORKLOAD_TYPE="NZ80"
+#EXPERIMENT_WORKLOAD="-f /storage/workload/read.sql@64 -f /storage/workload/scan.sql@16 -f /storage/workload/write.sql@20 --progress=10"
+EXPERIMENT_WORKLOAD="--progress=10"
+#WORKLOAD_TYPE="NZ80"
+WORKLOAD_TYPE="NZ" # Not zipfian default
 FIXED_TPS="-R2000"
 EXP_TYPE="DB"
 
