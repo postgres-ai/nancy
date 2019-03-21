@@ -1778,6 +1778,7 @@ function pg_config_init() {
     local restart_needed=false
   fi
   if [[ $restart_needed == true ]]; then
+    docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'checkpoint'"
     docker_exec bash -c "sudo /etc/init.d/postgresql restart $VERBOSE_OUTPUT_REDIRECT"
     sleep 10
   fi
@@ -1804,6 +1805,7 @@ function apply_postgres_configuration() {
     delta_config_filename=$(basename $delta_config)
     docker_exec bash -c "echo '# DELTA:' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
     docker_exec bash -c "cat $MACHINE_HOME/$delta_config_filename >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
+    docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'checkpoint'"
     docker_exec bash -c "sudo /etc/init.d/postgresql restart $VERBOSE_OUTPUT_REDIRECT"
     #msg $out
     sleep 10
@@ -2398,8 +2400,6 @@ while : ; do
       docker_exec bash -c "sudo /etc/init.d/postgresql stop $VERBOSE_OUTPUT_REDIRECT"
       rsync_backup
       docker_exec bash -c "sudo /etc/init.d/postgresql start $VERBOSE_OUTPUT_REDIRECT"
-    else
-      restore_dump;
     fi
     sleep 10
   fi
