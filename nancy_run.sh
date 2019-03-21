@@ -1708,6 +1708,65 @@ function apply_ddl_undo_code() {
 }
 
 #######################################
+# Stop postgres and wait for complete stop
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function stop_postgres {
+  dbg "Stopping Postgres..."
+  local cnt=0
+  while true; do
+    res=$(docker_exec bash -c "ps auxww | grep postgres | grep -v "grep" 2>/dev/null || echo ''")
+    if [[ -z "$res" ]]; then
+      # postgres process not found
+      dbg "Postgres stopped."
+      return;
+    fi
+    cnt=$((cnt+1))
+    if [[ "${cnt}" -ge "300" ]]; then
+      msg "WARNING: could not stop Postgres in 300 seconds. Killing."
+      docker_exec bash -c "sudo killall -s 9 postgres || true"
+    fi
+    # Try normal "fast stop"
+    docker_exec bash -c "sudo pg_ctlcluster ${PG_VERSION} main stop -m f "
+    sleep 1
+  done
+}
+
+#######################################
+# Start postgres and wait for ready
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function start_postgres {
+  dbg "Starting Postgres..."
+  local cnt=0
+  while true; do
+    res=$(docker_exec bash -c "psql -Upostgres -d postgres -t -c \"select 1\" 2>/dev/null || echo '' ")
+    if [[ ! -z "$res" ]]; then
+      dbg "Postgres started."
+      return;
+    fi
+    cnt=$((cnt+1))
+    if [[ "${cnt}" -ge "300" ]]; then
+      dbg "WARNING: Can't start Postgres in 300 seconds." >&2
+      return 12
+    fi
+    docker_exec bash -c "sudo pg_ctlcluster ${PG_VERSION} main start || true"
+    sleep 1
+  done
+  dbg "Postgres started"
+}
+
+#######################################
 # Apply initial Postgres configuration
 # Globals:
 #   PG_CONFIG, MACHINE_HOME
@@ -1778,8 +1837,8 @@ function pg_config_init() {
     local restart_needed=false
   fi
   if [[ $restart_needed == true ]]; then
-    docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'checkpoint'"
-    docker_exec bash -c "sudo /etc/init.d/postgresql restart $VERBOSE_OUTPUT_REDIRECT"
+    stop_postgres
+    start_postgres
     sleep 10
   fi
   END_TIME=$(date +%s)
@@ -1805,8 +1864,8 @@ function apply_postgres_configuration() {
     delta_config_filename=$(basename $delta_config)
     docker_exec bash -c "echo '# DELTA:' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
     docker_exec bash -c "cat $MACHINE_HOME/$delta_config_filename >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
-    docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'checkpoint'"
-    docker_exec bash -c "sudo /etc/init.d/postgresql restart $VERBOSE_OUTPUT_REDIRECT"
+    stop_postgres
+    start_postgres
     #msg $out
     sleep 10
     END_TIME=$(date +%s);
@@ -2183,65 +2242,6 @@ function stop_monitoring {
   docker_exec bash -c "cd ${MACHINE_HOME}/${ARTIFACTS_DIRNAME} && iostat-cli --data iostat.${run_number}.log plot $VERBOSE_OUTPUT_REDIRECT || true"
   docker_exec bash -c "mv ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/iostat.png ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/iostat.${run_number}.png $VERBOSE_OUTPUT_REDIRECT"
   set -e
-}
-
-#######################################
-# Stop postgres and wait for complete stop
-# Globals:
-#   None
-# Arguments:
-#   None
-# Returns:
-#   None
-#######################################
-function stop_postgres {
-  dbg "Stopping Postgres..."
-  local cnt=0
-  while true; do
-    res=$(docker_exec bash -c "ps auxww | grep postgres | grep -v "grep" 2>/dev/null || echo ''")
-    if [[ -z "$res" ]]; then
-      # postgres process not found
-      dbg "Postgres stopped."
-      return;
-    fi
-    cnt=$((cnt+1))
-    if [[ "${cnt}" -ge "60" ]]; then
-      msg "WARNING: could not stop Postgres in 60 seconds. Killing."
-      docker_exec bash -c "sudo killall -s 9 postgres || true"
-    fi
-    # Try normal "fast stop"
-    docker_exec bash -c "sudo pg_ctlcluster ${PG_VERSION} main stop -m f "
-    sleep 1
-  done
-}
-
-#######################################
-# Start postgres and wait for ready
-# Globals:
-#   None
-# Arguments:
-#   None
-# Returns:
-#   None
-#######################################
-function start_postgres {
-  dbg "Starting Postgres..."
-  local cnt=0
-  while true; do
-    res=$(docker_exec bash -c "psql -Upostgres -d postgres -t -c \"select 1\" 2>/dev/null || echo '' ")
-    if [[ ! -z "$res" ]]; then
-      dbg "Postgres started."
-      return;
-    fi
-    cnt=$((cnt+1))
-    if [[ "${cnt}" -ge "60" ]]; then
-      dbg "WARNING: Can't start Postgres in 60 seconds." >&2
-      return 12
-    fi
-    docker_exec bash -c "sudo pg_ctlcluster ${PG_VERSION} main start || true"
-    sleep 1
-  done
-  dbg "Postgres started"
 }
 
 #######################################
