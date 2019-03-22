@@ -1345,8 +1345,8 @@ function stop_postgres {
       return;
     fi
     cnt=$((cnt+1))
-    if [[ "${cnt}" -ge "60" ]]; then
-      msg "WARNING: could not stop Postgres in 60 seconds. Killing."
+    if [[ "${cnt}" -ge "900" ]]; then
+      msg "WARNING: could not stop Postgres in 15 minutes. Killing."
       docker_exec bash -c "sudo killall -s 9 postgres || true"
     fi
     # Try normal "fast stop"
@@ -1374,8 +1374,8 @@ function start_postgres {
       return;
     fi
     cnt=$((cnt+1))
-    if [[ "${cnt}" -ge "60" ]]; then
-      dbg "WARNING: Can't start Postgres in 60 seconds." >&2
+    if [[ "${cnt}" -ge "900" ]]; then
+      dbg "WARNING: Can't start Postgres in 15 minutes." >&2
       return 12
     fi
     docker_exec bash -c "sudo pg_ctlcluster ${PG_VERSION} main start || true"
