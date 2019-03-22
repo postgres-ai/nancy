@@ -2308,11 +2308,11 @@ function tune_host_machine {
     # Switch CPU to performance mode
     docker-machine ssh $DOCKER_MACHINE \
       "[[ -e /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor ]] \
-       && echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor"
+       && echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor || true"
     # Disable swap
     docker-machine ssh $DOCKER_MACHINE \
       "[[ -e /proc/sys/vm/swappiness ]] \
-       && sudo bash -c 'echo 0 > /proc/sys/vm/swappiness'"
+       && sudo bash -c 'echo 0 > /proc/sys/vm/swappiness' || true"
   fi
 }
 
