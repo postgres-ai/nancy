@@ -1470,8 +1470,7 @@ function apply_backup(){
 #######################################
 function rsync_backup(){
   msg "Restore(rsync) database from backup."
-  docker_exec bash -c "sudo /etc/init.d/postgresql stop"
-  sleep 10
+  stop_postgres
   OP_START_TIME=$(date +%s);
   docker_exec bash -c "rsync -av /storage/backup/pgdata/ /storage/postgresql/$PG_VERSION/main" || true
   END_TIME=$(date +%s);
@@ -1549,8 +1548,9 @@ if [[ "$RUN_ON" == "aws" ]]; then
   #docker_exec bash -c "mkdir -p ${MACHINE_HOME}/storage"
 
   msg "Move PGDATA to /storage (machine's /home/storage)..."
-  docker_exec bash -c "sudo /etc/init.d/postgresql stop ${VERBOSE_OUTPUT_REDIRECT}"
-  sleep 10 # wait for postgres stopped
+  stop_postgres
+  #docker_exec bash -c "sudo /etc/init.d/postgresql stop ${VERBOSE_OUTPUT_REDIRECT}"
+  #sleep 10 # wait for postgres stopped
   docker_exec bash -c "sudo mv /var/lib/postgresql /storage/"
   docker_exec bash -c "ln -s /storage/postgresql /var/lib/postgresql"
 
@@ -2212,16 +2212,7 @@ function start_monitoring {
   [[ "$ret_code" -ne "0" ]] && err "WARNING: Can't execute iostat"
 
   # meminfo
-  memInfoMonitoring="#!/bin/bash\n\n \
-while true; do\n \
-  date --rfc-3339=ns >> ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/meminfo.${run_number}.log\n \
-  cat /proc/meminfo >> ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/meminfo.${run_number}.log\n \
-  echo \"\" >> ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/meminfo.${run_number}.log\n \
-  sleep ${freq}\n \
-done;
-  "
-  docker_exec bash -c "echo -e \"${memInfoMonitoring}\" > ${MACHINE_HOME}/meminfo.sh && chmod 700 ${MACHINE_HOME}/meminfo.sh"
-  docker_exec bash -c "nohup bash -c \"${MACHINE_HOME}/meminfo.sh\" >/dev/null 2>&1 </dev/null &"
+  docker_exec bash -c "nohup bash -c \"export FREQ=${freq} && [[ -f ${MACHINE_HOME}/meminfo.sh ]] && ${MACHINE_HOME}/meminfo.sh\" >/dev/null 2>&1 </dev/null &"
   ret_code="$?"
   [[ "$ret_code" -ne "0" ]] && err "WARNING: Can't execute iostat"
 
@@ -2244,10 +2235,18 @@ function stop_monitoring {
   # mpstat cpu
   msg "Stop monitoring."
   docker_exec bash -c "killall mpstat >/dev/null 2>&1"
+  cpu_num=0
+  docker_exec bash -c "echo 'time;cpu_num;%usr;%nice;%iowait;%steal' > ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/mpstat.${run_number}.csv"
+  while [[ $cpu_num -lt $CPU_CNT ]]; do
+    docker_exec bash -c "cat ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/mpstat.${run_number}.log | grep -P '^... \d\d \d\d:\d\d:\d\d \d\d:\d\d:\d\d +${cpu_num}' | awk '{print \$1\" \"\$2\" \"\$4\";\"\$5\";\"\$6\";\"\$7\";\"\$9\";\"\$12}' >> ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/mpstat.${run_number}.csv"
+    let cpu_num=$cpu_num+1
+  done
   # iostat
   docker_exec bash -c "killall iostat >/dev/null 2>&1"
   # meminfo
   docker_exec bash -c "killall meminfo.sh"
+  docker_exec bash -c "[[ -f /machine_home/meminfo.run.log ]] && mv /machine_home/meminfo.run.log ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/meminfo.${run_number}.log"
+  docker_exec bash -c "[[ -f /machine_home/meminfo.run.csv ]] && mv /machine_home/meminfo.run.csv ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/meminfo.${run_number}.csv"
   msg "Generating iostat graph..."
   docker_exec bash -c "cd ${MACHINE_HOME}/${ARTIFACTS_DIRNAME} && iostat-cli --data iostat.${run_number}.log plot $VERBOSE_OUTPUT_REDIRECT || true"
   docker_exec bash -c "mv ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/iostat.png ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/iostat.${run_number}.png $VERBOSE_OUTPUT_REDIRECT"
@@ -2317,6 +2316,10 @@ function tune_host_machine {
 }
 
 tune_host_machine
+if [[ -f ${BASH_SOURCE%/*}/tools/meminfo.sh ]]; then
+  copy_file ${BASH_SOURCE%/*}/tools/meminfo.sh
+  docker_exec bash -c "chmod +x ${MACHINE_HOME}/meminfo.sh"
+fi
 
 trap docker_cleanup_and_exit EXIT
 
