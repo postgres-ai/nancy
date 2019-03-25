@@ -2374,6 +2374,7 @@ runs_count=${#RUNS[*]}
 let runs_count=runs_count/3
 i=0
 while : ; do
+  summary_fname="$ARTIFACTS_DESTINATION/$ARTIFACTS_DIRNAME/summary.${i}.txt"
   j=$i*3
   d=$j+1
   u=$j+2
@@ -2422,58 +2423,58 @@ while : ; do
 
   echo "Run #$num done."
   if ([[ ! -z "$delta_config" ]] || [[ ! -z "$delta_ddl_do" ]]); then
-    echo -e "------------------------------------------------------------------------------"
+    echo -e "------------------------------------------------------------------------------" | tee -a "$summary_fname"
     if [[ ! -z "$delta_config" ]]; then
-      echo -e "Config delta:         $delta_config"
+      echo -e "Config delta:         $delta_config" | tee -a "$summary_fname"
     fi
     if [[ ! -z "$delta_ddl_do" ]]; then
-      echo -e "DDL delta:            $delta_ddl_do"
+      echo -e "DDL delta:            $delta_ddl_do" | tee -a "$summary_fname"
     fi
   fi
-  echo -e "------------------------------------------------------------------------------"
-  echo -e "${MSG_PREFIX}Artifacts (collected in \"$ARTIFACTS_DESTINATION/$ARTIFACTS_DIRNAME/\"):"
-  echo -e "${MSG_PREFIX}  Postgres config:    postgresql.$num.conf"
+  echo -e "------------------------------------------------------------------------------" | tee -a "$summary_fname"
+  echo -e "${MSG_PREFIX}Artifacts (collected in \"$ARTIFACTS_DESTINATION/$ARTIFACTS_DIRNAME/\"):" | tee -a "$summary_fname"
+  echo -e "${MSG_PREFIX}  Postgres config:    postgresql.$num.conf" | tee -a "$summary_fname"
   if [[ "$runs_count" -eq "1" ]]; then
-    echo -e "${MSG_PREFIX}  Postgres logs:      postgresql.prepare.log.gz (preparation),"
+    echo -e "${MSG_PREFIX}  Postgres logs:      postgresql.prepare.log.gz (preparation)," | tee -a "$summary_fname"
   fi
-  echo -e "                      postgresql.workload.$num.log.gz (workload)"
+  echo -e "                      postgresql.workload.$num.log.gz (workload)" | tee -a "$summary_fname"
   if [[ -z ${NO_PGBADGER+x} ]]; then
-    echo -e "${MSG_PREFIX}  pgBadger reports:   pgbadger.$num.html (for humans),"
-    echo -e "                      pgbadger.$num.json (for robots)"
+    echo -e "${MSG_PREFIX}  pgBadger reports:   pgbadger.$num.html (for humans)," | tee -a "$summary_fname"
+    echo -e "                      pgbadger.$num.json (for robots)" | tee -a "$summary_fname"
   fi
-  echo -e "${MSG_PREFIX}  Stat stapshots:     pg_stat_statements.$num.csv,"
-  echo -e "                      pg_stat_***.$num.csv"
-  echo -e "------------------------------------------------------------------------------"
-  echo -e "${MSG_PREFIX}Total execution time: $DURATION"
-  echo -e "------------------------------------------------------------------------------"
-  echo -e "${MSG_PREFIX}Workload:"
-  echo -e "${MSG_PREFIX}  Execution time:     $DURATION_WRKLD"
+  echo -e "${MSG_PREFIX}  Stat stapshots:     pg_stat_statements.$num.csv," | tee -a "$summary_fname"
+  echo -e "                      pg_stat_***.$num.csv" | tee -a "$summary_fname"
+  echo -e "------------------------------------------------------------------------------" | tee -a "$summary_fname"
+  echo -e "${MSG_PREFIX}Total execution time: $DURATION" | tee -a "$summary_fname"
+  echo -e "------------------------------------------------------------------------------" | tee -a "$summary_fname"
+  echo -e "${MSG_PREFIX}Workload:" | tee -a "$summary_fname"
+  echo -e "${MSG_PREFIX}  Execution time:     $DURATION_WRKLD" | tee -a "$summary_fname"
   if [[ -z ${NO_PGBADGER+x} ]]; then
-    echo -e "${MSG_PREFIX}  Total query time:   "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.overall_stat.queries_duration') " ms"
-    echo -e "${MSG_PREFIX}  Queries:            "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.overall_stat.queries_number')
-    echo -e "${MSG_PREFIX}  Query groups:       "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.normalyzed_info | length')
-    echo -e "${MSG_PREFIX}  Errors:             "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.overall_stat.errors_number')
-    echo -e "${MSG_PREFIX}  Errors groups:      "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.error_info | length')
+    echo -e "${MSG_PREFIX}  Total query time:   "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.overall_stat.queries_duration') " ms" | tee -a "$summary_fname"
+    echo -e "${MSG_PREFIX}  Queries:            "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.overall_stat.queries_number') | tee -a "$summary_fname"
+    echo -e "${MSG_PREFIX}  Query groups:       "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.normalyzed_info | length') | tee -a "$summary_fname"
+    echo -e "${MSG_PREFIX}  Errors:             "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.overall_stat.errors_number') | tee -a "$summary_fname"
+    echo -e "${MSG_PREFIX}  Errors groups:      "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.error_info | length') | tee -a "$summary_fname"
     if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
       tps_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$num.txt | grep "including connections establishing")
       tps=${tps_string//[!0-9.]/}
       if [[ ! -z "$tps" ]]; then
-        echo -e "${MSG_PREFIX}  TPS:                $tps (including connections establishing)"
+        echo -e "${MSG_PREFIX}  TPS:                $tps (including connections establishing)" | tee -a "$summary_fname"
       fi
     fi
     if [[ ! -z ${WORKLOAD_REAL+x} ]]; then
       avg_num_con_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$num.txt | grep "Average number of concurrent connections")
       avg_num_con=${avg_num_con_string//[!0-9.]/}
       if [[ ! -z "$avg_num_con" ]]; then
-        echo -e "${MSG_PREFIX}  Avg. connection number: $avg_num_con"
+        echo -e "${MSG_PREFIX}  Avg. connection number: $avg_num_con" | tee -a "$summary_fname"
       fi
     fi
   else
     if [[ ! -z ${PG_STAT_TOTAL_TIME+x} ]]; then
-      echo -e "${MSG_PREFIX}  Total query time:   $PG_STAT_TOTAL_TIME ms"
+      echo -e "${MSG_PREFIX}  Total query time:   $PG_STAT_TOTAL_TIME ms" | tee -a "$summary_fname"
     fi
   fi
-  echo -e "------------------------------------------------------------------------------"
+  echo -e "------------------------------------------------------------------------------" | tee -a "$summary_fname"
 
   # revert delta
   [[ ! -z "$delta_ddl_undo" ]] && apply_ddl_undo_code $delta_ddl_undo
