@@ -2374,7 +2374,6 @@ runs_count=${#RUNS[*]}
 let runs_count=runs_count/3
 i=0
 while : ; do
-  summary_fname="$ARTIFACTS_DESTINATION/$ARTIFACTS_DIRNAME/summary.${i}.txt"
   j=$i*3
   d=$j+1
   u=$j+2
@@ -2390,6 +2389,8 @@ while : ; do
   else
     MSG_PREFIX=""
   fi
+
+  summary_fname="$ARTIFACTS_DESTINATION/$ARTIFACTS_DIRNAME/summary.${num}.txt"
 
   do_cpu_test $i
   do_fs_test $i
