@@ -261,7 +261,9 @@ function check_cli_parameters() {
       err "NOTICE: AWS EC2 zone is not specified. Will be determined during the price optimization process."
     fi
     if [[ -z ${AWS_ZFS+x} ]]; then
-      err "NOTICE: ext4 will be used for PGDATA."
+      err "NOTICE: Ext4 will be used for PGDATA."
+    else
+      err "NOTICE: ZFS will be used for PGDATA."
     fi
     if [[ -z ${AWS_BLOCK_DURATION+x} ]]; then
       # See https://aws.amazon.com/en/blogs/aws/new-ec2-spot-blocks-for-defined-duration-workloads/
@@ -1635,6 +1637,8 @@ function restore_dump() {
   ;;
     esac
   fi
+  stop_postgres
+  start_postgres
   END_TIME=$(date +%s)
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Time taken to restore database: $DURATION."
@@ -2395,9 +2399,9 @@ while : ; do
     if [[ ! -z ${AWS_ZFS+x} ]]; then
       zfs_rollback_snapshot
     elif [[ ! -z ${DB_EBS_VOLUME_ID+x} ]]; then
-      docker_exec bash -c "sudo /etc/init.d/postgresql stop $VERBOSE_OUTPUT_REDIRECT"
+      stop_postgres
       rsync_backup
-      docker_exec bash -c "sudo /etc/init.d/postgresql start $VERBOSE_OUTPUT_REDIRECT"
+      start_postgres
     else
       restore_dump;
     fi
