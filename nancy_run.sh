@@ -339,6 +339,12 @@ function check_cli_parameters() {
     PG_VERSION="$POSTGRES_VERSION_DEFAULT"
   fi
 
+  if [[ "$PG_VERSION" = "9.6" ]]; then
+    CURRENT_LSN_FUNCTION="pg_current_xlog_location()"
+  else
+    CURRENT_LSN_FUNCTION="pg_current_wal_lsn()"
+  fi
+
   if [[ -z ${TMP_PATH+x} ]]; then
     TMP_PATH="/tmp"
     err "NOTICE: The directory for temporary files is not specified. Default will be used: ${TMP_PATH}."
@@ -1821,7 +1827,7 @@ function apply_postgres_configuration() {
 # Prepare to start workload.
 # Save restore db log, vacuumdb, clear log
 # Globals:
-#   ARTIFACTS_DIRNAME, MACHINE_HOME, DB_NAME
+#   ARTIFACTS_DIRNAME, MACHINE_HOME, DB_NAME, CURRENT_LSN_FUNCTION
 # Arguments:
 #   $1 - run number
 # Returns:
@@ -1840,9 +1846,11 @@ function prepare_start_workload() {
     docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_DIRNAME/postgresql.prepare.log.gz"
   fi
 
-  msg "Reset pg_stat_*** and Postgres log"
+  dbg "Resetting pg_stat_*** and Postgres log and remembering current LSN..."
   (docker_exec psql -U postgres $DB_NAME -f - <<EOF
     select pg_stat_reset(), pg_stat_statements_reset(), pg_stat_kcache_reset(), pg_stat_reset_shared('archiver'), pg_stat_reset_shared('bgwriter');
+    drop table if exists pg_stat_nancy_lsn;
+    create table pg_stat_nancy_lsn as select now() as created_at, ${CURRENT_LSN_FUNCTION} as lsn;
 EOF
 ) > /dev/null
   docker_exec bash -c "echo '' > $LOG_PATH"
@@ -1988,7 +1996,8 @@ function save_artifacts() {
 #######################################
 # Collect results of workload execution
 # Globals:
-#   CONTAINER_HASH, MACHINE_HOME, ARTIFACTS_DESTINATION, PG_STAT_TOTAL_TIME
+#   CONTAINER_HASH, MACHINE_HOME, ARTIFACTS_DESTINATION, PG_STAT_TOTAL_TIME,
+#   CURRENT_LSN_FUNCTION
 # Arguments:
 #   $1 - run number
 # Returns:
@@ -2030,8 +2039,19 @@ function collect_results() {
     "pg_stat_user_functions order by schemaname, funcname" \
     "pg_stat_xact_user_functions order by schemaname, funcname" \
   ; do
-  docker_exec bash -c "psql -U postgres $DB_NAME -b -c \"copy (select * from $table2export) to stdout with csv header delimiter ',';\" > /$MACHINE_HOME/$ARTIFACTS_DIRNAME/\$(echo \"$table2export\" | awk '{print \$1}').$run_number.csv"
+    docker_exec bash -c "psql -U postgres $DB_NAME -b -c \"copy (select * from $table2export) to stdout with csv header delimiter ',';\" > /$MACHINE_HOME/$ARTIFACTS_DIRNAME/\$(echo \"$table2export\" | awk '{print \$1}').$run_number.csv"
   done
+
+  docker_exec bash -c "
+    psql -U postgres $DB_NAME -b -c \"
+      copy (
+        select
+          ${CURRENT_LSN_FUNCTION} - lsn as wal_bytes_generated,
+          pg_size_pretty(${CURRENT_LSN_FUNCTION} - lsn) wal_pretty_generated,
+          pg_size_pretty(3600 * round(((${CURRENT_LSN_FUNCTION} - lsn) / extract(epoch from now() - created_at))::numeric, 2)) || '/h' as wal_avg_per_h
+        from pg_stat_nancy_lsn
+      ) to stdout with csv header delimiter ',';\" > /$MACHINE_HOME/$ARTIFACTS_DIRNAME/wal_stats.${run_number}.csv
+  "
 
   docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_DIRNAME/postgresql.workload.$run_number.log.gz"
   docker_exec bash -c "cp /etc/postgresql/$PG_VERSION/main/postgresql.conf $MACHINE_HOME/$ARTIFACTS_DIRNAME/postgresql.$run_number.conf"
@@ -2369,7 +2389,6 @@ if [[ ! -z ${AWS_ZFS+x} ]]; then
   zfs_create_snapshot
 fi
 
-msg "Start runs..."
 runs_count=${#RUNS[*]}
 let runs_count=runs_count/3
 i=0
@@ -2378,7 +2397,7 @@ while : ; do
   d=$j+1
   u=$j+2
   let num=$i+1
-  msg "Start run #$num."
+  msg "Experimental run (sequential number): #$num."
   delta_config=${RUNS[$j]}
   delta_ddl_do=${RUNS[$d]}
   delta_ddl_undo=${RUNS[$u]}
@@ -2454,25 +2473,45 @@ while : ; do
     echo -e "${MSG_PREFIX}  Query groups:       "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.normalyzed_info | length')
     echo -e "${MSG_PREFIX}  Errors:             "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.overall_stat.errors_number')
     echo -e "${MSG_PREFIX}  Errors groups:      "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.error_info | length')
-    if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
-      tps_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$num.txt | grep "including connections establishing")
-      tps=${tps_string//[!0-9.]/}
-      if [[ ! -z "$tps" ]]; then
-        echo -e "${MSG_PREFIX}  TPS:                $tps (including connections establishing)"
-      fi
-    fi
-    if [[ ! -z ${WORKLOAD_REAL+x} ]]; then
-      avg_num_con_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$num.txt | grep "Average number of concurrent connections")
-      avg_num_con=${avg_num_con_string//[!0-9.]/}
-      if [[ ! -z "$avg_num_con" ]]; then
-        echo -e "${MSG_PREFIX}  Avg. connection number: $avg_num_con"
-      fi
-    fi
   else
     if [[ ! -z ${PG_STAT_TOTAL_TIME+x} ]]; then
       echo -e "${MSG_PREFIX}  Total query time:   $PG_STAT_TOTAL_TIME ms"
     fi
   fi
+
+  if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
+    tps_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$num.txt | grep "including connections establishing")
+    tps=${tps_string//[!0-9.]/}
+    if [[ ! -z "$tps" ]]; then
+      echo -e "${MSG_PREFIX}  TPS:                $tps (including connections establishing)"
+    fi
+  fi
+
+  if [[ ! -z ${WORKLOAD_REAL+x} ]]; then
+    avg_num_con_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$num.txt | grep "Average number of concurrent connections")
+    avg_num_con=${avg_num_con_string//[!0-9.]/}
+    if [[ ! -z "$avg_num_con" ]]; then
+      echo -e "${MSG_PREFIX}  Avg. connection number: $avg_num_con"
+    fi
+  fi
+
+  echo -e "${MSG_PREFIX}  WAL:                $(docker_exec tail -1 $MACHINE_HOME/$ARTIFACTS_DIRNAME/wal_stats.$num.csv | awk -F',' '{print $1" bytes generated ("$2"), avg tput: "$3}')"
+  checkpoint_data=$(docker_exec tail -1 $MACHINE_HOME/$ARTIFACTS_DIRNAME/pg_stat_bgwriter.$num.csv)
+  echo -e "${MSG_PREFIX}  Checkpoints:        $(echo $checkpoint_data | awk -F',' '{print $1}') planned (timed)"
+  echo -e "${MSG_PREFIX}                      $(echo $checkpoint_data | awk -F',' '{print $2}') forced (requested)"
+  checkpoint_buffers=$(echo $checkpoint_data | awk -F',' '{print $5}')
+  checkpoint_write_t=$(echo $checkpoint_data | awk -F',' '{print $3}')
+  checkpoint_sync_t=$(echo $checkpoint_data | awk -F',' '{print $4}')
+  checkpoint_t=$(( checkpoint_write_t + checkpoint_sync_t ))
+  checkpoint_mb=$(( checkpoint_buffers * 8 / 1024 ))
+
+  if [[ $checkpoint_t > 0 ]]; then
+    checkpoint_mbps=$(( checkpoint_buffers * 8000 / (1024 * checkpoint_t) ))
+  else
+    checkpoint_mbps=0
+  fi
+  echo -e "${MSG_PREFIX}                      ${checkpoint_buffers} buffers (${checkpoint_mb} MiB), took ${checkpoint_t} ms, avg tput: ${checkpoint_mbps} MiB/s"
+
   echo -e "------------------------------------------------------------------------------"
 
   # revert delta
