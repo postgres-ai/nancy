@@ -1334,6 +1334,65 @@ alias docker_exec='docker $DOCKER_CONFIG exec -i ${CONTAINER_HASH} '
 get_system_characteristics
 
 #######################################
+# Stop postgres and wait for complete stop
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function stop_postgres {
+  dbg "Stopping Postgres..."
+  local cnt=0
+  while true; do
+    res=$(docker_exec bash -c "ps auxww | grep postgres | grep -v "grep" 2>/dev/null || echo ''")
+    if [[ -z "$res" ]]; then
+      # postgres process not found
+      dbg "Postgres stopped."
+      return;
+    fi
+    cnt=$((cnt+1))
+    if [[ "${cnt}" -ge "900" ]]; then
+      msg "WARNING: could not stop Postgres in 15 minutes. Killing."
+      docker_exec bash -c "sudo killall -s 9 postgres || true"
+    fi
+    # Try normal "fast stop"
+    docker_exec bash -c "sudo pg_ctlcluster ${PG_VERSION} main stop -m f || true"
+    sleep 1
+  done
+}
+
+#######################################
+# Start postgres and wait for ready
+# Globals:
+#   None
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function start_postgres {
+  dbg "Starting Postgres..."
+  local cnt=0
+  while true; do
+    res=$(docker_exec bash -c "psql -Upostgres -d postgres -t -c \"select 1\" 2>/dev/null || echo '' ")
+    if [[ ! -z "$res" ]]; then
+      dbg "Postgres started."
+      return;
+    fi
+    cnt=$((cnt+1))
+    if [[ "${cnt}" -ge "900" ]]; then
+      dbg "WARNING: Can't start Postgres in 15 minutes." >&2
+      return 12
+    fi
+    docker_exec bash -c "sudo pg_ctlcluster ${PG_VERSION} main start || true"
+    sleep 1
+  done
+  dbg "Postgres started"
+}
+
+#######################################
 # Extract the database backup from the attached EBS volume.
 # Globals:
 #   PG_VERSION
@@ -1419,8 +1478,7 @@ function apply_backup(){
 #######################################
 function rsync_backup(){
   msg "Restore(rsync) database from backup."
-  docker_exec bash -c "sudo /etc/init.d/postgresql stop"
-  sleep 10
+  stop_postgres
   OP_START_TIME=$(date +%s);
   docker_exec bash -c "rsync -av /storage/backup/pgdata/ /storage/postgresql/$PG_VERSION/main" || true
   END_TIME=$(date +%s);
@@ -1432,8 +1490,7 @@ function rsync_backup(){
   docker_exec bash -c "chown -R postgres:postgres /var/lib/postgresql" || true
   docker_exec bash -c "chmod 0700 /var/lib/postgresql/$PG_VERSION/main/" || true
 
-  docker_exec bash -c "sudo /etc/init.d/postgresql start $VERBOSE_OUTPUT_REDIRECT"
-  sleep 10
+  start_postgres
 
   if [[ ! -z ${DB_EBS_VOLUME_ID+x} ]] && [[ ! -z ${ORIGINAL_DB_NAME+x} ]] && [[ ! "$ORIGINAL_DB_NAME" == "test" ]]; then
     docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres -c 'drop database if exists test;'"
@@ -1472,8 +1529,8 @@ function attach_pgdata() {
   local end_time=$(date +%s);
   local duration=$(echo $((end_time-op_start_time)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Time taken to attach PGDATA: $duration."
-  docker_exec bash -c "sudo /etc/init.d/postgresql restart $VERBOSE_OUTPUT_REDIRECT"
-  sleep 30 # wait for Postgres to start, may take some time spent for recovery
+  stop_postgres
+  start_postgres
 }
 
 #######################################
@@ -1499,8 +1556,9 @@ if [[ "$RUN_ON" == "aws" ]]; then
   #docker_exec bash -c "mkdir -p ${MACHINE_HOME}/storage"
 
   msg "Move PGDATA to /storage (machine's /home/storage)..."
-  docker_exec bash -c "sudo /etc/init.d/postgresql stop ${VERBOSE_OUTPUT_REDIRECT}"
-  sleep 10 # wait for postgres stopped
+  stop_postgres
+  #docker_exec bash -c "sudo /etc/init.d/postgresql stop ${VERBOSE_OUTPUT_REDIRECT}"
+  #sleep 10 # wait for postgres stopped
   docker_exec bash -c "sudo mv /var/lib/postgresql /storage/"
   docker_exec bash -c "ln -s /storage/postgresql /var/lib/postgresql"
 
@@ -1516,8 +1574,7 @@ if [[ "$RUN_ON" == "aws" ]]; then
     dettach_db_ebs_drive
   fi
 
-  docker_exec bash -c "sudo /etc/init.d/postgresql start ${VERBOSE_OUTPUT_REDIRECT}"
-  sleep 10 # wait for postgres started
+  start_postgres
 else
   if [[ ! -z ${DB_LOCAL_PGDATA+x} ]]; then
     attach_pgdata true
@@ -1788,8 +1845,8 @@ function pg_config_init() {
     local restart_needed=false
   fi
   if [[ $restart_needed == true ]]; then
-    docker_exec bash -c "sudo /etc/init.d/postgresql restart $VERBOSE_OUTPUT_REDIRECT"
-    sleep 10
+    stop_postgres
+    start_postgres
   fi
   END_TIME=$(date +%s)
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
@@ -1814,9 +1871,8 @@ function apply_postgres_configuration() {
     delta_config_filename=$(basename $delta_config)
     docker_exec bash -c "echo '# DELTA:' >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
     docker_exec bash -c "cat $MACHINE_HOME/$delta_config_filename >> /etc/postgresql/$PG_VERSION/main/postgresql.conf"
-    docker_exec bash -c "sudo /etc/init.d/postgresql restart $VERBOSE_OUTPUT_REDIRECT"
-    #msg $out
-    sleep 10
+    stop_postgres
+    start_postgres
     END_TIME=$(date +%s);
     DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
     msg "Time taken to apply Postgres configuration delta: $DURATION."
@@ -2056,8 +2112,6 @@ function collect_results() {
   docker_exec bash -c "gzip -c $LOG_PATH > $MACHINE_HOME/$ARTIFACTS_DIRNAME/postgresql.workload.$run_number.log.gz"
   docker_exec bash -c "cp /etc/postgresql/$PG_VERSION/main/postgresql.conf $MACHINE_HOME/$ARTIFACTS_DIRNAME/postgresql.$run_number.conf"
 
-  save_artifacts
-
   END_TIME=$(date +%s)
   DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   msg "Time taken to generate and collect artifacts: $DURATION."
@@ -2180,6 +2234,12 @@ function start_monitoring {
      >/dev/null 2>&1 </dev/null &"
   ret_code="$?"
   [[ "$ret_code" -ne "0" ]] && err "WARNING: Can't execute iostat"
+
+  # meminfo
+  docker_exec bash -c "nohup bash -c \"export FREQ=${freq} && [[ -f ${MACHINE_HOME}/meminfo.sh ]] && ${MACHINE_HOME}/meminfo.sh\" >/dev/null 2>&1 </dev/null &"
+  ret_code="$?"
+  [[ "$ret_code" -ne "0" ]] && err "WARNING: Can't execute iostat"
+
   set -e
 }
 
@@ -2199,71 +2259,22 @@ function stop_monitoring {
   # mpstat cpu
   msg "Stop monitoring."
   docker_exec bash -c "killall mpstat >/dev/null 2>&1"
+  cpu_num=0
+  docker_exec bash -c "echo 'time;cpu_num;%usr;%nice;%iowait;%steal' > ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/mpstat.${run_number}.csv"
+  while [[ $cpu_num -lt $CPU_CNT ]]; do
+    docker_exec bash -c "cat ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/mpstat.${run_number}.log | grep -P '^... \d\d \d\d:\d\d:\d\d \d\d:\d\d:\d\d +${cpu_num}' | awk '{print \$1\" \"\$2\" \"\$4\";\"\$5\";\"\$6\";\"\$7\";\"\$9\";\"\$12}' >> ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/mpstat.${run_number}.csv"
+    let cpu_num=$cpu_num+1
+  done
   # iostat
   docker_exec bash -c "killall iostat >/dev/null 2>&1"
+  # meminfo
+  docker_exec bash -c "killall meminfo.sh"
+  docker_exec bash -c "[[ -f /machine_home/meminfo.run.log ]] && mv /machine_home/meminfo.run.log ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/meminfo.${run_number}.log"
+  docker_exec bash -c "[[ -f /machine_home/meminfo.run.csv ]] && mv /machine_home/meminfo.run.csv ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/meminfo.${run_number}.csv"
   msg "Generating iostat graph..."
   docker_exec bash -c "cd ${MACHINE_HOME}/${ARTIFACTS_DIRNAME} && iostat-cli --data iostat.${run_number}.log plot $VERBOSE_OUTPUT_REDIRECT || true"
   docker_exec bash -c "mv ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/iostat.png ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/iostat.${run_number}.png $VERBOSE_OUTPUT_REDIRECT"
   set -e
-}
-
-#######################################
-# Stop postgres and wait for complete stop
-# Globals:
-#   None
-# Arguments:
-#   None
-# Returns:
-#   None
-#######################################
-function stop_postgres {
-  dbg "Stopping Postgres..."
-  local cnt=0
-  while true; do
-    res=$(docker_exec bash -c "ps auxww | grep postgres | grep -v "grep" 2>/dev/null || echo ''")
-    if [[ -z "$res" ]]; then
-      # postgres process not found
-      dbg "Postgres stopped."
-      return;
-    fi
-    cnt=$((cnt+1))
-    if [[ "${cnt}" -ge "60" ]]; then
-      msg "WARNING: could not stop Postgres in 60 seconds. Killing."
-      docker_exec bash -c "sudo killall -s 9 postgres || true"
-    fi
-    # Try normal "fast stop"
-    docker_exec bash -c "sudo pg_ctlcluster ${PG_VERSION} main stop -m f "
-    sleep 1
-  done
-}
-
-#######################################
-# Start postgres and wait for ready
-# Globals:
-#   None
-# Arguments:
-#   None
-# Returns:
-#   None
-#######################################
-function start_postgres {
-  dbg "Starting Postgres..."
-  local cnt=0
-  while true; do
-    res=$(docker_exec bash -c "psql -Upostgres -d postgres -t -c \"select 1\" 2>/dev/null || echo '' ")
-    if [[ ! -z "$res" ]]; then
-      dbg "Postgres started."
-      return;
-    fi
-    cnt=$((cnt+1))
-    if [[ "${cnt}" -ge "60" ]]; then
-      dbg "WARNING: Can't start Postgres in 60 seconds." >&2
-      return 12
-    fi
-    docker_exec bash -c "sudo pg_ctlcluster ${PG_VERSION} main start || true"
-    sleep 1
-  done
-  dbg "Postgres started"
 }
 
 #######################################
@@ -2320,15 +2331,19 @@ function tune_host_machine {
     # Switch CPU to performance mode
     docker-machine ssh $DOCKER_MACHINE \
       "[[ -e /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor ]] \
-       && echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor"
+       && echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor || true"
     # Disable swap
     docker-machine ssh $DOCKER_MACHINE \
       "[[ -e /proc/sys/vm/swappiness ]] \
-       && sudo bash -c 'echo 0 > /proc/sys/vm/swappiness'"
+       && sudo bash -c 'echo 0 > /proc/sys/vm/swappiness' || true"
   fi
 }
 
 tune_host_machine
+if [[ -f ${BASH_SOURCE%/*}/tools/meminfo.sh ]]; then
+  copy_file ${BASH_SOURCE%/*}/tools/meminfo.sh
+  docker_exec bash -c "chmod +x ${MACHINE_HOME}/meminfo.sh"
+fi
 
 trap docker_cleanup_and_exit EXIT
 
@@ -2520,5 +2535,6 @@ while : ; do
   [[ "$i" -eq "$runs_count" ]] && break;
 done
 
+save_artifacts
 calc_estimated_cost
 DONE=1
