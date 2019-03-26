@@ -2459,40 +2459,45 @@ while : ; do
     echo -e "${MSG_PREFIX}  Query groups:       "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.normalyzed_info | length')
     echo -e "${MSG_PREFIX}  Errors:             "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.overall_stat.errors_number')
     echo -e "${MSG_PREFIX}  Errors groups:      "$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/pgbadger.$num.json | jq '.error_info | length')
-    if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
-      tps_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$num.txt | grep "including connections establishing")
-      tps=${tps_string//[!0-9.]/}
-      if [[ ! -z "$tps" ]]; then
-        echo -e "${MSG_PREFIX}  TPS:                $tps (including connections establishing)"
-      fi
-    fi
-    if [[ ! -z ${WORKLOAD_REAL+x} ]]; then
-      avg_num_con_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$num.txt | grep "Average number of concurrent connections")
-      avg_num_con=${avg_num_con_string//[!0-9.]/}
-      if [[ ! -z "$avg_num_con" ]]; then
-        echo -e "${MSG_PREFIX}  Avg. connection number: $avg_num_con"
-      fi
-    fi
-    echo -e "${MSG_PREFIX}  WAL:                $(docker_exec tail -1 $MACHINE_HOME/$ARTIFACTS_DIRNAME/wal_stats.$num.csv | awk -F',' '{print $1" bytes generated ("$2"), avg tput: "$3}')"
-    checkpoint_data=$(docker_exec tail -1 $MACHINE_HOME/$ARTIFACTS_DIRNAME/pg_stat_bgwriter.$num.csv)
-    echo -e "${MSG_PREFIX}  Checkpoints:        $(echo $checkpoint_data | awk -F',' '{print $1}') planned (timed)"
-    echo -e "${MSG_PREFIX}                      $(echo $checkpoint_data | awk -F',' '{print $2}') forced (requested)"
-    checkpoint_buffers=$(echo $checkpoint_data | awk -F',' '{print $5}')
-    checkpoint_write_t=$(echo $checkpoint_data | awk -F',' '{print $3}')
-    checkpoint_sync_t=$(echo $checkpoint_data | awk -F',' '{print $4}')
-    checkpoint_t=$(( checkpoint_write_t + checkpoint_sync_t ))
-    checkpoint_mb=$(( checkpoint_buffers * 8 / 1024 ))
-    if [[ $checkpoint_t > 0 ]]; then
-      checkpoint_mbps=$(( checkpoint_buffers * 8000 / (1024 * checkpoint_t) ))
-    else
-      checkpoint_mbps=0
-    fi
-    echo -e "${MSG_PREFIX}                      ${checkpoint_buffers} buffers (${checkpoint_mb} MiB), took ${checkpoint_t} ms, avg tput: ${checkpoint_mbps} MiB/s"
   else
     if [[ ! -z ${PG_STAT_TOTAL_TIME+x} ]]; then
       echo -e "${MSG_PREFIX}  Total query time:   $PG_STAT_TOTAL_TIME ms"
     fi
   fi
+
+  if [[ ! -z ${WORKLOAD_PGBENCH+x} ]]; then
+    tps_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$num.txt | grep "including connections establishing")
+    tps=${tps_string//[!0-9.]/}
+    if [[ ! -z "$tps" ]]; then
+      echo -e "${MSG_PREFIX}  TPS:                $tps (including connections establishing)"
+    fi
+  fi
+
+  if [[ ! -z ${WORKLOAD_REAL+x} ]]; then
+    avg_num_con_string=$(docker_exec cat $MACHINE_HOME/$ARTIFACTS_DIRNAME/workload_output.$num.txt | grep "Average number of concurrent connections")
+    avg_num_con=${avg_num_con_string//[!0-9.]/}
+    if [[ ! -z "$avg_num_con" ]]; then
+      echo -e "${MSG_PREFIX}  Avg. connection number: $avg_num_con"
+    fi
+  fi
+
+  echo -e "${MSG_PREFIX}  WAL:                $(docker_exec tail -1 $MACHINE_HOME/$ARTIFACTS_DIRNAME/wal_stats.$num.csv | awk -F',' '{print $1" bytes generated ("$2"), avg tput: "$3}')"
+  checkpoint_data=$(docker_exec tail -1 $MACHINE_HOME/$ARTIFACTS_DIRNAME/pg_stat_bgwriter.$num.csv)
+  echo -e "${MSG_PREFIX}  Checkpoints:        $(echo $checkpoint_data | awk -F',' '{print $1}') planned (timed)"
+  echo -e "${MSG_PREFIX}                      $(echo $checkpoint_data | awk -F',' '{print $2}') forced (requested)"
+  checkpoint_buffers=$(echo $checkpoint_data | awk -F',' '{print $5}')
+  checkpoint_write_t=$(echo $checkpoint_data | awk -F',' '{print $3}')
+  checkpoint_sync_t=$(echo $checkpoint_data | awk -F',' '{print $4}')
+  checkpoint_t=$(( checkpoint_write_t + checkpoint_sync_t ))
+  checkpoint_mb=$(( checkpoint_buffers * 8 / 1024 ))
+
+  if [[ $checkpoint_t > 0 ]]; then
+    checkpoint_mbps=$(( checkpoint_buffers * 8000 / (1024 * checkpoint_t) ))
+  else
+    checkpoint_mbps=0
+  fi
+  echo -e "${MSG_PREFIX}                      ${checkpoint_buffers} buffers (${checkpoint_mb} MiB), took ${checkpoint_t} ms, avg tput: ${checkpoint_mbps} MiB/s"
+
   echo -e "------------------------------------------------------------------------------"
 
   # revert delta
