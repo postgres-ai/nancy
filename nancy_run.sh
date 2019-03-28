@@ -353,7 +353,7 @@ function check_cli_parameters() {
   if [[ ! -d $TMP_PATH ]]; then
     mkdir $TMP_PATH
   fi
-  TMP_PATH="$TMP_PATH/nancy_run_"$(date "+%Y%m%d_%H%M%S")
+  TMP_PATH=$(mktemp -u -d "${TMP_PATH}"/nancy_run_"$(date '+%Y%m%d_%H%M%S')_XXXXX")
   if [[ ! -d $TMP_PATH ]]; then
     mkdir $TMP_PATH
   fi
