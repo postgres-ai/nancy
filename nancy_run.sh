@@ -2046,6 +2046,14 @@ function save_artifacts() {
       exit 1
     fi
   fi
+
+  # save summary as artifact
+  local cur_sum_fname=""
+  for cur_sum_fname in "$TMP_PATH"/summary.*.txt; do
+    [[ -e "${cur_sum_fname}" ]] || continue
+    cp "${cur_sum_fname}" "$ARTIFACTS_DESTINATION/$ARTIFACTS_DIRNAME/"
+  done
+
   msg "Artifacts saved"
 }
 
@@ -2427,7 +2435,7 @@ while : ; do
   do_cpu_test $i
   do_fs_test $i
 
-  summary_fname="$ARTIFACTS_DESTINATION/$ARTIFACTS_DIRNAME/summary.${num}.txt"
+  summary_fname="${TMP_PATH}/summary.${num}.txt"
 
   #restore database if not first run
   if [[ "$i" -gt "0" ]]; then
