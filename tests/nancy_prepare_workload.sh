@@ -2,6 +2,7 @@
 
 output=$( \
   ${BASH_SOURCE%/*}/../nancy prepare-workload --db-name testci \
+    --debug \
     --output ./test.replay ./.circleci/sample.log \
     2>&1
 )
