@@ -8,6 +8,7 @@ src_dir=$(dirname $(dirname $(realpath "$0")))"/.circleci"
 
 output=$(
   ${BASH_SOURCE%/*}/../nancy run \
+    --debug \
     --commands-after-container-init "exit 1" \
     --db-pgbench "-s 1" \
     --workload-pgbench "-t 1" 2>&1
