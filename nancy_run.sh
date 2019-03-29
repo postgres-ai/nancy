@@ -2268,9 +2268,9 @@ function stop_monitoring {
   msg "Stop monitoring."
   docker_exec bash -c "killall mpstat >/dev/null 2>&1"
   cpu_num=0
-  docker_exec bash -c "echo 'time;cpu_num;%usr;%nice;%iowait;%steal' > ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/mpstat.${run_number}.csv"
+  docker_exec bash -c "echo 'time;cpu_num;%usr;%nice;%sys;%iowait;%irq;%soft;%steal;%guest;%gnice;%idle' > ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/mpstat.${run_number}.csv"
   while [[ $cpu_num -lt $CPU_CNT ]]; do
-    docker_exec bash -c "cat ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/mpstat.${run_number}.log | grep -P '^... \d\d \d\d:\d\d:\d\d \d\d:\d\d:\d\d +${cpu_num}' | awk '{print \$1\" \"\$2\" \"\$4\";\"\$5\";\"\$6\";\"\$7\";\"\$9\";\"\$12}' >> ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/mpstat.${run_number}.csv"
+    docker_exec bash -c "cat ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/mpstat.${run_number}.log | grep -P '^... \d\d \d\d:\d\d:\d\d \d\d:\d\d:\d\d +${cpu_num}' | awk '{print \$1\" \"\$2\" \"\$4\";\"\$5\";\"\$6\";\"\$7\";\"\$8\";\"\$9\";\"\$10\";\"\$11\";\"\$12\";\"\$13\";\"\$14\";\"\$15}' >> ${MACHINE_HOME}/${ARTIFACTS_DIRNAME}/mpstat.${run_number}.csv"
     let cpu_num=$cpu_num+1
   done
   # iostat
