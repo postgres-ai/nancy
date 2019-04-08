@@ -4,14 +4,6 @@ services:
 - docker:dind
 
 before_script:
-  - echo "Install sofrware"
-  - apt-get update && apt-get install -y sudo wget jq gawk pgreplay bc
-    && wget get.docker.com -q -S -O - | sudo sh
-  - echo "Install docker"
-  - set -x && VER="17.03.0-ce" && curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz && tar -xz -C /tmp -f /tmp/docker-$VER.tgz
-  - mv /tmp/docker/* /usr/bin
-  - sudo systemctl start docker
-  - sudo docker version
   - docker version
 
 test:
