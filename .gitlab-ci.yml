@@ -1,5 +1,8 @@
 image: ubuntu:16.04
 
+services:
+- docker:dind
+
 before_script:
   - echo "Install sofrware"
   - apt-get update && apt-get install -y sudo wget jq gawk pgreplay bc
