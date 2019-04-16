@@ -1730,7 +1730,7 @@ function apply_sql_after_db_restore() {
 }
 
 #######################################
-# Apply DDL "do" code
+# Apply delta SQL "DO" code
 # Globals:
 #   DELTA_SQL_DO, DB_NAME, MACHINE_HOME, VERBOSE_OUTPUT_REDIRECT
 # Arguments:
@@ -1740,10 +1740,10 @@ function apply_sql_after_db_restore() {
 #######################################
 function apply_ddl_do_code() {
   local delta_ddl_do=$1
-  # Apply DDL code
+  # Apply delta SQL "DO" code
   OP_START_TIME=$(date +%s);
   if ([[ ! -z "$delta_ddl_do" ]] && [[ "$delta_ddl_do" != "" ]]); then
-    msg "Apply DDL SQL code"
+    msg "Applying delta SQL \"DO\" code..."
     delta_ddl_do_filename=$(basename $delta_ddl_do)
     docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -f $MACHINE_HOME/$delta_ddl_do_filename $VERBOSE_OUTPUT_REDIRECT"
     END_TIME=$(date +%s);
@@ -1753,11 +1753,11 @@ function apply_ddl_do_code() {
 }
 
 #######################################
-# Apply DDL "undo" code
+# Apply delta SQL "UNDO" code
 # Globals:
 #   DELTA_SQL_UNDO, DB_NAME, MACHINE_HOME, VERBOSE_OUTPUT_REDIRECT
 # Arguments:
-#   1 - path to file with ddl undo code
+#   1 - path to file with delta SQL undo code
 # Returns:
 #   None
 #######################################
@@ -1765,7 +1765,7 @@ function apply_ddl_undo_code() {
   local delta_ddl_undo=$1
   OP_START_TIME=$(date +%s);
   if ([[ ! -z ${delta_ddl_undo+x} ]] && [[ "$delta_ddl_undo" != "" ]]); then
-    msg "Apply DDL undo SQL code"
+    msg "Applying delta SQL \"UNDO\" code..."
     delta_ddl_undo_filename=$(basename $delta_ddl_undo)
     docker_exec bash -c "psql --set ON_ERROR_STOP=on -U postgres $DB_NAME -b -f $MACHINE_HOME/$delta_ddl_undo_filename $VERBOSE_OUTPUT_REDIRECT"
     END_TIME=$(date +%s);
