@@ -2464,6 +2464,8 @@ while : ; do
   stop_monitoring $i
   collect_results $i
 
+  END_TIME=$(date +%s)
+  DURATION=$(echo $((END_TIME-START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
   echo "Run #$num done."
   # start printing summary
   if ([[ ! -z "$delta_config" ]] || [[ ! -z "$delta_ddl_do" ]]); then
