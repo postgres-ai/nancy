@@ -121,6 +121,7 @@ function dbg_cli_parameters() {
 --aws-block-duration: ${AWS_BLOCK_DURATION}
 --aws-zfs: ${AWS_ZFS}
 --s3-cfg-path: ${S3_CFG_PATH}
+--aws-vpc-id: ${AWS_VPC_ID}
 
 --no-perf: ${NO_PERF}
 
@@ -259,6 +260,9 @@ function check_cli_parameters() {
     fi
     if [[ -z ${AWS_ZONE+x} ]]; then
       err "NOTICE: AWS EC2 zone is not specified. Will be determined during the price optimization process."
+    fi
+    if [[ -z ${AWS_VPC_ID+x} ]]; then
+      err "NOTICE: AWS VPC is not specified. Default will be used."
     fi
     if [[ -z ${AWS_ZFS+x} ]]; then
       err "NOTICE: Ext4 will be used for PGDATA."
@@ -615,11 +619,12 @@ function check_cli_parameters() {
 #   (text) [7] The AWS region to launch the instance
 #              (for example us-east-1, eu-central-1)
 #   (text) [8] The AWS zone to launch the instance in (one of a,b,c,d,e)
+#   (text) [9] The AWS VPC to launch the instance in (one of a,b,c,d,e)
 # Returns:
 #   None
 #######################################
 function create_ec2_docker_machine() {
-  msg "Attempting to provision a Docker machine in region $7 with price $3..."
+  msg "Attempting to provision a Docker machine in region $7 with price $3 and vpc $9..."
   docker-machine create --driver=amazonec2 \
     --amazonec2-request-spot-instance \
     --amazonec2-instance-type=$2 \
@@ -629,6 +634,7 @@ function create_ec2_docker_machine() {
     --amazonec2-ssh-keypath="$6" \
     --amazonec2-region="$7" \
     --amazonec2-zone="$8" \
+    --amazonec2-vpc-id="$9" \
     $1 2> >(grep -v "failed waiting for successful resource state" >&2) &
 }
 
@@ -1163,6 +1169,8 @@ while [ $# -gt 0 ]; do
         AWS_BLOCK_DURATION=$2; shift 2 ;;
     --aws-zfs )
         AWS_ZFS=1; shift ;;
+    --aws-vpc-id )
+        AWS_VPC_ID="$2"; shift 2 ;;
     --db-ebs-volume-id )
       DB_EBS_VOLUME_ID=$2; shift 2;;
     --db-local-pgdata )
@@ -1212,7 +1220,7 @@ if [ -n "$CIRCLE_JOB" ]; then
   IS_CIRCLE_CI=true
 else
   IS_CIRCLE_CI=false
-fi	
+fi
 
 if $DEBUG ; then
   set -xueo pipefail
@@ -1248,7 +1256,7 @@ if [[ "$RUN_ON" == "localhost" ]]; then
       )
     else
       CONTAINER_HASH=$(docker run --cap-add SYS_ADMIN --name="pg_nancy_${CURRENT_TS}" \
-        ${DB_EXPOSE_PORT} \
+        ${DB_EXPOSE_PORT} \$AWS_BLOCK_DURATION $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $AWS_REGION $AWS_ZONE $AWS_VPC_ID
         -v $TMP_PATH:/machine_home \
         -dit "postgresmen/postgres-nancy:${PG_VERSION}" \
       )
@@ -1264,7 +1272,7 @@ if [[ "$RUN_ON" == "localhost" ]]; then
 elif [[ "$RUN_ON" == "aws" ]]; then
   determine_history_ec2_spot_price
   create_ec2_docker_machine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
-    $AWS_BLOCK_DURATION $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $AWS_REGION $AWS_ZONE
+    $AWS_BLOCK_DURATION $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $AWS_REGION $AWS_ZONE $AWS_VPC_ID
   status=$(wait_ec2_docker_machine_ready "$DOCKER_MACHINE" true)
   if [[ "$status" == "price-too-low" ]]; then
     msg "Price $price is too low for $AWS_EC2_TYPE instance. Getting the up-to-date value from the error message..."
@@ -1278,7 +1286,7 @@ elif [[ "$RUN_ON" == "aws" ]]; then
     DOCKER_MACHINE="${DOCKER_MACHINE//_/-}"
     #try start docker machine name with new price
     create_ec2_docker_machine $DOCKER_MACHINE $AWS_EC2_TYPE $EC2_PRICE \
-      $AWS_BLOCK_DURATION $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $AWS_REGION $AWS_ZONE
+      $AWS_BLOCK_DURATION $AWS_KEYPAIR_NAME $AWS_SSH_KEY_PATH $AWS_REGION $AWS_ZONE $AWS_VPC_ID
     wait_ec2_docker_machine_ready "$DOCKER_MACHINE" false
   fi
 
@@ -1697,6 +1705,9 @@ function restore_dump() {
   ;;
       pgdmp)
   docker_exec bash -c "pg_restore -j $CPU_CNT --no-owner --no-privileges -U postgres -d $DB_NAME $MACHINE_HOME/$DB_DUMP_FILENAME" || true
+  ;;
+      *)
+  msg "The file should be with extension *.sql, *bz2, *gz or *.pgdmp: $DB_DUMP_FILENAME."
   ;;
     esac
   fi
