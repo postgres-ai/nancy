@@ -111,6 +111,7 @@ function dbg_cli_parameters() {
 --delta-sql_do: ${DELTA_SQL_DO}
 --delta-sql_undo: ${DELTA_SQL_UNDO}
 --delta-config: ${DELTA_CONFIG}
+--custom-script: ${CUSTOM_SCRIPT}
 
 --aws-ec2-type: ${AWS_EC2_TYPE}
 --aws-keypair-name: $AWS_KEYPAIR_NAME
@@ -230,6 +231,7 @@ function check_cli_parameters() {
   ([[ ! -z ${SQL_AFTER_DB_RESTORE+x} ]] && [[ -z $SQL_AFTER_DB_RESTORE ]]) && unset -v SQL_AFTER_DB_RESTORE
   ([[ ! -z ${AWS_ZONE+x} ]] && [[ -z $AWS_ZONE ]]) && unset -v AWS_ZONE
   ([[ ! -z ${CONFIG+x} ]] && [[ -z $CONFIG ]]) && unset -v CONFIG
+  ([[ ! -z ${CUSTOM_SCRIPT+x} ]] && [[ -z $CUSTOM_SCRIPT ]]) && unset -v CUSTOM_SCRIPT
   ### CLI parameters checks ###
   if [[ "${RUN_ON}" == "aws" ]]; then
     if [ ! -z ${CONTAINER_ID+x} ]; then
@@ -578,6 +580,15 @@ function check_cli_parameters() {
       dbg "WARNING: Value given as after_db_init_code: '$COMMANDS_AFTER_CONTAINER_INIT' not found as file will use as content"
       echo "$COMMANDS_AFTER_CONTAINER_INIT" > $TMP_PATH/after_docker_init_code_tmp.sh
       COMMANDS_AFTER_CONTAINER_INIT="$TMP_PATH/after_docker_init_code_tmp.sh"
+    fi
+  fi
+
+  if [[ ! -z ${CUSTOM_SCRIPT+x} ]]; then
+    check_path CUSTOM_SCRIPT
+    if [[ "$?" -ne "0" ]]; then
+      dbg "WARNING: Value given as after_db_init_code: '$CUSTOM_SCRIPT' not found as file will use as content"
+      echo "$CUSTOM_SCRIPT" > $CUSTOM_SCRIPT
+      msg "Custom script $CUSTOM_SCRIPT executed"
     fi
   fi
 
@@ -1152,6 +1163,8 @@ while [ $# -gt 0 ]; do
       ARTIFACTS_DESTINATION="$2"; shift 2 ;;
     --artifacts-dirname )
       ARTIFACTS_DIRNAME="$2"; shift 2 ;;
+    --custom-script )
+      CUSTOM_SCRIPT="$2"; shift 2 ;;
 
     --aws-ec2-type )
       AWS_EC2_TYPE="$2"; shift 2 ;;
@@ -1652,6 +1665,30 @@ function apply_commands_after_container_init() {
     END_TIME=$(date +%s)
     DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
     msg "Time taken to apply \"after-docker-init code\": $DURATION."
+  fi
+}
+
+#######################################
+# Execute custom shell commands in container after it started
+# Globals:
+#   CUSTOM_SCRIPT
+# Arguments:
+#   None
+# Returns:
+#   None
+#######################################
+function apply_custom_script() {
+  OP_START_TIME=$(date +%s)
+  if ([ ! -z ${CUSTOM_SCRIPT+x} ] && [ "$CUSTOM_SCRIPT" != "" ])
+  then
+    msg "Apply custom script after docker init"
+    CUSTOM_SCRIPT_FILENAME=$(basename $CUSTOM_SCRIPT)
+    copy_file $CUSTOM_SCRIPT
+    docker_exec bash -c "chmod +x ${MACHINE_HOME}/${CUSTOM_SCRIPT_FILENAME}"
+    output=$(docker_exec sh $MACHINE_HOME/$CUSTOM_SCRIPT_FILENAME)
+    END_TIME=$(date +%s)
+    DURATION=$(echo $((END_TIME-OP_START_TIME)) | awk '{printf "%d:%02d:%02d", $1/3600, ($1/60)%60, $1%60}')
+    msg "Time taken to apply \"custom script code\": $DURATION."
   fi
 }
 
@@ -2405,6 +2442,7 @@ docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not ex
 docker_exec bash -c "psql -U postgres $DB_NAME -b -c 'create extension if not exists pg_stat_kcache;' $VERBOSE_OUTPUT_REDIRECT"
 
 apply_commands_after_container_init
+apply_custom_script
 pg_config_init
 apply_sql_before_db_restore
 if [[ ! -z ${DB_DUMP+x} ]] || [[ ! -z ${DB_PGBENCH+x} ]]; then
