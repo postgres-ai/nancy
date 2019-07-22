@@ -646,6 +646,7 @@ function create_ec2_docker_machine() {
     --amazonec2-region="$7" \
     --amazonec2-zone="$8" \
     --amazonec2-vpc-id="$9" \
+    --amazonec2-use-private-address="true" \
     $1 2> >(grep -v "failed waiting for successful resource state" >&2) &
 }
 
