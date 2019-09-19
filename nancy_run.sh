@@ -1892,7 +1892,7 @@ function apply_postgres_configuration() {
 function prepare_start_workload() {
   local run_number=$1
   let run_number=run_number+1
-  if [[ -z ${WORKLOAD_PGBENCH+x} ]]; then
+  if [[ -z ${WORKLOAD_PGBENCH+x} ]] && [[ -z ${DB_LOCAL_PGDATA+x} ]]; then
     msg "Executing vacuumdb..."
     out=$(docker_exec vacuumdb -U postgres $DB_NAME -j $CPU_CNT --analyze)
   fi
@@ -2447,7 +2447,11 @@ while : ; do
       rsync_backup
       start_postgres
     else
-      restore_dump;
+      if [[ -z ${DB_LOCAL_PGDATA+x} ]]; then
+        restore_dump
+      else
+        dbg "Skip 'restore database' step because of working with 'local PGDATA'"
+      fi
     fi
     sleep 10
   fi
