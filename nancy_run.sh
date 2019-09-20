@@ -2533,12 +2533,19 @@ while : ; do
   checkpoint_t=$(( checkpoint_write_t + checkpoint_sync_t ))
   checkpoint_mb=$(( checkpoint_buffers * 8 / 1024 ))
 
+  buffers_clean=$(echo $checkpoint_data | awk -F',' '{print $6}')
+  buffers_clean_mb=$(( buffers_clean * 8 / 1024 ))
+  buffers_backend=$(echo $checkpoint_data | awk -F',' '{print $8}')
+  buffers_backend_mb=$(( buffers_backend * 8 / 1024 ))
+
   if [[ $checkpoint_t > 0 ]]; then
     checkpoint_mbps=$(( checkpoint_buffers * 8000 / (1024 * checkpoint_t) ))
   else
     checkpoint_mbps=0
   fi
-  echo -e "${MSG_PREFIX}                      ${checkpoint_buffers} buffers (${checkpoint_mb} MiB), took ${checkpoint_t} ms, avg tput: ${checkpoint_mbps} MiB/s" | tee -a "$summary_fname"
+  echo -e "${MSG_PREFIX}  Buffers written:    ${checkpoint_buffers} by checkpointer (${checkpoint_mb} MiB), took ${checkpoint_t} ms, avg tput: ${checkpoint_mbps} MiB/s" | tee -a "$summary_fname"
+  echo -e "${MSG_PREFIX}                      ${buffers_clean} by background writer (${buffers_clean_mb} MiB)"
+  echo -e "${MSG_PREFIX}                      ${buffers_backend} by backends (${buffers_backend_mb} MiB)"
 
   echo -e "------------------------------------------------------------------------------" | tee -a "$summary_fname"
   # end of summary
