@@ -2,7 +2,7 @@
 # Rebuild all images and push to Docker Hub
 set -e -u -o pipefail
 
-VERSIONS="9.6 10 11"
+VERSIONS="9.6 10 11 12"
 
 if [[ ! -z ${1+x} ]]; then
   VERSIONS="$1"
