@@ -31,7 +31,7 @@ RUN apt-get install -y postgresql-plpython-$PG_SERVER_VERSION
 RUN apt-get install -y postgresql-server-dev-$PG_SERVER_VERSION
 RUN apt-get install -y postgresql-$PG_SERVER_VERSION-dbg
 RUN apt-get install -y postgresql-$PG_SERVER_VERSION-pg-stat-kcache
-RUN apt-get install -y postgresql-client-11
+RUN apt-get install -y postgresql-client-12
 
 RUN apt-get install -y pgreplay
 RUN apt-get install -y pspg
