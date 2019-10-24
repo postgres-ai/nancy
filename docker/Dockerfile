@@ -28,7 +28,7 @@ RUN apt-get install -y sysstat iotop moreutils psmisc
 RUN apt-get install -y postgresql-${PG_SERVER_VERSION}
 RUN apt-get install -y postgresql-contrib-${PG_SERVER_VERSION}
 RUN apt-get install -y postgresql-server-dev-${PG_SERVER_VERSION}
-RUN if [ "${PG_SERVER_VERSION}" != "12" ]; then apt-get install -y postgresql-${PG_SERVER_VERSION}-dbg; fi
+#RUN if [ "${PG_SERVER_VERSION}" != "12" ]; then apt-get install -y postgresql-${PG_SERVER_VERSION}-dbg; fi
 RUN apt-get install -y postgresql-${PG_SERVER_VERSION}-pg-stat-kcache
 RUN apt-get install -y postgresql-client-12
 RUN if [ "${PG_SERVER_VERSION}" == "12" ]; then apt-get install -y postgresql-plpython3-${PG_SERVER_VERSION}; fi
