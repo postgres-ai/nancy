@@ -41,7 +41,7 @@ Database experiments are needed when you:
 
 * Works anywhere where Docker can run (checked: Linux Ubuntu/Debian, macOS)
 * Experiments are conducted in a Docker container with extended Postgres setup
-* Supported Postgres versions: 11 (default), 10, 9.6
+* Supported Postgres versions: 12 (default), 11, 10, 9.6
 * Postgres config specified via options, may be partial
 * Supported locations for experimental runs:
   * Any machine with Docker installed
