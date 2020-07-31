@@ -6,7 +6,7 @@
   &nbsp;
 [![CircleCI](https://circleci.com/gh/postgres-ai/nancy.svg?style=svg)](https://circleci.com/gh/postgres-ai/nancy)
 
-**IMPORTANT**: Nancy has migrated to GitLab.com. The official repository address: https://gitlab.com/postgres.ai/nancy
+:warning: Nancy CLI project is on hold now. See details: https://gitlab.com/postgres-ai/nancy/-/issues/228
 
 # About
 <img width="200" src="https://gitlab.com/postgres-ai-team/nancy/uploads/c5ebf02e1c39cc91c95e8beac8028b62/nancy.png" align="right">
